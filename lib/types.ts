@@ -9,6 +9,7 @@ export interface Profile {
   bio: string | null
   phone: string | null
   onboarding_complete: boolean
+  current_week: number
   created_at: string
   updated_at: string
 }
@@ -59,6 +60,7 @@ export interface AssignmentProgress {
   status: 'not_started' | 'in_progress' | 'completed'
   response_text: string | null
   completed_at: string | null
+  week_number: number
   created_at: string
   updated_at: string
   assignment?: Assignment

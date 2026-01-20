@@ -49,7 +49,7 @@ export function WeekDetailView({
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const supabase = createClient()
-
+  console.log(assignmentProgress)
   const completedCount = assignmentProgress.filter(p => p.status === 'completed').length
   const progressPercentage = assignments.length > 0 
     ? Math.round((completedCount / assignments.length) * 100) 

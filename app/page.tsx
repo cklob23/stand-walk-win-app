@@ -231,7 +231,7 @@ export default async function HomePage() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                 <BookOpen className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-foreground">Disciples Path</span>
+              <span className="font-semibold text-foreground">Stand Walk Win: A Desciples Journey</span>
             </div>
             <p className="text-sm text-muted-foreground">
               Grow together in faith. One step at a time.

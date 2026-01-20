@@ -11,14 +11,13 @@ export default function SignupPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
               <BookOpen className="h-6 w-6 text-primary-foreground" />
             </div>
-            <span className="text-xl font-semibold text-foreground">Disciples Path</span>
+            <span className="text-xl font-semibold text-foreground">Stand Walk Win</span>
           </Link>
           <h1 className="text-2xl font-bold text-foreground">Begin your journey</h1>
           <p className="mt-2 text-muted-foreground">
             Create an account to start your discipleship path
           </p>
         </div>
-        
         <SignupForm />
         
         <p className="text-center text-sm text-muted-foreground">
