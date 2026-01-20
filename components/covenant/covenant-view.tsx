@@ -53,8 +53,8 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
   const supabase = createClient()
 
   const isLeader = profile.role === 'leader'
-  const hasSigned = isLeader ? pairing.covenant_signed_leader : pairing.covenant_signed_learner
-  const partnerHasSigned = isLeader ? pairing.covenant_signed_learner : pairing.covenant_signed_leader
+  const hasSigned = isLeader ? pairing.covenant_accepted_leader : pairing.covenant_accepted_learner
+  const partnerHasSigned = isLeader ? pairing.covenant_accepted_learner : pairing.covenant_accepted_leader
   const allAgreed = agreements.every(Boolean)
 
   const handleAgreementChange = (index: number, checked: boolean) => {
@@ -71,7 +71,7 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
 
     setIsLoading(true)
 
-    const updateField = isLeader ? 'covenant_signed_leader' : 'covenant_signed_learner'
+    const updateField = isLeader ? 'covenant_accepted_leader' : 'covenant_accepted_learner'
     
     const { error } = await supabase
       .from('pairings')

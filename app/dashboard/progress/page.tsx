@@ -13,14 +13,21 @@ import {
   Trophy,
   TrendingUp,
 } from "lucide-react";
-import type { Profile, WeeklyContent, AssignmentProgress } from "@/lib/types";
+import type { Profile, WeeklyContent, Pairing, Assignment } from "@/lib/types";
+
+interface AssignmentProgressRecord {
+  id: string;
+  assignment_id: string;
+  status: string;
+  completed_at: string | null;
+}
 
 export default function ProgressPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [pairing, setPairing] = useState<Pairing | null>(null);
   const [weeklyContent, setWeeklyContent] = useState<WeeklyContent[]>([]);
-  const [assignmentProgress, setAssignmentProgress] = useState<
-    AssignmentProgress[]
-  >([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [assignmentProgress, setAssignmentProgress] = useState<AssignmentProgressRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,15 +39,67 @@ export default function ProgressPage() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const [profileRes, contentRes, progressRes] = await Promise.all([
-        supabase.from("profiles").select("*").eq("id", user.id).single(),
-        supabase.from("weekly_content").select("*").order("week_number"),
-        supabase.from("assignment_progress").select("*").eq("user_id", user.id),
-      ]);
+      // Get profile
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
 
-      if (profileRes.data) setProfile(profileRes.data);
-      if (contentRes.data) setWeeklyContent(contentRes.data);
-      if (progressRes.data) setAssignmentProgress(progressRes.data);
+      if (profileData) setProfile(profileData);
+
+      // Get pairing based on role
+      let pairingData = null;
+      if (profileData?.role === 'leader') {
+        const { data } = await supabase
+          .from("pairings")
+          .select("*")
+          .eq("leader_id", user.id)
+          .in("status", ["active", "pending"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+        pairingData = data;
+      } else {
+        const { data } = await supabase
+          .from("pairings")
+          .select("*")
+          .eq("learner_id", user.id)
+          .in("status", ["active", "pending"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+        pairingData = data;
+      }
+      
+      if (pairingData) setPairing(pairingData);
+
+      // Get weekly content
+      const { data: contentData } = await supabase
+        .from("weekly_content")
+        .select("*")
+        .order("week_number");
+      
+      if (contentData) setWeeklyContent(contentData);
+
+      // Get all assignments
+      const { data: assignmentsData } = await supabase
+        .from("assignments")
+        .select("*")
+        .order("week_number")
+        .order("order_index");
+      
+      if (assignmentsData) setAssignments(assignmentsData);
+
+      // Get assignment progress for this pairing
+      if (pairingData) {
+        const { data: progressData } = await supabase
+          .from("assignment_progress")
+          .select("*")
+          .eq("pairing_id", pairingData.id);
+        
+        if (progressData) setAssignmentProgress(progressData);
+      }
 
       setLoading(false);
     }
@@ -50,7 +109,7 @@ export default function ProgressPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="p-6 space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="grid gap-4 md:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
@@ -62,36 +121,52 @@ export default function ProgressPage() {
     );
   }
 
-  const currentWeek = profile?.current_week || 1;
+  const currentWeek = pairing?.current_week || 1;
+  
+  // Calculate actual completed assignments from progress data
   const completedAssignments = assignmentProgress.filter(
     (p) => p.status === "completed"
   ).length;
-  const totalAssignments = weeklyContent.reduce(
-    (acc, week) => acc + (week.week_number <= currentWeek ? 3 : 0),
-    0
-  );
+  
+  // Calculate total assignments up to current week
+  const totalAssignmentsUpToCurrentWeek = assignments.filter(
+    (a) => a.week_number <= currentWeek
+  ).length;
+  
+  // Calculate total assignments overall (for overall progress)
+  const totalAssignmentsOverall = assignments.length;
+  
   const overallProgress =
-    totalAssignments > 0
-      ? Math.round((completedAssignments / totalAssignments) * 100)
+    totalAssignmentsOverall > 0
+      ? Math.round((completedAssignments / totalAssignmentsOverall) * 100)
       : 0;
 
+  // Calculate stats for each week
   const weeklyStats = weeklyContent.map((week) => {
-    const weekAssignments = assignmentProgress.filter(
-      (p) => p.week_number === week.week_number
+    // Get assignments for this specific week
+    const weekAssignments = assignments.filter(
+      (a) => a.week_number === week.week_number
     );
-    const completed = weekAssignments.filter(
-      (p) => p.status === "completed"
+    
+    // Count completed assignments for this week
+    const completed = weekAssignments.filter((a) =>
+      assignmentProgress.some(
+        (p) => p.assignment_id === a.id && p.status === "completed"
+      )
     ).length;
+    
+    const total = weekAssignments.length;
+    
     return {
       ...week,
       completed,
-      total: 3,
-      progress: Math.round((completed / 3) * 100),
+      total,
+      progress: total > 0 ? Math.round((completed / total) * 100) : 0,
     };
   });
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       <div>
         <h1 className="font-serif text-2xl font-bold text-foreground">
           Your Progress
@@ -135,7 +210,7 @@ export default function ProgressPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {completedAssignments}/{totalAssignments}
+              {completedAssignments}/{totalAssignmentsUpToCurrentWeek}
             </div>
             <p className="text-xs text-muted-foreground">assignments done</p>
           </CardContent>
@@ -153,7 +228,7 @@ export default function ProgressPage() {
                 : "In Progress"}
             </div>
             <p className="text-xs text-muted-foreground">
-              {6 - currentWeek} weeks remaining
+              {Math.max(0, 6 - currentWeek)} weeks remaining
             </p>
           </CardContent>
         </Card>

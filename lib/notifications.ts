@@ -142,3 +142,55 @@ export async function notifyLearnerJoined(
     message: `${learnerName} has used your invite code and is ready to begin. Sign the covenant together to start.`,
   })
 }
+
+export async function notifyWeekUnlocked(
+  userId: string,
+  pairingId: string,
+  newWeekNumber: number,
+  newWeekTitle: string
+) {
+  return createNotification({
+    userId,
+    pairingId,
+    type: 'week_complete',
+    title: `Week ${newWeekNumber} Unlocked!`,
+    message: `Congratulations! You can now begin "${newWeekTitle}".`,
+  })
+}
+
+export async function advanceToNextWeek(
+  pairingId: string,
+  currentWeek: number,
+  learnerName: string,
+  leaderId: string,
+  learnerId: string,
+  weeklyContent: { week_number: number; title: string }[]
+) {
+  const supabase = await createClient()
+  
+  const nextWeek = currentWeek + 1
+  const nextWeekContent = weeklyContent.find(w => w.week_number === nextWeek)
+  
+  // Only advance if there's a next week (max 6 weeks)
+  if (nextWeek > 6 || !nextWeekContent) {
+    // Journey complete!
+    return { success: true, journeyComplete: true }
+  }
+  
+  // Update the pairing's current week
+  const { error } = await supabase
+    .from('pairings')
+    .update({ current_week: nextWeek })
+    .eq('id', pairingId)
+  
+  if (error) {
+    console.error('Failed to advance week:', error)
+    return { error: error.message }
+  }
+  
+  // Notify both parties
+  await notifyWeekUnlocked(learnerId, pairingId, nextWeek, nextWeekContent.title)
+  await notifyWeekUnlocked(leaderId, pairingId, nextWeek, nextWeekContent.title)
+  
+  return { success: true, newWeek: nextWeek }
+}

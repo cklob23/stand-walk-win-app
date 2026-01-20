@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { signIn } from '@/lib/auth-actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,19 +10,20 @@ import { Loader2, Eye, EyeOff } from 'lucide-react'
 
 export function LoginForm() {
   const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isPending, startTransition] = useTransition()
   const [showPassword, setShowPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false) // Declare isLoading variable
 
-  async function handleSubmit(formData: FormData) {
+  function handleSubmit(formData: FormData) {
     setError(null)
-    setIsLoading(true)
-    
-    const result = await signIn(formData)
-    
-    if (result?.error) {
-      setError(result.error)
-      setIsLoading(false)
-    }
+    setIsLoading(true) // Set isLoading to true before starting the transition
+    startTransition(async () => {
+      const result = await signIn(formData)
+      setIsLoading(false) // Set isLoading to false after the transition
+      if (result?.error) {
+        setError(result.error)
+      }
+    })
   }
 
   return (
@@ -79,8 +80,8 @@ export function LoginForm() {
             </div>
           )}
 
-          <Button type="submit" className="w-full h-11" disabled={isLoading}>
-            {isLoading ? (
+          <Button type="submit" className="w-full h-11" disabled={isPending}>
+            {isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Signing in...

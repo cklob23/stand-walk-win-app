@@ -26,14 +26,15 @@ import {
 import { toast } from 'sonner'
 import type { Assignment } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { notifyAssignmentCompleted } from '@/lib/notifications'
+import { notifyAssignmentCompleted, advanceToNextWeek } from '@/lib/notifications'
 
 interface AssignmentCardProps {
   assignment: Assignment
   progress?: {
+    id?: string
     assignment_id: string
     status: string
-    response_text: string | null
+    notes: string | null
     completed_at: string | null
   }
   pairingId: string
@@ -41,6 +42,9 @@ interface AssignmentCardProps {
   userRole?: 'leader' | 'learner'
   leaderId?: string
   learnerName?: string
+  currentWeek?: number
+  totalWeekAssignments?: number
+  completedWeekAssignments?: number
 }
 
 const typeIcons = {
@@ -66,11 +70,14 @@ export function AssignmentCard({
   userId, 
   userRole,
   leaderId,
-  learnerName 
+  learnerName,
+  currentWeek,
+  totalWeekAssignments,
+  completedWeekAssignments
 }: AssignmentCardProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
-  const [response, setResponse] = useState(progress?.response_text || '')
+  const [response, setResponse] = useState(progress?.notes || '')
   const [isLoading, setIsLoading] = useState(false)
 
   const supabase = createClient()
@@ -87,40 +94,22 @@ export function AssignmentCard({
       assignment_id: assignment.id,
       user_id: userId,
       status: newStatus,
-      response_text: response || null,
+      notes: response || null,
       completed_at: newStatus === 'completed' ? new Date().toISOString() : null,
     }
 
-    // Check if progress exists
-    if (progress) {
-      const { error } = await supabase
-        .from('assignment_progress')
-        .update(progressData)
-        .eq('id', progress.assignment_id)
-        .eq('user_id', userId)
+    // Use upsert to handle both insert and update
+    const { error } = await supabase
+      .from('assignment_progress')
+      .upsert(progressData, { 
+        onConflict: 'pairing_id,assignment_id,user_id',
+        ignoreDuplicates: false
+      })
 
-      if (error) {
-        // Try insert if update fails (might not exist yet)
-        const { error: insertError } = await supabase
-          .from('assignment_progress')
-          .upsert(progressData, { onConflict: 'pairing_id,assignment_id,user_id' })
-
-        if (insertError) {
-          toast.error('Failed to save progress')
-          setIsLoading(false)
-          return
-        }
-      }
-    } else {
-      const { error } = await supabase
-        .from('assignment_progress')
-        .insert(progressData)
-
-      if (error) {
-        toast.error('Failed to save progress')
-        setIsLoading(false)
-        return
-      }
+    if (error) {
+      toast.error('Failed to save progress')
+      setIsLoading(false)
+      return
     }
 
     toast.success(newStatus === 'completed' ? 'Assignment completed!' : 'Progress saved!')
@@ -134,6 +123,29 @@ export function AssignmentCard({
         assignment.title,
         assignment.week_number
       )
+      
+      // Check if this was the last assignment for the week
+      // completedWeekAssignments doesn't include this one yet, so we add 1
+      const newCompletedCount = (completedWeekAssignments || 0) + 1
+      if (totalWeekAssignments && newCompletedCount >= totalWeekAssignments && currentWeek) {
+        // All assignments for this week are complete - advance to next week
+        const { data: weeklyContent } = await supabase
+          .from('weekly_content')
+          .select('week_number, title')
+          .order('week_number')
+        
+        if (weeklyContent) {
+          await advanceToNextWeek(
+            pairingId,
+            currentWeek,
+            learnerName,
+            leaderId,
+            userId,
+            weeklyContent
+          )
+          toast.success('Congratulations! Week ' + currentWeek + ' complete. Next week unlocked!')
+        }
+      }
     }
     
     setIsLoading(false)

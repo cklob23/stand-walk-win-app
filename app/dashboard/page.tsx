@@ -4,7 +4,7 @@ import { LeaderDashboard } from '@/components/dashboard/leader-dashboard'
 import { LearnerDashboard } from '@/components/dashboard/learner-dashboard'
 import { NoPairingState } from '@/components/dashboard/no-pairing-state'
 import { CovenantRequired } from '@/components/dashboard/covenant-required'
-import { Message } from '@/lib/types' // Declare the Message variable
+import type { Message } from '@/lib/types'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -77,14 +77,12 @@ export default async function DashboardPage() {
   const currentWeek = pairing?.current_week || 1
   const { data: assignments } = await supabase
     .from('assignments')
-    .select(`
-      *,
-      weekly_content(*)
-    `)
+    .select('*')
+    .order('week_number', { ascending: true })
     .order('order_index', { ascending: true })
 
   // Get assignment progress
-  let assignmentProgress: { assignment_id: string; status: string; response_text: string | null; completed_at: string | null }[] = []
+  let assignmentProgress: { id?: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null }[] = []
   if (pairing) {
     const { data } = await supabase
       .from('assignment_progress')
@@ -92,6 +90,31 @@ export default async function DashboardPage() {
       .eq('pairing_id', pairing.id)
     
     assignmentProgress = data || []
+  }
+
+  // Check if current week is complete and auto-advance if needed
+  let effectiveCurrentWeek = currentWeek
+  if (pairing && assignments && assignmentProgress.length > 0) {
+    // Get assignments for the current week
+    const currentWeekAssignments = (assignments || []).filter(a => a.week_number === currentWeek)
+    const currentWeekCompleted = currentWeekAssignments.filter(a => 
+      assignmentProgress.some(p => p.assignment_id === a.id && p.status === 'completed')
+    )
+    
+    // If all assignments for current week are complete, advance to next week
+    if (currentWeekAssignments.length > 0 && currentWeekCompleted.length >= currentWeekAssignments.length && currentWeek < 6) {
+      const nextWeek = currentWeek + 1
+      
+      // Update the pairing's current week in the database
+      await supabase
+        .from('pairings')
+        .update({ current_week: nextWeek })
+        .eq('id', pairing.id)
+      
+      // Update the local value
+      effectiveCurrentWeek = nextWeek
+      pairing.current_week = nextWeek
+    }
   }
 
   // Get recent messages
@@ -124,13 +147,13 @@ export default async function DashboardPage() {
     return (
       <NoPairingState 
         profile={profile} 
-        pairingCode={pairing?.pairing_code}
+        pairingCode={pairing?.invite_code}
       />
     )
   }
 
   // Check if both parties have signed the covenant
-  const covenantComplete = pairing.covenant_signed_leader && pairing.covenant_signed_learner
+  const covenantComplete = pairing.covenant_accepted_leader && pairing.covenant_accepted_learner
   
   // If covenant not complete, show covenant required screen
   if (!covenantComplete && pairing.learner_id) {
@@ -152,7 +175,7 @@ export default async function DashboardPage() {
     assignmentProgress,
     recentMessages: recentMessages.reverse(),
     notifications: notifications || [],
-    currentWeek,
+    currentWeek: effectiveCurrentWeek,
   }
 
   if (profile.role === 'leader') {

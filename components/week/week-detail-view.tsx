@@ -30,7 +30,7 @@ interface WeekDetailViewProps {
   partner: Profile | null
   weekContent: WeeklyContent
   assignments: Assignment[]
-  assignmentProgress: { assignment_id: string; status: string; response_text: string | null; completed_at: string | null }[]
+  assignmentProgress: { id: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null }[]
   reflections: (Reflection & { user: { id: string; full_name: string | null; avatar_url: string | null } | null })[]
 }
 
@@ -49,7 +49,7 @@ export function WeekDetailView({
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const supabase = createClient()
-  console.log(assignmentProgress)
+
   const completedCount = assignmentProgress.filter(p => p.status === 'completed').length
   const progressPercentage = assignments.length > 0 
     ? Math.round((completedCount / assignments.length) * 100) 
@@ -177,6 +177,9 @@ export function WeekDetailView({
                   userRole={profile.role || undefined}
                   leaderId={pairing.leader_id}
                   learnerName={profile.role === 'learner' ? (profile.full_name || 'Learner') : (partner?.full_name || 'Learner')}
+                  currentWeek={weekNumber}
+                  totalWeekAssignments={assignments.length}
+                  completedWeekAssignments={completedCount}
                 />
               ))}
               {assignments.length === 0 && (

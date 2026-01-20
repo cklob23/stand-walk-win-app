@@ -25,7 +25,7 @@ interface LeaderDashboardProps {
   partner: Profile | null
   weeklyContent: WeeklyContent[]
   assignments: Assignment[]
-  assignmentProgress: { assignment_id: string; status: string; response_text: string | null; completed_at: string | null }[]
+  assignmentProgress: { id?: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null }[]
   recentMessages: Message[]
   notifications: Notification[]
   currentWeek: number
@@ -247,7 +247,7 @@ export function LeaderDashboard({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Your Signature</span>
-                  {pairing.covenant_signed_leader ? (
+                  {pairing.covenant_accepted_leader ? (
                     <Badge variant="default" className="bg-success text-success-foreground">
                       <CheckCircle2 className="mr-1 h-3 w-3" />
                       Signed
@@ -258,7 +258,7 @@ export function LeaderDashboard({
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Learner Signature</span>
-                  {pairing.covenant_signed_learner ? (
+                  {pairing.covenant_accepted_learner ? (
                     <Badge variant="default" className="bg-success text-success-foreground">
                       <CheckCircle2 className="mr-1 h-3 w-3" />
                       Signed
@@ -268,7 +268,7 @@ export function LeaderDashboard({
                   )}
                 </div>
               </div>
-              {(!pairing.covenant_signed_leader || !pairing.covenant_signed_learner) && (
+              {(!pairing.covenant_accepted_leader || !pairing.covenant_accepted_learner) && (
                 <Button variant="outline" className="w-full mt-4 bg-transparent" asChild>
                   <Link href="/dashboard/covenant">
                     View Covenant

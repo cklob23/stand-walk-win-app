@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { signUp } from '@/lib/auth-actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,23 +11,25 @@ import { Loader2, Eye, EyeOff, CheckCircle } from 'lucide-react'
 export function SignupForm() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isPending, startTransition] = useTransition()
   const [showPassword, setShowPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false) // Declare isLoading variable
 
-  async function handleSubmit(formData: FormData) {
+  function handleSubmit(formData: FormData) {
     setError(null)
     setSuccess(null)
-    setIsLoading(true)
-    
-    const result = await signUp(formData)
-    
-    if (result?.error) {
-      setError(result.error)
-      setIsLoading(false)
-    } else if (result?.success) {
-      setSuccess(result.message || 'Account created successfully!')
-      setIsLoading(false)
-    }
+    setIsLoading(true) // Set isLoading to true when starting the transition
+    startTransition(async () => {
+      const result = await signUp(formData)
+      
+      setIsLoading(false) // Set isLoading to false after the transition
+
+      if (result?.error) {
+        setError(result.error)
+      } else if (result?.success) {
+        setSuccess(result.message || 'Account created successfully!')
+      }
+    })
   }
 
   if (success) {
@@ -123,8 +125,8 @@ export function SignupForm() {
             </div>
           )}
 
-          <Button type="submit" className="w-full h-11" disabled={isLoading}>
-            {isLoading ? (
+          <Button type="submit" className="w-full h-11" disabled={isPending}>
+            {isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Creating account...

@@ -9,7 +9,6 @@ export interface Profile {
   bio: string | null
   phone: string | null
   onboarding_complete: boolean
-  current_week: number
   created_at: string
   updated_at: string
 }
@@ -17,15 +16,20 @@ export interface Profile {
 export interface Pairing {
   id: string
   leader_id: string
-  learner_id: string
-  pairing_code: string
+  learner_id: string | null
+  invite_code: string
+  pairing_code?: string  // Alias for invite_code for backwards compatibility
   status: 'pending' | 'active' | 'completed' | 'cancelled'
   current_week: number
-  covenant_signed_leader: boolean
-  covenant_signed_learner: boolean
+  covenant_accepted_leader: boolean
+  covenant_accepted_learner: boolean
+  // Aliases for backwards compatibility
+  covenant_signed_leader?: boolean
+  covenant_signed_learner?: boolean
   started_at: string | null
   completed_at: string | null
   created_at: string
+  updated_at?: string
   leader?: Profile
   learner?: Profile
 }
@@ -58,9 +62,8 @@ export interface AssignmentProgress {
   assignment_id: string
   user_id: string
   status: 'not_started' | 'in_progress' | 'completed'
-  response_text: string | null
+  notes: string | null
   completed_at: string | null
-  week_number: number
   created_at: string
   updated_at: string
   assignment?: Assignment
