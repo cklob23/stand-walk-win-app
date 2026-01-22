@@ -50,7 +50,10 @@ export function WeekDetailView({
 
   const supabase = createClient()
 
-  const completedCount = assignmentProgress.filter(p => p.status === 'completed').length
+  // Only count progress for assignments that belong to THIS week
+  const assignmentIds = new Set(assignments.map(a => a.id))
+  const weekProgress = assignmentProgress.filter(p => assignmentIds.has(p.assignment_id))
+  const completedCount = weekProgress.filter(p => p.status === 'completed').length
   const progressPercentage = assignments.length > 0 
     ? Math.round((completedCount / assignments.length) * 100) 
     : 0

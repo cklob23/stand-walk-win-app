@@ -123,15 +123,23 @@ export default function ProgressPage() {
 
   const currentWeek = pairing?.current_week || 1;
   
-  // Calculate actual completed assignments from progress data
+  // Get unlocked assignments (up to current week)
+  const unlockedAssignments = assignments.filter(a => a.week_number <= currentWeek);
+  const unlockedAssignmentIds = new Set(unlockedAssignments.map(a => a.id));
+  const allAssignmentIds = new Set(assignments.map(a => a.id));
+  
+  // Calculate completed assignments - only count progress for assignments that exist
   const completedAssignments = assignmentProgress.filter(
-    (p) => p.status === "completed"
+    (p) => allAssignmentIds.has(p.assignment_id) && p.status === "completed"
+  ).length;
+  
+  // Calculate completed for unlocked weeks only
+  const completedUnlocked = assignmentProgress.filter(
+    (p) => unlockedAssignmentIds.has(p.assignment_id) && p.status === "completed"
   ).length;
   
   // Calculate total assignments up to current week
-  const totalAssignmentsUpToCurrentWeek = assignments.filter(
-    (a) => a.week_number <= currentWeek
-  ).length;
+  const totalAssignmentsUpToCurrentWeek = unlockedAssignments.length;
   
   // Calculate total assignments overall (for overall progress)
   const totalAssignmentsOverall = assignments.length;
@@ -210,7 +218,7 @@ export default function ProgressPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {completedAssignments}/{totalAssignmentsUpToCurrentWeek}
+              {completedUnlocked}/{totalAssignmentsUpToCurrentWeek}
             </div>
             <p className="text-xs text-muted-foreground">assignments done</p>
           </CardContent>

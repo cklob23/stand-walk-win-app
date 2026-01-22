@@ -94,15 +94,18 @@ export default async function DashboardPage() {
 
   // Check if current week is complete and auto-advance if needed
   let effectiveCurrentWeek = currentWeek
-  if (pairing && assignments && assignmentProgress.length > 0) {
+  if (pairing && assignments && assignments.length > 0) {
     // Get assignments for the current week
     const currentWeekAssignments = (assignments || []).filter(a => a.week_number === currentWeek)
-    const currentWeekCompleted = currentWeekAssignments.filter(a => 
-      assignmentProgress.some(p => p.assignment_id === a.id && p.status === 'completed')
-    )
+    
+    // Only count progress for assignments in the current week
+    const currentWeekAssignmentIds = new Set(currentWeekAssignments.map(a => a.id))
+    const currentWeekCompletedCount = assignmentProgress.filter(p => 
+      currentWeekAssignmentIds.has(p.assignment_id) && p.status === 'completed'
+    ).length
     
     // If all assignments for current week are complete, advance to next week
-    if (currentWeekAssignments.length > 0 && currentWeekCompleted.length >= currentWeekAssignments.length && currentWeek < 6) {
+    if (currentWeekAssignments.length > 0 && currentWeekCompletedCount >= currentWeekAssignments.length && currentWeek < 6) {
       const nextWeek = currentWeek + 1
       
       // Update the pairing's current week in the database

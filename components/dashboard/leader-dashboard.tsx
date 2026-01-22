@@ -43,12 +43,14 @@ export function LeaderDashboard({
 }: LeaderDashboardProps) {
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
   
-  // Calculate overall progress
-  const totalAssignments = assignments.filter(a => {
-    return a.week_number <= currentWeek
-  }).length
+  // Calculate overall progress - only count assignments from unlocked weeks
+  const unlockedAssignments = assignments.filter(a => a.week_number <= currentWeek)
+  const unlockedAssignmentIds = new Set(unlockedAssignments.map(a => a.id))
   
-  const completedAssignments = assignmentProgress.filter(p => p.status === 'completed').length
+  const totalAssignments = unlockedAssignments.length
+  const completedAssignments = assignmentProgress.filter(p => 
+    unlockedAssignmentIds.has(p.assignment_id) && p.status === 'completed'
+  ).length
   const progressPercentage = totalAssignments > 0 ? Math.round((completedAssignments / totalAssignments) * 100) : 0
 
   // Calculate learner's progress for current week
