@@ -67,13 +67,13 @@ export function LeaderDashboard({
     .toUpperCase() || '?'
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6">
+    <div className="mx-auto max-w-7xl px-4 py-4 sm:py-6">
       {/* Welcome Section */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground">
           Welcome back, {profile.full_name?.split(' ')[0]}
         </h1>
-        <p className="text-muted-foreground mt-1">
+        <p className="text-sm sm:text-base text-muted-foreground mt-1">
           {"Here's"} how your Learner is progressing on their journey.
         </p>
       </div>

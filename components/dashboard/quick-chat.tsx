@@ -108,7 +108,7 @@ export function QuickChat({ pairingId, userId, recentMessages, partnerName }: Qu
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder={`Message ${partnerName}...`}
-          className="min-h-[80px] resize-none"
+          className="min-h-[60px] sm:min-h-[80px] resize-none text-base"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()

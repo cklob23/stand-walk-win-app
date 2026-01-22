@@ -114,14 +114,14 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="text-center mb-8">
+    <div className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
+      <div className="text-center mb-6 sm:mb-8">
         <div className="flex justify-center mb-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-            <ScrollText className="h-8 w-8 text-primary" />
+          <div className="flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-primary/10">
+            <ScrollText className="h-7 w-7 sm:h-8 sm:w-8 text-primary" />
           </div>
         </div>
-        <h1 className="text-2xl font-bold text-foreground">Discipleship Covenant</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground">Discipleship Covenant</h1>
         <p className="text-muted-foreground mt-2">
           A sacred agreement between you and {partner?.full_name || 'your partner'}
         </p>

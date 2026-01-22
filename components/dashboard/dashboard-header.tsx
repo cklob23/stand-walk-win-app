@@ -44,10 +44,10 @@ export function DashboardHeader({ profile, notificationCount }: DashboardHeaderP
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-              <BookOpen className="h-5 w-5 text-primary-foreground" />
+            <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg bg-primary">
+              <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
             </div>
-            <span className="hidden sm:block font-semibold text-foreground">Stand Walk Win: A Desciples Journey</span>
+            <span className="hidden sm:block font-semibold text-foreground text-sm sm:text-base">Stand Walk Win</span>
           </Link>
 
           {/* Desktop Navigation */}

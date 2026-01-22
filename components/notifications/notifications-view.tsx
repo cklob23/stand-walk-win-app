@@ -90,12 +90,12 @@ export function NotificationsView({ userId, notifications: initialNotifications 
   const unreadCount = notifications.filter(n => !n.read).length
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6">
+    <div className="mx-auto max-w-2xl px-4 py-4 sm:py-6">
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
+        <CardHeader className="pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
                 <Bell className="h-5 w-5 text-primary" />
                 Notifications
               </CardTitle>

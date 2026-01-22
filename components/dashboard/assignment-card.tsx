@@ -159,10 +159,10 @@ export function AssignmentCard({
         isCompleted ? "bg-success/5 border-success/20" : "bg-card hover:border-primary/30"
       )}>
         <CollapsibleTrigger asChild>
-          <button className="w-full p-4 text-left flex items-center gap-4">
+          <button className="w-full p-3 sm:p-4 text-left flex items-center gap-3 sm:gap-4">
             {/* Status Icon */}
             <div className={cn(
-              "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+              "flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full",
               isCompleted 
                 ? "bg-success text-success-foreground" 
                 : status === 'in_progress'
@@ -204,7 +204,7 @@ export function AssignmentCard({
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <div className="px-4 pb-4 space-y-4">
+          <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-3 sm:space-y-4">
             <div className="h-px bg-border" />
             
             <p className="text-sm text-muted-foreground">

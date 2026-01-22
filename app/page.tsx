@@ -68,18 +68,24 @@ export default async function HomePage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-              <BookOpen className="h-5 w-5 text-primary-foreground" />
+            <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg bg-primary">
+              <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
             </div>
-            <span className="font-semibold text-foreground">Stand Walk Win: A Desciples Journey</span>
+            <span className="font-semibold text-foreground text-sm sm:text-base">Stand Walk Win</span>
           </Link>
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" asChild>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button variant="ghost" asChild size="sm" className="hidden sm:flex">
               <Link href="/auth/login">Sign in</Link>
             </Button>
-            <Button asChild>
+            <Button variant="ghost" asChild size="sm" className="sm:hidden">
+              <Link href="/auth/login">Sign in</Link>
+            </Button>
+            <Button asChild size="sm" className="sm:hidden">
+              <Link href="/auth/signup">Start</Link>
+            </Button>
+            <Button asChild className="hidden sm:flex">
               <Link href="/auth/signup">Get Started</Link>
             </Button>
           </div>
@@ -89,13 +95,13 @@ export default async function HomePage() {
       {/* Hero Section */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/10" />
-        <div className="mx-auto max-w-7xl px-4 py-24 sm:py-32 relative">
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:py-24 lg:py-32 relative">
           <div className="text-center max-w-3xl mx-auto">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground tracking-tight text-balance">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-foreground tracking-tight text-balance">
               Grow Together in{' '}
               <span className="text-primary">Faith</span>
             </h1>
-            <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto text-pretty">
+            <p className="mt-4 sm:mt-6 text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto text-pretty px-4">
               A transformative 6-week discipleship journey connecting Leaders and Learners 
               for meaningful spiritual growth, accountability, and lasting impact.
             </p>
@@ -115,11 +121,11 @@ export default async function HomePage() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-24 bg-muted/30">
+      <section id="features" className="py-16 sm:py-24 bg-muted/30">
         <div className="mx-auto max-w-7xl px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-foreground">Everything you need for discipleship</h2>
-            <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
+          <div className="text-center mb-10 sm:mb-16">
+            <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Everything you need for discipleship</h2>
+            <p className="mt-3 sm:mt-4 text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto px-4">
               Our platform provides the tools and structure for meaningful spiritual mentorship.
             </p>
           </div>
@@ -140,12 +146,12 @@ export default async function HomePage() {
       </section>
 
       {/* Journey Section */}
-      <section className="py-24">
+      <section className="py-16 sm:py-24">
         <div className="mx-auto max-w-7xl px-4">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             <div>
-              <h2 className="text-3xl font-bold text-foreground">Your 6-Week Journey</h2>
-              <p className="mt-4 text-muted-foreground">
+              <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Your 6-Week Journey</h2>
+              <p className="mt-3 sm:mt-4 text-sm sm:text-base text-muted-foreground">
                 Each week builds upon the last, guiding you through foundational truths 
                 and practical applications of faith.
               </p>
@@ -205,10 +211,10 @@ export default async function HomePage() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-24 bg-primary/5">
+      <section className="py-16 sm:py-24 bg-primary/5">
         <div className="mx-auto max-w-3xl px-4 text-center">
-          <h2 className="text-3xl font-bold text-foreground">Ready to begin?</h2>
-          <p className="mt-4 text-muted-foreground">
+          <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Ready to begin?</h2>
+          <p className="mt-3 sm:mt-4 text-sm sm:text-base text-muted-foreground">
             Join thousands of believers who have deepened their faith through 
             intentional discipleship relationships.
           </p>
@@ -224,16 +230,16 @@ export default async function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t bg-card py-12">
+      <footer className="border-t bg-card py-8 sm:py-12">
         <div className="mx-auto max-w-7xl px-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <BookOpen className="h-4 w-4 text-primary-foreground" />
+              <div className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-primary">
+                <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-foreground">Stand Walk Win: A Desciples Journey</span>
+              <span className="font-semibold text-foreground text-sm sm:text-base">Stand Walk Win</span>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs sm:text-sm text-muted-foreground text-center">
               Grow together in faith. One step at a time.
             </p>
           </div>

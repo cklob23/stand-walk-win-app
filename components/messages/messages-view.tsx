@@ -141,8 +141,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
-      <Card className="h-[calc(100vh-12rem)] flex flex-col">
+    <div className="mx-auto max-w-3xl px-4 py-4 sm:py-6">
+      <Card className="h-[calc(100vh-10rem)] sm:h-[calc(100vh-12rem)] flex flex-col">
         {/* Header */}
         <CardHeader className="border-b shrink-0">
           <div className="flex items-center gap-3">
@@ -202,7 +202,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                               {senderInitials}
                             </AvatarFallback>
                           </Avatar>
-                          <div className={`flex-1 max-w-[75%] ${isOwn ? 'text-right' : ''}`}>
+                          <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${isOwn ? 'text-right' : ''}`}>
                             <div
                               className={`inline-block rounded-2xl px-4 py-2 ${
                                 isOwn
@@ -228,13 +228,13 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         </CardContent>
 
         {/* Input */}
-        <div className="border-t p-4 shrink-0">
+        <div className="border-t p-3 sm:p-4 shrink-0">
           <div className="flex gap-2">
             <Textarea
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder={`Message ${partner.full_name}...`}
-              className="min-h-[60px] max-h-[120px] resize-none"
+              className="min-h-[50px] sm:min-h-[60px] max-h-[100px] sm:max-h-[120px] resize-none text-base"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()

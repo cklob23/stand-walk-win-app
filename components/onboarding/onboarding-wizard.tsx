@@ -207,12 +207,12 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
     <div className="min-h-screen flex flex-col">
       {/* Progress Bar */}
       <div className="border-b bg-card">
-        <div className="mx-auto max-w-2xl px-4 py-4">
+        <div className="mx-auto max-w-2xl px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between mb-2">
             {steps.map((step, index) => (
               <div key={step.id} className="flex items-center">
                 <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors ${
+                  className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-medium transition-colors ${
                     index < currentStep
                       ? 'bg-primary text-primary-foreground'
                       : index === currentStep
@@ -221,14 +221,14 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
                   }`}
                 >
                   {index < currentStep ? (
-                    <CheckCircle className="h-5 w-5" />
+                    <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
                   ) : (
                     index + 1
                   )}
                 </div>
                 {index < steps.length - 1 && (
                   <div
-                    className={`ml-2 h-0.5 w-12 sm:w-24 transition-colors ${
+                    className={`ml-1 sm:ml-2 h-0.5 w-8 sm:w-16 md:w-24 transition-colors ${
                       index < currentStep ? 'bg-primary' : 'bg-muted'
                     }`}
                   />
@@ -236,7 +236,7 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
               </div>
             ))}
           </div>
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="text-center text-xs sm:text-sm text-muted-foreground">
             {steps[currentStep].title}
           </p>
         </div>
@@ -247,15 +247,15 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
         <div className="w-full max-w-2xl">
           {/* Welcome Step */}
           {currentStep === 0 && (
-            <div className="text-center space-y-6">
+            <div className="text-center space-y-4 sm:space-y-6">
               <div className="flex justify-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary">
-                  <BookOpen className="h-10 w-10 text-primary-foreground" />
+                <div className="flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-2xl bg-primary">
+                  <BookOpen className="h-8 w-8 sm:h-10 sm:w-10 text-primary-foreground" />
                 </div>
               </div>
               <div className="space-y-2">
-                <h1 className="text-3xl font-bold text-foreground">Welcome to Disciples Path</h1>
-                <p className="text-lg text-muted-foreground max-w-md mx-auto">
+                <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Welcome to Stand Walk Win</h1>
+                <p className="text-base sm:text-lg text-muted-foreground max-w-md mx-auto px-4">
                   Embark on a transformative 6-week journey of spiritual growth and mentorship.
                 </p>
               </div>
@@ -292,14 +292,14 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
 
           {/* Role Selection Step */}
           {currentStep === 1 && (
-            <div className="space-y-6">
-              <div className="text-center">
-                <h2 className="text-2xl font-bold text-foreground">Choose Your Role</h2>
-                <p className="mt-2 text-muted-foreground">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="text-center px-4">
+                <h2 className="text-xl sm:text-2xl font-bold text-foreground">Choose Your Role</h2>
+                <p className="mt-2 text-sm sm:text-base text-muted-foreground">
                   How would you like to participate in this discipleship journey?
                 </p>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <Card 
                   className="cursor-pointer transition-all hover:border-primary hover:shadow-md"
                   onClick={() => handleRoleSelect('leader')}
@@ -426,12 +426,12 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
 
           {/* Connect Step */}
           {currentStep === 3 && (
-            <div className="space-y-6">
-              <div className="text-center">
-                <h2 className="text-2xl font-bold text-foreground">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="text-center px-4">
+                <h2 className="text-xl sm:text-2xl font-bold text-foreground">
                   {formData.role === 'leader' ? 'Invite Your Learner' : 'Connect with Your Leader'}
                 </h2>
-                <p className="mt-2 text-muted-foreground">
+                <p className="mt-2 text-sm sm:text-base text-muted-foreground">
                   {formData.role === 'leader'
                     ? 'Create a pairing code to share with your Learner'
                     : 'Enter the code your Leader shared with you'}

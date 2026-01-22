@@ -98,24 +98,24 @@ export function WeekDetailView({
   }))
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6">
+    <div className="mx-auto max-w-4xl px-4 py-4 sm:py-6">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <Link 
           href="/dashboard"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-3 sm:mb-4"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Dashboard
         </Link>
         
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
           <div>
             <Badge variant="secondary" className="mb-2">Week {weekNumber}</Badge>
-            <h1 className="text-2xl font-bold text-foreground">{weekContent.title}</h1>
-            <p className="text-muted-foreground mt-1">{weekContent.description}</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">{weekContent.title}</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1">{weekContent.description}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {hasPrevWeek && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/dashboard/week/${weekNumber - 1}`}>

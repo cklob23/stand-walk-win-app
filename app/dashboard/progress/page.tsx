@@ -174,17 +174,17 @@ export default function ProgressPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="px-4 py-6 sm:px-6 space-y-6 max-w-7xl mx-auto">
       <div>
-        <h1 className="font-serif text-2xl font-bold text-foreground">
+        <h1 className="font-serif text-xl sm:text-2xl font-bold text-foreground">
           Your Progress
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-sm sm:text-base text-muted-foreground">
           Track your journey through the 6-week discipleship program
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Current Week</CardTitle>

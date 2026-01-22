@@ -47,7 +47,7 @@ export function WeeklyTimeline({
             <Link
               href={isAccessible ? `/dashboard/week/${week.week_number}` : '#'}
               className={cn(
-                "flex items-start gap-4 p-3 rounded-lg transition-colors",
+                "flex items-start gap-3 sm:gap-4 p-2 sm:p-3 rounded-lg transition-colors",
                 isAccessible && "hover:bg-muted/50 cursor-pointer",
                 isCurrent && "bg-primary/5 border border-primary/20",
                 isLocked && "opacity-60 cursor-not-allowed"
