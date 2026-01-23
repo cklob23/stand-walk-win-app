@@ -53,8 +53,7 @@ export function ProfileView({ profile: initialProfile }: ProfileViewProps) {
 
     setIsUploadingAvatar(true)
 
-    const fileExt = file.name.split('.').pop()
-    const filePath = `${profile.id}.${fileExt}`
+    const filePath = `${profile.id}.png`
 
     const { error: uploadError } = await supabase.storage
       .from('avatars')
@@ -73,7 +72,7 @@ export function ProfileView({ profile: initialProfile }: ProfileViewProps) {
       .from('avatars')
       .getPublicUrl(filePath)
 
-    const avatarUrl = data.publicUrl
+    const avatarUrl = `${data.publicUrl}?v=${Date.now()}`
 
     const { error: updateError } = await supabase
       .from('profiles')
@@ -91,6 +90,7 @@ export function ProfileView({ profile: initialProfile }: ProfileViewProps) {
     setIsUploadingAvatar(false)
     router.refresh()
   }
+
 
 
   const handleSave = async () => {
