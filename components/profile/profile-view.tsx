@@ -54,7 +54,7 @@ export function ProfileView({ profile: initialProfile }: ProfileViewProps) {
     setIsUploadingAvatar(true)
 
     const fileExt = file.name.split('.').pop()
-    const filePath = `avatars/${profile.id}.${fileExt}`
+    const filePath = `${profile.id}.${fileExt}`
 
     const { error: uploadError } = await supabase.storage
       .from('avatars')
