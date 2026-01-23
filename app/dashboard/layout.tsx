@@ -33,9 +33,9 @@ export default async function DashboardLayout({
     .eq('read', false)
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       <DashboardHeader profile={profile} notificationCount={count || 0} />
-      <main>{children}</main>
+      <main className="w-full overflow-x-hidden">{children}</main>
     </div>
   )
 }

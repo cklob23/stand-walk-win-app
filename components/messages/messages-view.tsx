@@ -1,13 +1,12 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Send, Loader2, MessageSquare } from 'lucide-react'
+import { Send, Loader2, MessageSquare, Circle } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Profile, Pairing, Message } from '@/lib/types'
 import { format, isToday, isYesterday } from 'date-fns'
@@ -21,11 +20,13 @@ interface MessagesViewProps {
 }
 
 export function MessagesView({ profile, pairing, partner, initialMessages }: MessagesViewProps) {
-  const router = useRouter()
   const [messages, setMessages] = useState(initialMessages)
   const [newMessage, setNewMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isPartnerOnline, setIsPartnerOnline] = useState(false)
+  const [isPartnerTyping, setIsPartnerTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const supabase = createClient()
 
@@ -34,10 +35,30 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Subscribe to real-time messages
+  // Broadcast typing status
+  const broadcastTyping = useCallback(() => {
+    supabase.channel(`typing:${pairing.id}`).send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { user_id: profile.id }
+    })
+  }, [supabase, pairing.id, profile.id])
+
+  // Handle typing indicator with debounce
+  const handleTyping = useCallback(() => {
+    broadcastTyping()
+    
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+    }
+  }, [broadcastTyping])
+
+  // Subscribe to real-time messages, presence, and typing
   useEffect(() => {
-    const channel = supabase
-      .channel('messages')
+    // Messages channel for new messages
+    const messagesChannel = supabase
+      .channel(`messages:${pairing.id}`)
       .on(
         'postgres_changes',
         {
@@ -47,56 +68,141 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
           filter: `pairing_id=eq.${pairing.id}`,
         },
         async (payload) => {
-          // Fetch the full message with sender info
-          const { data } = await supabase
-            .from('messages')
-            .select(`
-              *,
-              sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)
-            `)
-            .eq('id', payload.new.id)
-            .single()
+          // Only add if not our own message (we use optimistic update)
+          if (payload.new.sender_id !== profile.id) {
+            const { data } = await supabase
+              .from('messages')
+              .select(`
+                *,
+                sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)
+              `)
+              .eq('id', payload.new.id)
+              .single()
 
-          if (data) {
-            setMessages((prev) => [...prev, data])
+            if (data) {
+              setMessages((prev) => {
+                // Check if message already exists
+                if (prev.some(m => m.id === data.id)) return prev
+                return [...prev, data]
+              })
+            }
           }
+          // Clear typing indicator when message received
+          setIsPartnerTyping(false)
         }
       )
       .subscribe()
 
+    // Presence channel for online status
+    const presenceChannel = supabase
+      .channel(`presence:${pairing.id}`)
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannel.presenceState()
+        const partnerOnline = Object.values(state).flat().some(
+          (p: { user_id?: string }) => p.user_id === partner.id
+        )
+        setIsPartnerOnline(partnerOnline)
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        if (newPresences.some((p: { user_id?: string }) => p.user_id === partner.id)) {
+          setIsPartnerOnline(true)
+        }
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        if (leftPresences.some((p: { user_id?: string }) => p.user_id === partner.id)) {
+          setIsPartnerOnline(false)
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.track({ user_id: profile.id, online_at: new Date().toISOString() })
+        }
+      })
+
+    // Typing channel
+    const typingChannel = supabase
+      .channel(`typing:${pairing.id}`)
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload.user_id === partner.id) {
+          setIsPartnerTyping(true)
+          // Clear typing indicator after 3 seconds
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current)
+          }
+          typingTimeoutRef.current = setTimeout(() => {
+            setIsPartnerTyping(false)
+          }, 3000)
+        }
+      })
+      .subscribe()
+
     return () => {
-      supabase.removeChannel(channel)
+      supabase.removeChannel(messagesChannel)
+      supabase.removeChannel(presenceChannel)
+      supabase.removeChannel(typingChannel)
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
     }
-  }, [pairing.id, supabase])
+  }, [pairing.id, partner.id, profile.id, supabase])
 
   const handleSend = async () => {
     if (!newMessage.trim()) return
 
+    const messageContent = newMessage.trim()
+    const tempId = `temp-${Date.now()}`
+    
+    // Optimistic update - add message immediately
+    const optimisticMessage: Message = {
+      id: tempId,
+      pairing_id: pairing.id,
+      sender_id: profile.id,
+      content: messageContent,
+      created_at: new Date().toISOString(),
+      is_read: false,
+      sender: {
+        id: profile.id,
+        full_name: profile.full_name,
+        avatar_url: profile.avatar_url
+      }
+    }
+    
+    setMessages((prev) => [...prev, optimisticMessage])
+    setNewMessage('')
     setIsLoading(true)
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('messages')
       .insert({
         pairing_id: pairing.id,
         sender_id: profile.id,
-        content: newMessage.trim(),
+        content: messageContent,
       })
+      .select()
+      .single()
 
     if (error) {
+      // Remove optimistic message on error
+      setMessages((prev) => prev.filter((m) => m.id !== tempId))
+      setNewMessage(messageContent)
       toast.error('Failed to send message')
       setIsLoading(false)
       return
     }
 
-    // Send notification to partner
-    await notifyNewMessage(
+    // Replace temp message with real one
+    setMessages((prev) => 
+      prev.map((m) => m.id === tempId ? { ...optimisticMessage, id: data.id } : m)
+    )
+
+    // Send notification to partner (don't await to keep UI responsive)
+    notifyNewMessage(
       partner.id,
       profile.full_name || 'Your partner',
       pairing.id,
-      newMessage.trim()
+      messageContent
     )
 
-    setNewMessage('')
     setIsLoading(false)
   }
 
@@ -146,15 +252,31 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         {/* Header */}
         <CardHeader className="border-b shrink-0">
           <div className="flex items-center gap-3">
-            <Avatar className="h-10 w-10">
-              <AvatarImage src={partner.avatar_url || undefined} />
-              <AvatarFallback className="bg-primary/10 text-primary">
-                {partnerInitials}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className="h-10 w-10">
+                <AvatarImage src={partner.avatar_url || undefined} />
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  {partnerInitials}
+                </AvatarFallback>
+              </Avatar>
+              {isPartnerOnline && (
+                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />
+              )}
+            </div>
             <div>
               <CardTitle className="text-base">{partner.full_name}</CardTitle>
-              <p className="text-sm text-muted-foreground capitalize">{partner.role}</p>
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                {isPartnerTyping ? (
+                  <span className="text-primary animate-pulse">typing...</span>
+                ) : isPartnerOnline ? (
+                  <>
+                    <Circle className="h-2 w-2 fill-green-500 text-green-500" />
+                    <span>Online</span>
+                  </>
+                ) : (
+                  <span className="capitalize">{partner.role}</span>
+                )}
+              </p>
             </div>
           </div>
         </CardHeader>
@@ -232,7 +354,12 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
           <div className="flex gap-2">
             <Textarea
               value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
+              onChange={(e) => {
+                setNewMessage(e.target.value)
+                if (e.target.value.trim()) {
+                  handleTyping()
+                }
+              }}
               placeholder={`Message ${partner.full_name}...`}
               className="min-h-[50px] sm:min-h-[60px] max-h-[100px] sm:max-h-[120px] resize-none text-base"
               onKeyDown={(e) => {

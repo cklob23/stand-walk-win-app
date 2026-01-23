@@ -155,7 +155,7 @@ export function AssignmentCard({
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <div className={cn(
-        "rounded-lg border transition-colors",
+        "rounded-lg border transition-colors w-full overflow-hidden",
         isCompleted ? "bg-success/5 border-success/20" : "bg-card hover:border-primary/30"
       )}>
         <CollapsibleTrigger asChild>
@@ -179,8 +179,8 @@ export function AssignmentCard({
             </div>
 
             {/* Content */}
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1 mb-1">
                 <Badge 
                   variant="secondary" 
                   className={cn("text-xs capitalize shrink-0", typeColors[assignment.assignment_type])}
@@ -189,8 +189,8 @@ export function AssignmentCard({
                   {assignment.assignment_type}
                 </Badge>
               </div>
-              <h4 className="font-medium text-foreground text-sm sm:text-base truncate">{assignment.title}</h4>
-              <p className="text-xs sm:text-sm text-muted-foreground line-clamp-1 mt-0.5">
+              <h4 className="font-medium text-foreground text-sm truncate">{assignment.title}</h4>
+              <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
                 {assignment.description}
               </p>
             </div>

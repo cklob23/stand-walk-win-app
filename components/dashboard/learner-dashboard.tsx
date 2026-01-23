@@ -74,10 +74,10 @@ export function LearnerDashboard({
   )
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-4 sm:py-6 overflow-x-hidden">
+    <div className="w-full max-w-7xl mx-auto px-4 py-4 sm:py-6 overflow-hidden">
       {/* Welcome Section */}
       <div className="mb-6 sm:mb-8">
-        <h1 className="text-xl sm:text-2xl font-bold text-foreground">
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground truncate">
           Welcome back, {profile.full_name?.split(' ')[0]}
         </h1>
         <p className="text-sm sm:text-base text-muted-foreground mt-1">
@@ -85,28 +85,28 @@ export function LearnerDashboard({
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-3 w-full">
         {/* Main Content - Left Side */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-6 min-w-0">
           {/* Current Week Card */}
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent overflow-hidden">
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent overflow-hidden w-full">
             <CardHeader className="pb-3">
-              <div className="min-w-0">
+              <div className="min-w-0 w-full">
                 <CardTitle className="flex items-start gap-2 text-base sm:text-lg">
                   <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                  <span className="break-words">Week {currentWeek}: {currentWeekContent?.title || 'Loading...'}</span>
+                  <span className="line-clamp-2">Week {currentWeek}: {currentWeekContent?.title || 'Loading...'}</span>
                 </CardTitle>
                 <CardDescription className="mt-1 line-clamp-2">
                   {currentWeekContent?.description}
                 </CardDescription>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="pt-0">
+              <div className="space-y-4 w-full">
                 {currentWeekContent?.scripture_reference && (
-                  <div className="p-3 sm:p-4 rounded-lg bg-card border overflow-hidden">
+                  <div className="p-3 rounded-lg bg-card border w-full">
                     <p className="text-sm font-medium text-primary mb-1">Scripture Focus</p>
-                    <p className="text-xs sm:text-sm text-muted-foreground font-serif italic break-words line-clamp-3 sm:line-clamp-none">
+                    <p className="text-xs sm:text-sm text-muted-foreground font-serif italic line-clamp-4">
                       {currentWeekContent.scripture_reference}
                     </p>
                   </div>
@@ -142,18 +142,18 @@ export function LearnerDashboard({
           </Card>
 
           {/* Current Assignments */}
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Sparkles className="h-5 w-5 text-primary shrink-0" />
                 <span className="truncate">This Week&apos;s Assignments</span>
               </CardTitle>
-              <CardDescription className="text-xs sm:text-sm line-clamp-2">
-                Complete these assignments to progress in your journey
+              <CardDescription className="text-xs sm:text-sm">
+                Complete these to progress in your journey
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
+            <CardContent className="pt-0">
+              <div className="space-y-3 w-full">
                 {currentWeekAssignments.map((assignment) => (
                   <AssignmentCard
                     key={assignment.id}
@@ -201,7 +201,7 @@ export function LearnerDashboard({
         </div>
 
         {/* Sidebar - Right Side */}
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0">
           {/* Leader Card */}
           <Card>
             <CardHeader className="pb-3">
