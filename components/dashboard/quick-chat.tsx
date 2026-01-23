@@ -193,7 +193,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
                     {senderInitials}
                   </AvatarFallback>
                 </Avatar>
-                <div className={`flex-1 min-w-0 ${isOwn ? 'text-right' : ''}`}>
+                <div className={`flex-1 min-w-0 ${isOwn ? 'text-right' : 'text-left'}`}>
                   <div
                     className={`inline-block rounded-lg px-3 py-2 text-sm max-w-full ${
                       isOwn
@@ -203,7 +203,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
                   >
                     <p className="break-words">{msg.content}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1 justify-end">
+                  <p className={`text-xs text-muted-foreground mt-1 flex items-center gap-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
                     <span>{formatDistanceToNow(new Date(msg.created_at), { addSuffix: true })}</span>
                     {isOwn && (
                       msg.is_read ? (

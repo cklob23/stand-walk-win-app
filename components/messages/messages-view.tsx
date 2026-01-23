@@ -361,7 +361,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                               {senderInitials}
                             </AvatarFallback>
                           </Avatar>
-                          <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${isOwn ? 'text-right' : ''}`}>
+                          <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${isOwn ? 'text-right' : 'text-left'}`}>
                             <div
                               className={`inline-block rounded-2xl px-4 py-2 ${
                                 isOwn
@@ -371,7 +371,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                             >
                               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1 justify-end">
+                            <p className={`text-xs text-muted-foreground mt-1 flex items-center gap-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
                               <span>{formatMessageDate(msg.created_at)}</span>
                               {isOwn && (
                                 msg.is_read ? (
