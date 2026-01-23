@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Send, Loader2, MessageSquare, Circle } from 'lucide-react'
+import { Send, Loader2, MessageSquare, Circle, Check, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Profile, Pairing, Message } from '@/lib/types'
 import { format, isToday, isYesterday } from 'date-fns'
@@ -54,9 +54,23 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
     }
   }, [broadcastTyping])
 
+  // Mark messages as read when viewing
+  useEffect(() => {
+    const markAsRead = async () => {
+      // Mark all unread messages from partner as read
+      await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('pairing_id', pairing.id)
+        .neq('sender_id', profile.id)
+        .eq('is_read', false)
+    }
+    markAsRead()
+  }, [messages, pairing.id, profile.id, supabase])
+
   // Subscribe to real-time messages, presence, and typing
   useEffect(() => {
-    // Messages channel for new messages
+    // Messages channel for new messages and updates
     const messagesChannel = supabase
       .channel(`messages:${pairing.id}`)
       .on(
@@ -85,10 +99,32 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                 if (prev.some(m => m.id === data.id)) return prev
                 return [...prev, data]
               })
+              // Mark as read immediately since we're viewing
+              await supabase
+                .from('messages')
+                .update({ is_read: true })
+                .eq('id', data.id)
             }
           }
           // Clear typing indicator when message received
           setIsPartnerTyping(false)
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `pairing_id=eq.${pairing.id}`,
+        },
+        (payload) => {
+          // Update message read status
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === payload.new.id ? { ...m, is_read: payload.new.is_read } : m
+            )
+          )
         }
       )
       .subscribe()
@@ -98,18 +134,19 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
       .channel(`presence:${pairing.id}`)
       .on('presence', { event: 'sync' }, () => {
         const state = presenceChannel.presenceState()
-        const partnerOnline = Object.values(state).flat().some(
-          (p: { user_id?: string }) => p.user_id === partner.id
-        )
+        const allPresences = Object.values(state).flat() as Array<{ user_id?: string }>
+        const partnerOnline = allPresences.some((p) => p.user_id === partner.id)
         setIsPartnerOnline(partnerOnline)
       })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        if (newPresences.some((p: { user_id?: string }) => p.user_id === partner.id)) {
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
+        const presences = newPresences as Array<{ user_id?: string }>
+        if (presences.some((p) => p.user_id === partner.id)) {
           setIsPartnerOnline(true)
         }
       })
-      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-        if (leftPresences.some((p: { user_id?: string }) => p.user_id === partner.id)) {
+      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+        const presences = leftPresences as Array<{ user_id?: string }>
+        if (presences.some((p) => p.user_id === partner.id)) {
           setIsPartnerOnline(false)
         }
       })
@@ -334,8 +371,15 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                             >
                               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {formatMessageDate(msg.created_at)}
+                            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1 justify-end">
+                              <span>{formatMessageDate(msg.created_at)}</span>
+                              {isOwn && (
+                                msg.is_read ? (
+                                  <CheckCheck className="h-3.5 w-3.5 text-primary" />
+                                ) : (
+                                  <Check className="h-3.5 w-3.5" />
+                                )
+                              )}
                             </p>
                           </div>
                         </div>
@@ -345,6 +389,25 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                 </div>
               ))}
               <div ref={messagesEndRef} />
+              
+              {/* Typing Indicator */}
+              {isPartnerTyping && (
+                <div className="flex gap-3 mt-4">
+                  <Avatar className="h-8 w-8 shrink-0">
+                    <AvatarImage src={partner.avatar_url || undefined} />
+                    <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                      {partnerInitials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="inline-block rounded-2xl rounded-tl-sm bg-muted px-4 py-2">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

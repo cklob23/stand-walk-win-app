@@ -315,9 +315,11 @@ export function LearnerDashboard({
             <CardContent>
               <QuickChat 
                 pairingId={pairing.id}
-                userId={profile.id}
+                odUserId={profile.id}
+                partnerId={partner?.id || ''}
                 recentMessages={recentMessages}
                 partnerName={partner?.full_name || 'Leader'}
+                partnerAvatar={partner?.avatar_url}
               />
             </CardContent>
           </Card>

@@ -162,9 +162,11 @@ export function LeaderDashboard({
             <CardContent>
               <QuickChat 
                 pairingId={pairing.id}
-                userId={profile.id}
+                odUserId={profile.id}
+                partnerId={partner?.id || ''}
                 recentMessages={recentMessages}
                 partnerName={partner?.full_name || 'Learner'}
+                partnerAvatar={partner?.avatar_url}
               />
             </CardContent>
           </Card>
