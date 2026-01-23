@@ -104,3 +104,46 @@ export async function getProfile() {
     return null
   }
 }
+
+export async function resetPassword(formData: FormData) {
+  try {
+    const supabase = await createClient()
+    const email = formData.get('email') as string
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || 
+        `${process.env.NEXT_PUBLIC_SITE_URL || ''}/auth/reset-password`,
+    })
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    return { success: true, message: 'Check your email for the password reset link.' }
+  } catch {
+    return { error: 'Unable to send reset email. Please try again.' }
+  }
+}
+
+export async function updatePassword(formData: FormData) {
+  try {
+    const supabase = await createClient()
+    const password = formData.get('password') as string
+
+    const { error } = await supabase.auth.updateUser({
+      password,
+    })
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    revalidatePath('/', 'layout')
+    redirect('/dashboard')
+  } catch (err) {
+    if (err instanceof Error && err.message === 'NEXT_REDIRECT') {
+      throw err
+    }
+    return { error: 'Unable to update password. Please try again.' }
+  }
+}

@@ -82,19 +82,19 @@ export function LeaderDashboard({
         {/* Main Content - Left Side */}
         <div className="lg:col-span-2 space-y-6">
           {/* Current Week Card */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-primary" />
-                    Week {currentWeek}: {currentWeekContent?.title || 'Loading...'}
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                <div className="min-w-0">
+                  <CardTitle className="flex items-start gap-2 text-base sm:text-lg">
+                    <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <span className="break-words">Week {currentWeek}: {currentWeekContent?.title || 'Loading...'}</span>
                   </CardTitle>
-                  <CardDescription className="mt-1">
+                  <CardDescription className="mt-1 line-clamp-2">
                     {currentWeekContent?.description}
                   </CardDescription>
                 </div>
-                <Badge variant="secondary">
+                <Badge variant="secondary" className="shrink-0 w-fit">
                   {learnerProgress}/{currentWeekAssignments.length} Complete
                 </Badge>
               </div>
@@ -102,21 +102,21 @@ export function LeaderDashboard({
             <CardContent>
               <div className="space-y-4">
                 {currentWeekContent?.scripture_reference && (
-                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
+                  <div className="p-3 sm:p-4 rounded-lg bg-primary/5 border border-primary/10">
                     <p className="text-sm font-medium text-primary mb-1">Scripture Focus</p>
-                    <p className="text-sm text-muted-foreground font-serif italic">
+                    <p className="text-sm text-muted-foreground font-serif italic break-words">
                       {currentWeekContent.scripture_reference}
                     </p>
                   </div>
                 )}
-                <div className="flex gap-3">
-                  <Button asChild>
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                  <Button asChild className="w-full sm:w-auto">
                     <Link href={`/dashboard/week/${currentWeek}`}>
                       View Week Content
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
-                  <Button variant="outline" asChild>
+                  <Button variant="outline" asChild className="w-full sm:w-auto bg-transparent">
                     <Link href="/dashboard/progress">
                       <TrendingUp className="mr-2 h-4 w-4" />
                       View Progress
@@ -128,13 +128,13 @@ export function LeaderDashboard({
           </Card>
 
           {/* Timeline */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-primary" />
-                6-Week Journey
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <BookOpen className="h-5 w-5 text-primary shrink-0" />
+                <span>6-Week Journey</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-sm">
                 Track progress through the discipleship journey
               </CardDescription>
             </CardHeader>
@@ -149,13 +149,13 @@ export function LeaderDashboard({
           </Card>
 
           {/* Quick Chat */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5 text-primary" />
-                Quick Message
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <MessageSquare className="h-5 w-5 text-primary shrink-0" />
+                <span>Quick Message</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-sm">
                 Send encouragement or schedule your next meeting
               </CardDescription>
             </CardHeader>

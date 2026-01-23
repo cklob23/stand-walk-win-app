@@ -179,18 +179,18 @@ export function AssignmentCard({
             </div>
 
             {/* Content */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <Badge 
                   variant="secondary" 
-                  className={cn("text-xs capitalize", typeColors[assignment.assignment_type])}
+                  className={cn("text-xs capitalize shrink-0", typeColors[assignment.assignment_type])}
                 >
                   <Icon className="h-3 w-3 mr-1" />
                   {assignment.assignment_type}
                 </Badge>
               </div>
-              <h4 className="font-medium text-foreground">{assignment.title}</h4>
-              <p className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
+              <h4 className="font-medium text-foreground text-sm sm:text-base truncate">{assignment.title}</h4>
+              <p className="text-xs sm:text-sm text-muted-foreground line-clamp-1 mt-0.5">
                 {assignment.description}
               </p>
             </div>

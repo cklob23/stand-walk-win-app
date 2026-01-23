@@ -78,25 +78,25 @@ export function WeeklyTimeline({
               </div>
 
               {/* Content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0 overflow-hidden">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                     Week {week.week_number}
                   </span>
                   {isCurrent && (
-                    <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                    <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full whitespace-nowrap">
                       Current
                     </span>
                   )}
                 </div>
                 <h3 className={cn(
-                  "font-medium mt-0.5",
+                  "font-medium mt-0.5 text-sm sm:text-base",
                   isLocked ? "text-muted-foreground" : "text-foreground"
                 )}>
                   {week.title}
                 </h3>
                 {week.scripture_reference && !isLocked && (
-                  <p className="text-sm text-muted-foreground mt-0.5 truncate font-serif italic">
+                  <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 line-clamp-1 font-serif italic">
                     {week.scripture_reference}
                   </p>
                 )}

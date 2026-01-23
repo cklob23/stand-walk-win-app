@@ -23,8 +23,8 @@ interface CovenantRequiredProps {
 
 export function CovenantRequired({ profile, pairing, partner }: CovenantRequiredProps) {
   const isLeader = profile.role === 'leader'
-  const hasSigned = isLeader ? pairing.covenant_signed_leader : pairing.covenant_signed_learner
-  const partnerHasSigned = isLeader ? pairing.covenant_signed_learner : pairing.covenant_signed_leader
+  const hasSigned = isLeader ? pairing.covenant_accepted_leader : pairing.covenant_accepted_learner
+  const partnerHasSigned = isLeader ? pairing.covenant_accepted_learner : pairing.covenant_accepted_leader
 
   const partnerInitials = partner?.full_name
     ?.split(' ')

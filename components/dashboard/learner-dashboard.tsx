@@ -74,7 +74,7 @@ export function LearnerDashboard({
   )
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-4 sm:py-6">
+    <div className="mx-auto max-w-7xl px-4 py-4 sm:py-6 overflow-x-hidden">
       {/* Welcome Section */}
       <div className="mb-6 sm:mb-8">
         <h1 className="text-xl sm:text-2xl font-bold text-foreground">
@@ -89,26 +89,24 @@ export function LearnerDashboard({
         {/* Main Content - Left Side */}
         <div className="lg:col-span-2 space-y-6">
           {/* Current Week Card */}
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent overflow-hidden">
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-primary" />
-                    Week {currentWeek}: {currentWeekContent?.title || 'Loading...'}
-                  </CardTitle>
-                  <CardDescription className="mt-1">
-                    {currentWeekContent?.description}
-                  </CardDescription>
-                </div>
+              <div className="min-w-0">
+                <CardTitle className="flex items-start gap-2 text-base sm:text-lg">
+                  <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span className="break-words">Week {currentWeek}: {currentWeekContent?.title || 'Loading...'}</span>
+                </CardTitle>
+                <CardDescription className="mt-1 line-clamp-2">
+                  {currentWeekContent?.description}
+                </CardDescription>
               </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {currentWeekContent?.scripture_reference && (
-                  <div className="p-4 rounded-lg bg-card border">
+                  <div className="p-3 sm:p-4 rounded-lg bg-card border overflow-hidden">
                     <p className="text-sm font-medium text-primary mb-1">Scripture Focus</p>
-                    <p className="text-sm text-muted-foreground font-serif italic">
+                    <p className="text-xs sm:text-sm text-muted-foreground font-serif italic break-words line-clamp-3 sm:line-clamp-none">
                       {currentWeekContent.scripture_reference}
                     </p>
                   </div>
@@ -116,11 +114,11 @@ export function LearnerDashboard({
                 
                 {/* Progress for this week */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-muted-foreground">This Week&apos;s Progress</span>
-                    <span className="text-sm font-medium">
+                  <div className="flex items-center justify-between mb-2 gap-2">
+                    <span className="text-sm text-muted-foreground shrink-0">This Week&apos;s Progress</span>
+                    <span className="text-sm font-medium whitespace-nowrap">
                       {currentWeekAssignments.filter(a => a.progress?.status === 'completed').length}/
-                      {currentWeekAssignments.length} assignments
+                      {currentWeekAssignments.length}
                     </span>
                   </div>
                   <Progress 
@@ -133,7 +131,7 @@ export function LearnerDashboard({
                   />
                 </div>
 
-                <Button asChild>
+                <Button asChild className="w-full sm:w-auto">
                   <Link href={`/dashboard/week/${currentWeek}`}>
                     {nextAssignment ? 'Continue Learning' : 'View Week Content'}
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -144,13 +142,13 @@ export function LearnerDashboard({
           </Card>
 
           {/* Current Assignments */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                This Week&apos;s Assignments
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Sparkles className="h-5 w-5 text-primary shrink-0" />
+                <span className="truncate">This Week&apos;s Assignments</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-xs sm:text-sm line-clamp-2">
                 Complete these assignments to progress in your journey
               </CardDescription>
             </CardHeader>
@@ -181,13 +179,13 @@ export function LearnerDashboard({
           </Card>
 
           {/* Timeline */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-primary" />
-                Your Journey
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <BookOpen className="h-5 w-5 text-primary shrink-0" />
+                <span>Your Journey</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-sm">
                 Track your progress through the 6-week discipleship journey
               </CardDescription>
             </CardHeader>

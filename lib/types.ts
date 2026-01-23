@@ -9,6 +9,9 @@ export interface Profile {
   bio: string | null
   phone: string | null
   onboarding_complete: boolean
+  email_notifications?: boolean
+  message_notifications?: boolean
+  progress_notifications?: boolean
   created_at: string
   updated_at: string
 }
