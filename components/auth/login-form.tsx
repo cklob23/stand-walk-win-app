@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
+import Link from 'next/link'
 
 export function LoginForm() {
   const [error, setError] = useState<string | null>(null)
@@ -44,7 +45,15 @@ export function LoginForm() {
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <Link 
+                href="/auth/forgot-password" 
+                className="text-sm text-primary hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <div className="relative">
               <Input
                 id="password"
@@ -76,7 +85,9 @@ export function LoginForm() {
 
           {error && (
             <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
+              {error === 'Invalid login credentials' 
+                ? 'Email or password is incorrect. Please check your credentials or sign up for a new account.'
+                : error}
             </div>
           )}
 
