@@ -16,7 +16,6 @@ export async function signUp(formData: FormData) {
       email,
       password,
       options: {
-        emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${process.env.NEXT_PUBLIC_SITE_URL || ''}/auth/callback`,
         data: {
           full_name: fullName,
         }
@@ -29,7 +28,12 @@ export async function signUp(formData: FormData) {
 
     // Check if email confirmation is required
     if (data.user && !data.session) {
-      return { success: true, message: 'Please check your email to confirm your account.' }
+      return { 
+        success: true, 
+        requiresVerification: true,
+        email,
+        message: 'We sent a 6-digit code to your email. Enter it below to verify your account.' 
+      }
     }
 
     revalidatePath('/', 'layout')
@@ -39,6 +43,50 @@ export async function signUp(formData: FormData) {
       throw err
     }
     return { error: 'Unable to connect. Please try again.' }
+  }
+}
+
+export async function verifyOtp(email: string, token: string) {
+  try {
+    const supabase = await createClient()
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'email',
+    })
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    if (data.session) {
+      revalidatePath('/', 'layout')
+      return { success: true }
+    }
+
+    return { error: 'Verification failed. Please try again.' }
+  } catch (err) {
+    return { error: 'Unable to verify code. Please try again.' }
+  }
+}
+
+export async function resendOtp(email: string) {
+  try {
+    const supabase = await createClient()
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    })
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    return { success: true, message: 'A new code has been sent to your email.' }
+  } catch (err) {
+    return { error: 'Unable to resend code. Please try again.' }
   }
 }
 
@@ -110,18 +158,49 @@ export async function resetPassword(formData: FormData) {
     const supabase = await createClient()
     const email = formData.get('email') as string
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || 
-        `${process.env.NEXT_PUBLIC_SITE_URL || ''}/auth/reset-password`,
+    // Use OTP for password reset instead of link
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: false,
+      }
+    })
+
+    if (error) {
+      // If user doesn't exist, show generic message for security
+      if (error.message.includes('User not found')) {
+        return { success: true, email, message: 'If an account exists with this email, you will receive a 6-digit code.' }
+      }
+      return { error: error.message }
+    }
+
+    return { success: true, email, message: 'We sent a 6-digit code to your email.' }
+  } catch {
+    return { error: 'Unable to send reset email. Please try again.' }
+  }
+}
+
+export async function verifyPasswordResetOtp(email: string, token: string) {
+  try {
+    const supabase = await createClient()
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'email',
     })
 
     if (error) {
       return { error: error.message }
     }
 
-    return { success: true, message: 'Check your email for the password reset link.' }
+    if (data.session) {
+      return { success: true }
+    }
+
+    return { error: 'Verification failed. Please try again.' }
   } catch {
-    return { error: 'Unable to send reset email. Please try again.' }
+    return { error: 'Unable to verify code. Please try again.' }
   }
 }
 
@@ -145,5 +224,26 @@ export async function updatePassword(formData: FormData) {
       throw err
     }
     return { error: 'Unable to update password. Please try again.' }
+  }
+}
+
+export async function resendPasswordResetOtp(email: string) {
+  try {
+    const supabase = await createClient()
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: false,
+      }
+    })
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    return { success: true, message: 'A new code has been sent to your email.' }
+  } catch {
+    return { error: 'Unable to resend code. Please try again.' }
   }
 }
