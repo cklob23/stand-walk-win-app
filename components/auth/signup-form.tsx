@@ -22,6 +22,7 @@ export function SignupForm() {
   // OTP verification state
   const [showOtpForm, setShowOtpForm] = useState(false)
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
+  const [pendingPassword, setPendingPassword] = useState<string | null>(null)
   const [otpValues, setOtpValues] = useState(['', '', '', '', '', ''])
   const [isVerifying, setIsVerifying] = useState(false)
   const [isResending, setIsResending] = useState(false)
@@ -40,6 +41,7 @@ export function SignupForm() {
         setError(result.error)
       } else if (result?.requiresVerification) {
         setPendingEmail(result.email || null)
+        setPendingPassword(result.password || null)
         setShowOtpForm(true)
         setSuccess(result.message || null)
       } else if (result?.success) {
@@ -89,7 +91,7 @@ export function SignupForm() {
     setIsVerifying(true)
     setError(null)
     
-    const result = await verifyOtp(pendingEmail, code)
+    const result = await verifyOtp(pendingEmail, code, pendingPassword || undefined)
     
     if (result.error) {
       setError(result.error)
@@ -194,6 +196,7 @@ export function SignupForm() {
                 onClick={() => {
                   setShowOtpForm(false)
                   setPendingEmail(null)
+                  setPendingPassword(null)
                   setOtpValues(['', '', '', '', '', ''])
                   setError(null)
                 }}

@@ -12,6 +12,7 @@ export async function signUp(formData: FormData) {
     const password = formData.get('password') as string
     const fullName = formData.get('fullName') as string
 
+    // First, create the user account
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -26,12 +27,26 @@ export async function signUp(formData: FormData) {
       return { error: error.message }
     }
 
-    // Check if email confirmation is required
+    // If email confirmation is required, send an OTP instead of using magic link
     if (data.user && !data.session) {
+      // Send OTP for email verification (this actually sends a 6-digit code)
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false, // User already created above
+        }
+      })
+
+      if (otpError) {
+        // User created but OTP failed - still show verification screen
+        console.error('OTP send error:', otpError.message)
+      }
+
       return { 
         success: true, 
         requiresVerification: true,
         email,
+        password, // Pass password back to verify and sign in
         message: 'We sent a 6-digit code to your email. Enter it below to verify your account.' 
       }
     }
@@ -46,10 +61,11 @@ export async function signUp(formData: FormData) {
   }
 }
 
-export async function verifyOtp(email: string, token: string) {
+export async function verifyOtp(email: string, token: string, password?: string) {
   try {
     const supabase = await createClient()
 
+    // Verify the OTP
     const { data, error } = await supabase.auth.verifyOtp({
       email,
       token,
@@ -65,6 +81,21 @@ export async function verifyOtp(email: string, token: string) {
       return { success: true }
     }
 
+    // If no session from OTP, try signing in with password (for signup flow)
+    if (password) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (signInError) {
+        return { error: signInError.message }
+      }
+
+      revalidatePath('/', 'layout')
+      return { success: true }
+    }
+
     return { error: 'Verification failed. Please try again.' }
   } catch (err) {
     return { error: 'Unable to verify code. Please try again.' }
@@ -75,9 +106,12 @@ export async function resendOtp(email: string) {
   try {
     const supabase = await createClient()
 
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
+    // Use signInWithOtp to send a new 6-digit code
+    const { error } = await supabase.auth.signInWithOtp({
       email,
+      options: {
+        shouldCreateUser: false,
+      }
     })
 
     if (error) {
