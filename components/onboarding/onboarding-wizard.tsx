@@ -62,6 +62,10 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
       toast.error('Please enter your name')
       return
     }
+    if (!formData.phone.trim()) {
+      toast.error('Please enter your phone number')
+      return
+    }
 
     setIsLoading(true)
     
@@ -382,7 +386,7 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone (optional)</Label>
+                  <Label htmlFor="phone">Phone</Label>
                   <Input
                     id="phone"
                     value={formData.phone}
