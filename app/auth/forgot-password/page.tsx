@@ -21,7 +21,7 @@ export default function ForgotPasswordPage() {
   // OTP state
   const [step, setStep] = useState<'email' | 'otp' | 'newPassword'>('email')
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
-  const [otpValues, setOtpValues] = useState(['', '', '', '', '', ''])
+  const [otpValues, setOtpValues] = useState(['', '', '', '', '', '', '', ''])
   const [isVerifying, setIsVerifying] = useState(false)
   const [isResending, setIsResending] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
@@ -51,7 +51,7 @@ export default function ForgotPasswordPage() {
     setOtpValues(newValues)
     setError(null)
     
-    if (value && index < 5) {
+    if (value && index < 7) {
       inputRefs.current[index + 1]?.focus()
     }
   }
@@ -64,18 +64,18 @@ export default function ForgotPasswordPage() {
 
   const handleOtpPaste = (e: React.ClipboardEvent) => {
     e.preventDefault()
-    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
-    if (pastedData.length === 6) {
+    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 8)
+    if (pastedData.length === 8) {
       const newValues = pastedData.split('')
       setOtpValues(newValues)
-      inputRefs.current[5]?.focus()
+      inputRefs.current[7]?.focus()
     }
   }
 
   const handleVerifyOtp = async () => {
     const code = otpValues.join('')
-    if (code.length !== 6 || !pendingEmail) {
-      setError('Please enter the complete 6-digit code')
+    if (code.length !== 8 || !pendingEmail) {
+      setError('Please enter the complete 8-digit code')
       return
     }
 
@@ -87,7 +87,7 @@ export default function ForgotPasswordPage() {
     if (result.error) {
       setError(result.error)
       setIsVerifying(false)
-      setOtpValues(['', '', '', '', '', ''])
+      setOtpValues(['', '', '', '', '', '', '', ''])
       inputRefs.current[0]?.focus()
     } else if (result.success) {
       setIsVerifying(false)
@@ -108,7 +108,7 @@ export default function ForgotPasswordPage() {
       setError(result.error)
     } else {
       setSuccess(result.message || 'Code resent!')
-      setOtpValues(['', '', '', '', '', ''])
+      setOtpValues(['', '', '', '', '', '', '', ''])
       inputRefs.current[0]?.focus()
     }
   }
@@ -141,7 +141,7 @@ export default function ForgotPasswordPage() {
           </h1>
           <p className="mt-2 text-sm sm:text-base text-muted-foreground">
             {step === 'email' && "Enter your email and we'll send you a code"}
-            {step === 'otp' && 'Enter the 6-digit code we sent to your email'}
+            {step === 'otp' && 'Enter the 8-digit code we sent to your email'}
             {step === 'newPassword' && 'Choose a strong password for your account'}
           </p>
         </div>
@@ -199,7 +199,7 @@ export default function ForgotPasswordPage() {
                 </div>
 
                 {/* OTP Input */}
-                <div className="flex justify-center gap-2" onPaste={handleOtpPaste}>
+                <div className="flex justify-center gap-1.5" onPaste={handleOtpPaste}>
                   {otpValues.map((value, index) => (
                     <Input
                       key={index}
@@ -210,7 +210,7 @@ export default function ForgotPasswordPage() {
                       value={value}
                       onChange={(e) => handleOtpChange(index, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                      className="w-11 h-12 text-center text-lg font-semibold"
+                      className="w-9 h-11 text-center text-base font-semibold px-0"
                       autoFocus={index === 0}
                     />
                   ))}
@@ -225,7 +225,7 @@ export default function ForgotPasswordPage() {
                 <Button 
                   onClick={handleVerifyOtp} 
                   className="w-full h-11" 
-                  disabled={isVerifying || otpValues.join('').length !== 6}
+                  disabled={isVerifying || otpValues.join('').length !== 8}
                 >
                   {isVerifying ? (
                     <>
@@ -254,7 +254,7 @@ export default function ForgotPasswordPage() {
                     onClick={() => {
                       setStep('email')
                       setPendingEmail(null)
-                      setOtpValues(['', '', '', '', '', ''])
+                      setOtpValues(['', '', '', '', '', '', '', ''])
                       setError(null)
                     }}
                     className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto"

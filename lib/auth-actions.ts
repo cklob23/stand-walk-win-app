@@ -27,27 +27,15 @@ export async function signUp(formData: FormData) {
       return { error: error.message }
     }
 
-    // If email confirmation is required, send an OTP instead of using magic link
+    // If email confirmation is required, show verification screen
+    // The signUp call above already sends the confirmation email with OTP
     if (data.user && !data.session) {
-      // Send OTP for email verification (this actually sends a 6-digit code)
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          shouldCreateUser: false, // User already created above
-        }
-      })
-
-      if (otpError) {
-        // User created but OTP failed - still show verification screen
-        console.error('OTP send error:', otpError.message)
-      }
-
       return { 
         success: true, 
         requiresVerification: true,
         email,
         password, // Pass password back to verify and sign in
-        message: 'We sent a 6-digit code to your email. Enter it below to verify your account.' 
+        message: 'We sent a code to your email. Enter it below to verify your account.' 
       }
     }
 
@@ -61,15 +49,15 @@ export async function signUp(formData: FormData) {
   }
 }
 
-export async function verifyOtp(email: string, token: string, password?: string) {
+export async function verifyOtp(email: string, token: string, password?: string, type: 'signup' | 'email' = 'signup') {
   try {
     const supabase = await createClient()
 
-    // Verify the OTP
+    // Verify the OTP - use 'signup' type for signup verification
     const { data, error } = await supabase.auth.verifyOtp({
       email,
       token,
-      type: 'email',
+      type,
     })
 
     if (error) {
@@ -106,12 +94,10 @@ export async function resendOtp(email: string) {
   try {
     const supabase = await createClient()
 
-    // Use signInWithOtp to send a new 6-digit code
-    const { error } = await supabase.auth.signInWithOtp({
+    // Use resend with 'signup' type to send a new confirmation code
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
       email,
-      options: {
-        shouldCreateUser: false,
-      }
     })
 
     if (error) {

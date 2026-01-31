@@ -23,7 +23,7 @@ export function SignupForm() {
   const [showOtpForm, setShowOtpForm] = useState(false)
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
   const [pendingPassword, setPendingPassword] = useState<string | null>(null)
-  const [otpValues, setOtpValues] = useState(['', '', '', '', '', ''])
+  const [otpValues, setOtpValues] = useState(['', '', '', '', '', '', '', ''])
   const [isVerifying, setIsVerifying] = useState(false)
   const [isResending, setIsResending] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
@@ -60,7 +60,7 @@ export function SignupForm() {
     setError(null)
     
     // Auto-focus next input
-    if (value && index < 5) {
+    if (value && index < 7) {
       inputRefs.current[index + 1]?.focus()
     }
   }
@@ -73,18 +73,18 @@ export function SignupForm() {
 
   const handleOtpPaste = (e: React.ClipboardEvent) => {
     e.preventDefault()
-    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
-    if (pastedData.length === 6) {
+    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 8)
+    if (pastedData.length === 8) {
       const newValues = pastedData.split('')
       setOtpValues(newValues)
-      inputRefs.current[5]?.focus()
+      inputRefs.current[7]?.focus()
     }
   }
 
   const handleVerifyOtp = async () => {
     const code = otpValues.join('')
-    if (code.length !== 6 || !pendingEmail) {
-      setError('Please enter the complete 6-digit code')
+    if (code.length !== 8 || !pendingEmail) {
+      setError('Please enter the complete 8-digit code')
       return
     }
 
@@ -96,7 +96,7 @@ export function SignupForm() {
     if (result.error) {
       setError(result.error)
       setIsVerifying(false)
-      setOtpValues(['', '', '', '', '', ''])
+      setOtpValues(['', '', '', '', '', '', '', ''])
       inputRefs.current[0]?.focus()
     } else if (result.success) {
       router.push('/onboarding')
@@ -116,7 +116,7 @@ export function SignupForm() {
       setError(result.error)
     } else {
       setSuccess(result.message || 'Code resent!')
-      setOtpValues(['', '', '', '', '', ''])
+      setOtpValues(['', '', '', '', '', '', '', ''])
       inputRefs.current[0]?.focus()
     }
   }
@@ -135,13 +135,13 @@ export function SignupForm() {
               </div>
               <h3 className="font-semibold text-foreground">Verify your email</h3>
               <p className="text-sm text-muted-foreground">
-                We sent a 6-digit code to<br />
+                We sent an 8-digit code to<br />
                 <span className="font-medium text-foreground">{pendingEmail}</span>
               </p>
             </div>
 
             {/* OTP Input */}
-            <div className="flex justify-center gap-2" onPaste={handleOtpPaste}>
+            <div className="flex justify-center gap-1.5" onPaste={handleOtpPaste}>
               {otpValues.map((value, index) => (
                 <Input
                   key={index}
@@ -152,7 +152,7 @@ export function SignupForm() {
                   value={value}
                   onChange={(e) => handleOtpChange(index, e.target.value)}
                   onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                  className="w-11 h-12 text-center text-lg font-semibold"
+                  className="w-9 h-11 text-center text-base font-semibold px-0"
                   autoFocus={index === 0}
                 />
               ))}
@@ -167,7 +167,7 @@ export function SignupForm() {
             <Button 
               onClick={handleVerifyOtp} 
               className="w-full h-11" 
-              disabled={isVerifying || otpValues.join('').length !== 6}
+              disabled={isVerifying || otpValues.join('').length !== 8}
             >
               {isVerifying ? (
                 <>
@@ -197,7 +197,7 @@ export function SignupForm() {
                   setShowOtpForm(false)
                   setPendingEmail(null)
                   setPendingPassword(null)
-                  setOtpValues(['', '', '', '', '', ''])
+                  setOtpValues(['', '', '', '', '', '', '', ''])
                   setError(null)
                 }}
                 className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto"
