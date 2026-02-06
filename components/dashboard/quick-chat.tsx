@@ -60,6 +60,14 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
         },
         async (payload) => {
           if (payload.new.sender_id !== odUserId) {
+
+            // Immediately clear typing indicator and cancel any pending timeout
+            setIsPartnerTyping(false)
+            if (typingTimeoutRef.current) {
+              clearTimeout(typingTimeoutRef.current)
+              typingTimeoutRef.current = null
+            }
+
             const { data } = await supabase
               .from('messages')
               .select(`
@@ -76,7 +84,6 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
               })
             }
           }
-          setIsPartnerTyping(false)
         }
       )
       .on(
@@ -127,7 +134,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
 
     const messageContent = message.trim()
     const tempId = `temp-${Date.now()}`
-    
+
     // Optimistic update
     const optimisticMessage: Message = {
       id: tempId,
@@ -138,7 +145,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
       is_read: false,
       sender: null
     }
-    
+
     setMessages((prev) => [...prev, optimisticMessage].slice(-3))
     setMessage('')
     setIsLoading(true)
@@ -162,7 +169,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
     }
 
     // Replace temp message with real one
-    setMessages((prev) => 
+    setMessages((prev) =>
       prev.map((m) => m.id === tempId ? { ...optimisticMessage, id: data.id } : m)
     )
 
@@ -195,11 +202,10 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
                 </Avatar>
                 <div className={`flex-1 min-w-0 ${isOwn ? 'text-right' : 'text-left'}`}>
                   <div
-                    className={`inline-block rounded-lg px-3 py-2 text-sm max-w-full ${
-                      isOwn
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-foreground'
-                    }`}
+                    className={`inline-block rounded-lg px-3 py-2 text-sm max-w-full ${isOwn
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-foreground'
+                      }`}
                   >
                     <p className="break-words">{msg.content}</p>
                   </div>
@@ -217,18 +223,18 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
               </div>
             )
           })}
-          
+
           {/* Typing Indicator */}
           {isPartnerTyping && (
-            <div className="flex gap-2">
+            <div className="flex items-end gap-2">
               <Avatar className="h-7 w-7 shrink-0">
                 <AvatarImage src={partnerAvatar || undefined} />
                 <AvatarFallback className="text-xs bg-primary/10 text-primary">
                   {partnerName?.split(' ').map((n) => n[0]).join('').toUpperCase() || '?'}
                 </AvatarFallback>
               </Avatar>
-              <div className="inline-block rounded-lg bg-muted px-3 py-2">
-                <div className="flex gap-1">
+              <div className="inline-flex items-center rounded-lg bg-muted px-3 h-8">
+                <div className="flex items-center gap-1">
                   <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                   <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                   <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -258,7 +264,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
             }
           }}
           placeholder={`Message ${partnerName}...`}
-          className="min-h-[60px] sm:min-h-[80px] resize-none text-base"
+          className="min-h-[30px] sm:min-h-[40px] max-h-[100px] sm:max-h-[120px] resize-none text-base"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
@@ -266,8 +272,8 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
             }
           }}
         />
-        <Button 
-          onClick={handleSend} 
+        <Button
+          onClick={handleSend}
           disabled={isLoading || !message.trim()}
           size="icon"
           className="h-auto"

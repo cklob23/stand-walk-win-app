@@ -150,7 +150,8 @@ export default async function DashboardPage() {
     return (
       <NoPairingState 
         profile={profile} 
-        pairingCode={pairing?.invite_code}
+        pairingCode={pairing?.invite_code || null}
+        pairingId={pairing?.id || null}
       />
     )
   }

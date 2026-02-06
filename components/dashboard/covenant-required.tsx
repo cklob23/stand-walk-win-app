@@ -51,7 +51,7 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
       {/* Partner Info */}
       {partner && (
         <Card className="mb-6">
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="flex items-center gap-4">
               <Avatar className="h-14 w-14">
                 <AvatarImage src={partner.avatar_url || undefined} />

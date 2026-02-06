@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { BookOpen, Users, GraduationCap, ArrowRight, ArrowLeft, Loader2, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Profile, UserRole } from '@/lib/types'
-import { notifyLearnerJoined, notifyPairingCreated } from '@/lib/notifications'
+import { joinPairing } from '@/lib/auth-actions'
 
 interface OnboardingWizardProps {
   userId: string
@@ -37,7 +37,6 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
     phone: existingProfile?.phone || '',
     pairingCode: '',
   })
-
   const supabase = createClient()
 
   const handleNext = () => {
@@ -62,10 +61,6 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
       toast.error('Please enter your name')
       return
     }
-    if (!formData.phone.trim()) {
-      toast.error('Please enter your phone number')
-      return
-    }
 
     setIsLoading(true)
     
@@ -85,6 +80,35 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
       return
     }
 
+    // For leaders: auto-create pairing code, complete onboarding, go to dashboard
+    if (formData.role === 'leader') {
+      const code = generatePairingCode()
+      
+      const { error: pairingError } = await supabase
+        .from('pairings')
+        .insert({
+          leader_id: userId,
+          invite_code: code,
+          status: 'pending',
+        })
+
+      if (pairingError) {
+        toast.error('Failed to create pairing code')
+        setIsLoading(false)
+        return
+      }
+
+      await supabase
+        .from('profiles')
+        .update({ onboarding_complete: true })
+        .eq('id', userId)
+
+      setIsLoading(false)
+      router.push('/dashboard')
+      return
+    }
+
+    // For learners: proceed to the connect step
     setIsLoading(false)
     handleNext()
   }
@@ -98,35 +122,6 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
     return code
   }
 
-  const handleCreatePairing = async () => {
-    setIsLoading(true)
-    
-    const code = generatePairingCode()
-    
-    const { error } = await supabase
-      .from('pairings')
-      .insert({
-        leader_id: userId,
-        pairing_code: code,
-        status: 'pending',
-      })
-
-    if (error) {
-      toast.error('Failed to create pairing code')
-      setIsLoading(false)
-      return
-    }
-
-    // Complete onboarding
-    await supabase
-      .from('profiles')
-      .update({ onboarding_complete: true })
-      .eq('id', userId)
-
-    toast.success('Your pairing code has been created!')
-    router.push('/dashboard')
-  }
-
   const handleJoinPairing = async () => {
     if (!formData.pairingCode.trim()) {
       toast.error('Please enter a pairing code')
@@ -135,62 +130,20 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
 
     setIsLoading(true)
 
-    // Find the pairing
-    const { data: pairing, error: findError } = await supabase
-      .from('pairings')
-      .select('*')
-      .eq('pairing_code', formData.pairingCode.toUpperCase())
-      .eq('status', 'pending')
-      .is('learner_id', null)
-      .single()
-
-    if (findError || !pairing) {
-      toast.error('Invalid or already used pairing code')
-      setIsLoading(false)
-      return
-    }
-
-    // Join the pairing
-    const { error: joinError } = await supabase
-      .from('pairings')
-      .update({
-        learner_id: userId,
-        status: 'active',
-        started_at: new Date().toISOString(),
-      })
-      .eq('id', pairing.id)
-
-    if (joinError) {
-      toast.error('Failed to join pairing')
-      setIsLoading(false)
-      return
-    }
-
-    // Get leader info for notification
-    const { data: leader } = await supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('id', pairing.leader_id)
-      .single()
-
-    // Send notifications
-    await notifyLearnerJoined(
-      pairing.leader_id,
-      formData.fullName || 'A new learner',
-      pairing.id
-    )
-    
-    await notifyPairingCreated(
-      userId,
-      leader?.full_name || 'Your Leader',
-      pairing.id
-    )
-
-    // Complete onboarding
+    // Complete onboarding first
     await supabase
       .from('profiles')
       .update({ onboarding_complete: true })
       .eq('id', userId)
+
+    // Use server action to join pairing (handles DB update, notifications, and revalidation)
+    const result = await joinPairing(formData.pairingCode)
+
+    if (result.error) {
+      toast.error(result.error)
+      setIsLoading(false)
+      return
+    }
 
     toast.success('Successfully connected with your Leader!')
     router.push('/dashboard')
@@ -386,7 +339,7 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone">Phone (optional)</Label>
                   <Input
                     id="phone"
                     value={formData.phone}
@@ -428,70 +381,48 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
             </Card>
           )}
 
-          {/* Connect Step */}
+          {/* Connect Step (Learner only - Leaders skip to dashboard) */}
           {currentStep === 3 && (
             <div className="space-y-4 sm:space-y-6">
               <div className="text-center px-4">
                 <h2 className="text-xl sm:text-2xl font-bold text-foreground">
-                  {formData.role === 'leader' ? 'Invite Your Learner' : 'Connect with Your Leader'}
+                  Connect with Your Leader
                 </h2>
                 <p className="mt-2 text-sm sm:text-base text-muted-foreground">
-                  {formData.role === 'leader'
-                    ? 'Create a pairing code to share with your Learner'
-                    : 'Enter the code your Leader shared with you'}
+                  Enter the code your Leader shared with you
                 </p>
               </div>
 
-              {formData.role === 'leader' ? (
-                <Card>
-                  <CardContent className="pt-6 text-center space-y-4">
-                    <p className="text-muted-foreground">
-                      Click below to generate a unique pairing code. Share this code with the person you&apos;ll be discipling.
-                    </p>
-                    <Button onClick={handleCreatePairing} disabled={isLoading} size="lg">
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Creating...
-                        </>
-                      ) : (
-                        'Create Pairing Code'
-                      )}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card>
-                  <CardContent className="pt-6 space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="pairingCode">Pairing Code</Label>
-                      <Input
-                        id="pairingCode"
-                        value={formData.pairingCode}
-                        onChange={(e) => setFormData({ ...formData, pairingCode: e.target.value.toUpperCase() })}
-                        placeholder="Enter 6-character code"
-                        maxLength={6}
-                        className="h-12 text-center text-lg font-mono tracking-widest"
-                      />
-                    </div>
-                    <Button 
-                      onClick={handleJoinPairing} 
-                      disabled={isLoading || formData.pairingCode.length < 6}
-                      className="w-full"
-                      size="lg"
-                    >
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Connecting...
-                        </>
-                      ) : (
-                        'Join Discipleship'
-                      )}
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
+              <Card>
+                <CardContent className="pt-6 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="pairingCode">Pairing Code</Label>
+                    <Input
+                      id="pairingCode"
+                      value={formData.pairingCode}
+                      onChange={(e) => setFormData({ ...formData, pairingCode: e.target.value.toUpperCase() })}
+                      placeholder="Enter 6-character code"
+                      maxLength={6}
+                      className="h-12 text-center text-lg font-mono tracking-widest"
+                    />
+                  </div>
+                  <Button 
+                    onClick={handleJoinPairing} 
+                    disabled={isLoading || formData.pairingCode.length < 6}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      'Join Discipleship'
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
 
               <div className="flex justify-between items-center pt-4">
                 <Button variant="ghost" onClick={handleBack}>

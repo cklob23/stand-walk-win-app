@@ -30,10 +30,10 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
 
   const supabase = createClient()
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change or typing indicator appears
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, isPartnerTyping])
 
   // Broadcast typing status
   const broadcastTyping = useCallback(() => {
@@ -47,7 +47,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
   // Handle typing indicator with debounce
   const handleTyping = useCallback(() => {
     broadcastTyping()
-    
+
     // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current)
@@ -84,6 +84,14 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         async (payload) => {
           // Only add if not our own message (we use optimistic update)
           if (payload.new.sender_id !== profile.id) {
+
+            // Immediately clear typing indicator and cancel any pending timeout
+            setIsPartnerTyping(false)
+            if (typingTimeoutRef.current) {
+              clearTimeout(typingTimeoutRef.current)
+              typingTimeoutRef.current = null
+            }
+
             const { data } = await supabase
               .from('messages')
               .select(`
@@ -106,8 +114,6 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                 .eq('id', data.id)
             }
           }
-          // Clear typing indicator when message received
-          setIsPartnerTyping(false)
         }
       )
       .on(
@@ -188,7 +194,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
 
     const messageContent = newMessage.trim()
     const tempId = `temp-${Date.now()}`
-    
+
     // Optimistic update - add message immediately
     const optimisticMessage: Message = {
       id: tempId,
@@ -203,9 +209,10 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         avatar_url: profile.avatar_url
       }
     }
-    
+
     setMessages((prev) => [...prev, optimisticMessage])
     setNewMessage('')
+    setIsPartnerTyping(false)
     setIsLoading(true)
 
     const { data, error } = await supabase
@@ -228,7 +235,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
     }
 
     // Replace temp message with real one
-    setMessages((prev) => 
+    setMessages((prev) =>
       prev.map((m) => m.id === tempId ? { ...optimisticMessage, id: data.id } : m)
     )
 
@@ -265,7 +272,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
   // Group messages by date
   const groupedMessages: { date: string; messages: Message[] }[] = []
   let currentDate = ''
-  
+
   messages.forEach((msg) => {
     const msgDate = format(new Date(msg.created_at), 'yyyy-MM-dd')
     if (msgDate !== currentDate) {
@@ -363,11 +370,10 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                           </Avatar>
                           <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${isOwn ? 'text-right' : 'text-left'}`}>
                             <div
-                              className={`inline-block rounded-2xl px-4 py-2 ${
-                                isOwn
-                                  ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                                  : 'bg-muted text-foreground rounded-tl-sm'
-                              }`}
+                              className={`inline-block rounded-2xl px-4 py-2 ${isOwn
+                                ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                                : 'bg-muted text-foreground rounded-tl-sm'
+                                }`}
                             >
                               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                             </div>
@@ -388,19 +394,18 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                   </div>
                 </div>
               ))}
-              <div ref={messagesEndRef} />
-              
+
               {/* Typing Indicator */}
               {isPartnerTyping && (
-                <div className="flex gap-3 mt-4">
+                <div className="flex items-end gap-3">
                   <Avatar className="h-8 w-8 shrink-0">
                     <AvatarImage src={partner.avatar_url || undefined} />
                     <AvatarFallback className="text-xs bg-primary/10 text-primary">
                       {partnerInitials}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="inline-block rounded-2xl rounded-tl-sm bg-muted px-4 py-2">
-                    <div className="flex gap-1">
+                  <div className="inline-flex items-center rounded-2xl rounded-tl-sm bg-muted px-4 h-10">
+                    <div className="flex items-center gap-1">
                       <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                       <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                       <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -408,6 +413,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                   </div>
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
           )}
         </CardContent>
@@ -424,7 +430,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                 }
               }}
               placeholder={`Message ${partner.full_name}...`}
-              className="min-h-[50px] sm:min-h-[60px] max-h-[100px] sm:max-h-[120px] resize-none text-base"
+              className="min-h-[30px] sm:min-h-[40px] max-h-[100px] sm:max-h-[120px] resize-none text-base"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -432,8 +438,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                 }
               }}
             />
-            <Button 
-              onClick={handleSend} 
+            <Button
+              onClick={handleSend}
               disabled={isLoading || !newMessage.trim()}
               size="icon"
               className="h-auto aspect-square"

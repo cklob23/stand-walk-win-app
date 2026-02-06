@@ -247,6 +247,77 @@ export async function updatePassword(formData: FormData) {
   }
 }
 
+export async function joinPairing(inviteCode: string) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      return { error: 'You must be logged in to join a pairing.' }
+    }
+
+    // Find the pending pairing by invite code
+    const { data: pairing, error: findError } = await supabase
+      .from('pairings')
+      .select('*')
+      .eq('invite_code', inviteCode.toUpperCase())
+      .eq('status', 'pending')
+      .is('learner_id', null)
+      .single()
+
+    if (findError || !pairing) {
+      return { error: 'Invalid or already used pairing code.' }
+    }
+
+    // Prevent leader from joining their own pairing
+    if (pairing.leader_id === user.id) {
+      return { error: 'You cannot join your own pairing.' }
+    }
+
+    // Update the pairing with the learner
+    const { data: updateData, error: updateError } = await supabase
+      .from('pairings')
+      .update({
+        learner_id: user.id,
+        status: 'active',
+        started_at: new Date().toISOString(),
+      })
+      .eq('id', pairing.id)
+      .select()
+
+    if (updateError) {
+      return { error: 'Failed to join pairing. Please try again.' }
+    }
+
+    // Check if update actually affected a row (RLS might silently block)
+    if (!updateData || updateData.length === 0) {
+      return { error: 'Unable to join this pairing. Please try again.' }
+    }
+
+    // Get the learner's profile for the notification
+    const { data: learnerProfile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .single()
+
+    const learnerName = learnerProfile?.full_name || 'Your learner'
+
+    // Notify the leader that a learner joined
+    try {
+      const { notifyLearnerJoined } = await import('@/lib/notifications')
+      await notifyLearnerJoined(pairing.leader_id, learnerName, pairing.id)
+    } catch (notifyErr) {
+      // Don't fail the join if notification fails
+    }
+
+    revalidatePath('/dashboard', 'layout')
+    return { success: true }
+  } catch (err) {
+    return { error: 'Unable to join pairing. Please try again.' }
+  }
+}
+
 export async function resendPasswordResetOtp(email: string) {
   try {
     const supabase = await createClient()

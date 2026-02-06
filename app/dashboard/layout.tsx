@@ -25,16 +25,28 @@ export default async function DashboardLayout({
     redirect('/onboarding')
   }
 
-  // Get unread notification count
-  const { count } = await supabase
-    .from('notifications')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .eq('read', false)
+  // Get unread notification count and recent notifications
+  const [{ count }, { data: recentNotifications }] = await Promise.all([
+    supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('read', false),
+    supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(5),
+  ])
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
-      <DashboardHeader profile={profile} notificationCount={count || 0} />
+      <DashboardHeader
+        profile={profile}
+        notificationCount={count || 0}
+        recentNotifications={recentNotifications || []}
+      />
       <main className="w-full overflow-x-hidden">{children}</main>
     </div>
   )

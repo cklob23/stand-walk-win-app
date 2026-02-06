@@ -3,31 +3,35 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { joinPairing } from '@/lib/auth-actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Users, Copy, CheckCircle, Loader2 } from 'lucide-react'
+import { Users, Copy, CheckCircle, Loader2, RefreshCw, Mail } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Profile } from '@/lib/types'
 
 interface NoPairingStateProps {
   profile: Profile
   pairingCode?: string | null
+  pairingId?: string | null
 }
 
-export function NoPairingState({ profile, pairingCode }: NoPairingStateProps) {
+export function NoPairingState({ profile, pairingCode, pairingId }: NoPairingStateProps) {
   const router = useRouter()
   const [copied, setCopied] = useState(false)
   const [joinCode, setJoinCode] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
+  const [isRegenerating, setIsRegenerating] = useState(false)
+  const [currentCode, setCurrentCode] = useState(pairingCode || null)
 
   const supabase = createClient()
 
   const copyCode = async () => {
-    if (pairingCode) {
-      await navigator.clipboard.writeText(pairingCode)
+    if (currentCode) {
+      await navigator.clipboard.writeText(currentCode)
       setCopied(true)
       toast.success('Code copied to clipboard!')
       setTimeout(() => setCopied(false), 2000)
@@ -52,7 +56,7 @@ export function NoPairingState({ profile, pairingCode }: NoPairingStateProps) {
       .from('pairings')
       .insert({
         leader_id: profile.id,
-        pairing_code: code,
+        invite_code: code,
         status: 'pending',
       })
 
@@ -62,8 +66,49 @@ export function NoPairingState({ profile, pairingCode }: NoPairingStateProps) {
       return
     }
 
+    setCurrentCode(code)
+    setIsCreating(false)
     toast.success('Pairing code created!')
     router.refresh()
+  }
+
+  const handleRegenerateCode = async () => {
+    if (!pairingId) return
+    
+    setIsRegenerating(true)
+    
+    const newCode = generatePairingCode()
+    
+    const { error } = await supabase
+      .from('pairings')
+      .update({ invite_code: newCode })
+      .eq('id', pairingId)
+
+    if (error) {
+      toast.error('Failed to regenerate code')
+      setIsRegenerating(false)
+      return
+    }
+
+    setCurrentCode(newCode)
+    setIsRegenerating(false)
+    toast.success('New pairing code generated!')
+  }
+
+  const handleShareViaEmail = () => {
+    if (!currentCode) return
+    const subject = encodeURIComponent('Join me on Stand Walk Win')
+    const body = encodeURIComponent(
+      `I'd like to invite you to join me on a discipleship journey through Stand Walk Win!\n\n` +
+      `Use this pairing code to connect with me:\n\n` +
+      `${currentCode}\n\n` +
+      `Here's how to get started:\n` +
+      `1. Go to the Stand Walk Win app and create an account\n` +
+      `2. Select "Learner" as your role\n` +
+      `3. Enter the pairing code above to connect with me\n\n` +
+      `Looking forward to walking this journey together!`
+    )
+    window.location.href = `mailto:?subject=${subject}&body=${body}`
   }
 
   const handleJoinPairing = async () => {
@@ -74,39 +119,17 @@ export function NoPairingState({ profile, pairingCode }: NoPairingStateProps) {
 
     setIsLoading(true)
 
-    // Find the pairing
-    const { data: pairing, error: findError } = await supabase
-      .from('pairings')
-      .select('*')
-      .eq('pairing_code', joinCode.toUpperCase())
-      .eq('status', 'pending')
-      .is('learner_id', null)
-      .single()
+    const result = await joinPairing(joinCode)
 
-    if (findError || !pairing) {
-      toast.error('Invalid or already used pairing code')
+    if (result.error) {
+      toast.error(result.error)
       setIsLoading(false)
       return
     }
 
-    // Join the pairing
-    const { error: joinError } = await supabase
-      .from('pairings')
-      .update({
-        learner_id: profile.id,
-        status: 'active',
-        started_at: new Date().toISOString(),
-      })
-      .eq('id', pairing.id)
-
-    if (joinError) {
-      toast.error('Failed to join pairing')
-      setIsLoading(false)
-      return
-    }
-
-    toast.success('Successfully connected!')
-    router.refresh()
+    toast.success('Successfully connected with your Leader!')
+    // Hard refresh to ensure the server re-queries the updated pairing
+    window.location.href = '/dashboard'
   }
 
   return (
@@ -122,28 +145,28 @@ export function NoPairingState({ profile, pairingCode }: NoPairingStateProps) {
               </div>
               <CardTitle>Waiting for Learner</CardTitle>
               <CardDescription>
-                {pairingCode 
+                {currentCode 
                   ? 'Share your pairing code with your Learner to begin the journey together.'
                   : 'Create a pairing code to invite your Learner.'}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {pairingCode ? (
+            <CardContent className="space-y-5">
+              {currentCode ? (
                 <>
                   <div className="space-y-2">
-                    <Label>Your Pairing Code</Label>
+                    <Label className="text-center block text-muted-foreground text-xs uppercase tracking-wider">Your Pairing Code</Label>
                     <div className="flex gap-2">
-                      <div className="flex-1 h-12 flex items-center justify-center rounded-lg border bg-muted font-mono text-2xl tracking-[0.5em]">
-                        {pairingCode}
+                      <div className="flex-1 h-14 flex items-center justify-center rounded-lg border-2 border-primary/20 bg-muted font-mono text-2xl sm:text-3xl tracking-[0.4em] font-bold text-primary">
+                        {currentCode}
                       </div>
                       <Button 
                         variant="outline" 
                         size="icon" 
-                        className="h-12 w-12 shrink-0 bg-transparent"
+                        className="h-14 w-14 shrink-0 bg-transparent"
                         onClick={copyCode}
                       >
                         {copied ? (
-                          <CheckCircle className="h-5 w-5 text-success" />
+                          <CheckCircle className="h-5 w-5 text-green-600" />
                         ) : (
                           <Copy className="h-5 w-5" />
                         )}
@@ -151,9 +174,40 @@ export function NoPairingState({ profile, pairingCode }: NoPairingStateProps) {
                       </Button>
                     </div>
                   </div>
+
                   <p className="text-sm text-muted-foreground text-center">
                     Your Learner will enter this code to connect with you.
                   </p>
+
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      onClick={handleShareViaEmail}
+                      className="w-full"
+                      size="lg"
+                    >
+                      <Mail className="mr-2 h-4 w-4" />
+                      Share via Email
+                    </Button>
+
+                    <Button 
+                      variant="outline"
+                      onClick={handleRegenerateCode}
+                      disabled={isRegenerating}
+                      className="w-full bg-transparent"
+                    >
+                      {isRegenerating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Regenerating...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Regenerate Code
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </>
               ) : (
                 <Button 

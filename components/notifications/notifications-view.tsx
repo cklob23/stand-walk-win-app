@@ -33,6 +33,21 @@ const notificationIcons: Record<string, typeof Bell> = {
   pairing: Users,
 }
 
+function getNotificationHref(notification: Notification): string {
+  switch (notification.type) {
+    case 'message':
+      return '/dashboard/messages'
+    case 'covenant':
+      return '/dashboard/covenant'
+    case 'assignment':
+    case 'week_complete':
+    case 'pairing':
+    case 'encouragement':
+    default:
+      return '/dashboard'
+  }
+}
+
 export function NotificationsView({ userId, notifications: initialNotifications }: NotificationsViewProps) {
   const router = useRouter()
   const [notifications, setNotifications] = useState(initialNotifications)
@@ -70,6 +85,22 @@ export function NotificationsView({ userId, notifications: initialNotifications 
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
     toast.success('All notifications marked as read')
     router.refresh()
+  }
+
+  const handleNotificationClick = async (notification: Notification) => {
+    if (!notification.read) {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', notification.id)
+
+      if (!error) {
+        setNotifications(prev =>
+          prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
+        )
+      }
+    }
+    router.push(getNotificationHref(notification))
   }
 
   const handleDelete = async (id: string) => {
@@ -132,10 +163,11 @@ export function NotificationsView({ userId, notifications: initialNotifications 
                 return (
                   <div
                     key={notification.id}
+                    onClick={() => handleNotificationClick(notification)}
                     className={cn(
-                      "flex items-start gap-4 p-4 rounded-lg border transition-colors",
+                      "flex items-start gap-4 p-4 rounded-lg border transition-colors w-full text-left cursor-pointer",
                       !notification.read 
-                        ? "bg-primary/5 border-primary/20" 
+                        ? "bg-primary/5 border-primary/20 hover:bg-primary/10" 
                         : "bg-card hover:bg-muted/50"
                     )}
                   >
@@ -169,7 +201,7 @@ export function NotificationsView({ userId, notifications: initialNotifications 
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
-                              onClick={() => handleMarkAsRead(notification.id)}
+                              onClick={(e) => { e.stopPropagation(); handleMarkAsRead(notification.id) }}
                             >
                               <Check className="h-4 w-4" />
                               <span className="sr-only">Mark as read</span>
@@ -179,7 +211,7 @@ export function NotificationsView({ userId, notifications: initialNotifications 
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            onClick={() => handleDelete(notification.id)}
+                            onClick={(e) => { e.stopPropagation(); handleDelete(notification.id) }}
                           >
                             <Trash2 className="h-4 w-4" />
                             <span className="sr-only">Delete</span>
