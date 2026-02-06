@@ -210,7 +210,7 @@ export function LearnerDashboard({
             <CardContent>
               <div className="flex items-center gap-4">
                 <Avatar className="h-14 w-14">
-                  <AvatarImage src={partner?.avatar_url || undefined} />
+                  {partner?.avatar_url ? <AvatarImage src={partner.avatar_url} alt={partner.full_name || 'Partner'} /> : null}
                   <AvatarFallback className="bg-primary/10 text-primary text-lg">
                     {partnerInitials}
                   </AvatarFallback>
@@ -316,6 +316,8 @@ export function LearnerDashboard({
               <QuickChat 
                 pairingId={pairing.id}
                 odUserId={profile.id}
+                odUserName={profile.full_name || 'You'}
+                odUserAvatar={profile.avatar_url}
                 partnerId={partner?.id || ''}
                 recentMessages={recentMessages}
                 partnerName={partner?.full_name || 'Leader'}

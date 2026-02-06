@@ -23,10 +23,11 @@ import {
 } from '@/components/ui/popover'
 import { Bell, BookOpen, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check } from 'lucide-react'
 import type { Notification, Profile } from '@/lib/types'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
+import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
 import { toast } from 'sonner'
 
 interface DashboardHeaderProps {
@@ -74,9 +75,42 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const [unreadCount, setUnreadCount] = useState(notificationCount)
   const supabase = createClient()
   const { sendNotification, requestPermission, permission } = useBrowserNotifications()
+  const realtimeReady = useRealtimeAuth()
 
-  // Real-time subscription for new notifications
+  // Track known notification IDs to detect new ones from polling
+  const knownNotifIds = useRef(new Set(recentNotifications.map(n => n.id)))
+
+  // Helper to handle a new notification (toast + push)
+  const handleNewNotification = useCallback((newNotif: Notification) => {
+    setNotifications(prev => {
+      if (prev.some(n => n.id === newNotif.id)) return prev
+      return [newNotif, ...prev].slice(0, 5)
+    })
+    setUnreadCount(prev => prev + 1)
+
+    toast(newNotif.title, {
+      description: newNotif.message,
+      action: {
+        label: 'View',
+        onClick: () => router.push(getNotificationHref(newNotif)),
+      },
+    })
+
+    sendNotification(newNotif.title, {
+      body: newNotif.message,
+      tag: `notif-${newNotif.id}`,
+      onClick: () => {
+        router.push(getNotificationHref(newNotif))
+      },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router])
+
+  // Real-time subscription (gated on auth being ready)
   useEffect(() => {
+    if (!realtimeReady) return
+
+    console.log('[v0] header: subscribing to notifications realtime for user:', profile.id)
     const channel = supabase
       .channel('header-notifications')
       .on(
@@ -87,31 +121,11 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
           table: 'notifications',
           filter: `user_id=eq.${profile.id}`,
         },
-        (payload) => {
+        (payload: any) => {
+          console.log('[v0] header: notification INSERT received:', payload.new)
           const newNotif = payload.new as Notification
-          setNotifications(prev => {
-            if (prev.some(n => n.id === newNotif.id)) return prev
-            return [newNotif, ...prev].slice(0, 5)
-          })
-          setUnreadCount(prev => prev + 1)
-
-          // In-app toast notification (always shown)
-          toast(newNotif.title, {
-            description: newNotif.message,
-            action: {
-              label: 'View',
-              onClick: () => router.push(getNotificationHref(newNotif)),
-            },
-          })
-
-          // Browser push notification (only when tab is in background)
-          sendNotification(newNotif.title, {
-            body: newNotif.message,
-            tag: `notif-${newNotif.id}`,
-            onClick: () => {
-              router.push(getNotificationHref(newNotif))
-            },
-          })
+          knownNotifIds.current.add(newNotif.id)
+          handleNewNotification(newNotif)
         }
       )
       .on(
@@ -122,18 +136,50 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
           table: 'notifications',
           filter: `user_id=eq.${profile.id}`,
         },
-        (payload) => {
+        (payload: any) => {
           const updated = payload.new as Notification
           setNotifications(prev =>
             prev.map(n => n.id === updated.id ? updated : n)
           )
         }
       )
-      .subscribe()
+      .subscribe((status: any) => {
+        console.log('[v0] header-notifications channel:', status)
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.id, realtimeReady])
+
+  // Polling fallback: check for new notifications every 15s in case realtime misses them
+  useEffect(() => {
+    const poll = async () => {
+      const { data } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', profile.id)
+        .eq('read', false)
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      if (data) {
+        // Update unread count
+        setUnreadCount(data.length)
+
+        // Check for any new notifications we haven't seen
+        for (const notif of data) {
+          if (!knownNotifIds.current.has(notif.id)) {
+            knownNotifIds.current.add(notif.id)
+            handleNewNotification(notif)
+          }
+        }
+      }
+    }
+
+    const interval = setInterval(poll, 15000)
+    return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.id])
 
@@ -335,7 +381,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                   <Avatar className="h-9 w-9">
-                    <AvatarImage src={profile.avatar_url || undefined} alt={profile.full_name || 'User'} />
+                    {profile.avatar_url ? <AvatarImage src={profile.avatar_url} alt={profile.full_name || 'User'} /> : null}
                     <AvatarFallback className="bg-primary/10 text-primary">{initials}</AvatarFallback>
                   </Avatar>
                 </Button>

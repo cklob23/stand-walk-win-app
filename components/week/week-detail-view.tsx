@@ -288,7 +288,7 @@ export function WeekDetailView({
                       <div key={reflection.id} className="space-y-2">
                         <div className="flex items-center gap-2">
                           <Avatar className="h-6 w-6">
-                            <AvatarImage src={reflection.user?.avatar_url || undefined} />
+                            {reflection.user?.avatar_url ? <AvatarImage src={reflection.user.avatar_url} alt={reflection.user.full_name || ''} /> : null}
                             <AvatarFallback className="text-xs bg-primary/10 text-primary">
                               {userInitials}
                             </AvatarFallback>

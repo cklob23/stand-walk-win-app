@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { User, Loader2, Save, Camera } from 'lucide-react'
+import { User, Loader2, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Profile } from '@/lib/types'
 
@@ -21,10 +21,7 @@ interface ProfileViewProps {
 export function ProfileView({ profile: initialProfile }: ProfileViewProps) {
   const router = useRouter()
   const [profile, setProfile] = useState(initialProfile)
-  const [isSaving, setIsSaving] = useState(false)
-  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
   const supabase = createClient()
 
@@ -34,67 +31,8 @@ export function ProfileView({ profile: initialProfile }: ProfileViewProps) {
     .join('')
     .toUpperCase() || '?'
 
-  /* ---------------- Avatar Upload ---------------- */
-
-  const handleAvatarClick = () => {
-    fileInputRef.current?.click()
-  }
-
-  const handleAvatarUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please upload an image file')
-      return
-    }
-
-    setIsUploadingAvatar(true)
-
-    const filePath = `${profile.id}.png`
-
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(filePath, file, {
-        upsert: true,
-        contentType: file.type,
-      })
-
-    if (uploadError) {
-      toast.error('Failed to upload avatar')
-      setIsUploadingAvatar(false)
-      return
-    }
-
-    const { data } = supabase.storage
-      .from('avatars')
-      .getPublicUrl(filePath)
-
-    const avatarUrl = `${data.publicUrl}?v=${Date.now()}`
-
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ avatar_url: avatarUrl })
-      .eq('id', profile.id)
-
-    if (updateError) {
-      toast.error('Failed to save avatar')
-      setIsUploadingAvatar(false)
-      return
-    }
-
-    setProfile({ ...profile, avatar_url: avatarUrl })
-    toast.success('Profile photo updated')
-    setIsUploadingAvatar(false)
-    router.refresh()
-  }
-
-
-
   const handleSave = async () => {
-    setIsSaving(true)
+    setIsLoading(true)
 
     const { error } = await supabase
       .from('profiles')
@@ -107,12 +45,12 @@ export function ProfileView({ profile: initialProfile }: ProfileViewProps) {
 
     if (error) {
       toast.error('Failed to update profile')
-      setIsSaving(false)
+      setIsLoading(false)
       return
     }
 
     toast.success('Profile updated!')
-    setIsSaving(false)
+    setIsLoading(false)
     router.refresh()
   }
 
@@ -131,34 +69,14 @@ export function ProfileView({ profile: initialProfile }: ProfileViewProps) {
         <CardContent className="space-y-6">
           {/* Avatar Section */}
           <div className="flex items-center gap-4">
-            <div
-              className="relative group cursor-pointer"
-              onClick={handleAvatarClick}
-            >
-              <Avatar className="h-20 w-20">
-                <AvatarImage src={profile.avatar_url || undefined} />
-                <AvatarFallback className="text-2xl bg-primary/10 text-primary">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-
-              {/* Hover Overlay */}
-              <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                {isUploadingAvatar ? (
-                  <Loader2 className="h-6 w-6 text-white animate-spin" />
-                ) : (
-                  <Camera className="h-6 w-6 text-white" />
-                )}
-              </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={handleAvatarUpload}
-              />
-            </div>
+            <Avatar className="h-20 w-20">
+              {profile.avatar_url ? (
+                <AvatarImage src={profile.avatar_url} alt={profile.full_name || 'Profile'} />
+              ) : null}
+              <AvatarFallback className="text-2xl bg-primary/10 text-primary">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
             <div>
               <h3 className="font-semibold text-foreground">{profile.full_name}</h3>
               <p className="text-sm text-muted-foreground">{profile.email}</p>
@@ -220,8 +138,8 @@ export function ProfileView({ profile: initialProfile }: ProfileViewProps) {
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? (
+            <Button onClick={handleSave} disabled={isLoading}>
+              {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Saving...

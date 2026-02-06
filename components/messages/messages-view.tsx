@@ -12,6 +12,7 @@ import type { Profile, Pairing, Message } from '@/lib/types'
 import { format, isToday, isYesterday } from 'date-fns'
 import { notifyNewMessage } from '@/lib/notifications'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
+import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
 
 interface MessagesViewProps {
   profile: Profile
@@ -31,31 +32,24 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const supabase = createClient()
+  const realtimeReady = useRealtimeAuth()
 
   // Scroll to bottom when messages change or typing indicator appears
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isPartnerTyping])
 
-  // Broadcast typing status
-  const broadcastTyping = useCallback(() => {
-    supabase.channel(`typing:${pairing.id}`).send({
+  // Channel ref for typing broadcasts
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+
+  // Broadcast typing status using the ref'd channel
+  const handleTyping = useCallback(() => {
+    typingChannelRef.current?.send({
       type: 'broadcast',
       event: 'typing',
       payload: { user_id: profile.id }
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pairing.id, profile.id])
-
-  // Handle typing indicator with debounce
-  const handleTyping = useCallback(() => {
-    broadcastTyping()
-    
-    // Clear existing timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current)
-    }
-  }, [broadcastTyping])
+  }, [profile.id])
 
   // Mark messages as read when viewing
   useEffect(() => {
@@ -72,8 +66,12 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, pairing.id, profile.id])
 
-  // Subscribe to real-time messages, presence, and typing
+  // Subscribe to real-time messages, presence, and typing (gated on auth)
   useEffect(() => {
+    if (!realtimeReady) return
+
+    console.log('[v0] messages-view: subscribing to realtime for pairing:', pairing.id)
+    
     // Messages channel for new messages and updates
     const messagesChannel = supabase
       .channel(`messages:${pairing.id}`)
@@ -85,7 +83,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
           table: 'messages',
           filter: `pairing_id=eq.${pairing.id}`,
         },
-        async (payload) => {
+        async (payload: any) => {
+          console.log('[v0] messages INSERT received:', payload.new.id, 'sender:', payload.new.sender_id)
           // Only add if not our own message (we use optimistic update)
           if (payload.new.sender_id !== profile.id) {
             // Immediately clear typing indicator and cancel any pending timeout
@@ -133,7 +132,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
           table: 'messages',
           filter: `pairing_id=eq.${pairing.id}`,
         },
-        (payload) => {
+        (payload: any) => {
           // Update message read status
           setMessages((prev) =>
             prev.map((m) =>
@@ -142,7 +141,9 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
           )
         }
       )
-      .subscribe()
+      .subscribe((status: string) => {
+        console.log('[v0] messages channel:', status)
+      })
 
     // Presence channel for online status
     const presenceChannel = supabase
@@ -153,28 +154,26 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         const partnerOnline = allPresences.some((p) => p.user_id === partner.id)
         setIsPartnerOnline(partnerOnline)
       })
-      .on('presence', { event: 'join' }, ({ newPresences }) => {
-        const presences = newPresences as Array<{ user_id?: string }>
-        if (presences.some((p) => p.user_id === partner.id)) {
+      .on('presence', { event: 'join' }, ({ newPresences }: { newPresences: Array<{ user_id?: string }> }) => {
+        if (newPresences.some((p) => p.user_id === partner.id)) {
           setIsPartnerOnline(true)
         }
       })
-      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
-        const presences = leftPresences as Array<{ user_id?: string }>
-        if (presences.some((p) => p.user_id === partner.id)) {
+      .on('presence', { event: 'leave' }, ({ leftPresences }: { leftPresences: Array<{ user_id?: string }> }) => {
+        if (leftPresences.some((p) => p.user_id === partner.id)) {
           setIsPartnerOnline(false)
         }
       })
-      .subscribe(async (status) => {
+      .subscribe(async (status: string) => {
         if (status === 'SUBSCRIBED') {
           await presenceChannel.track({ user_id: profile.id, online_at: new Date().toISOString() })
         }
       })
 
-    // Typing channel
+    // Typing channel - unique name to avoid conflicts with quick-chat
     const typingChannel = supabase
-      .channel(`typing:${pairing.id}`)
-      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+      .channel(`msg-typing:${pairing.id}`)
+      .on('broadcast', { event: 'typing' }, ({ payload }: { payload: { user_id: string } }) => {
         if (payload.user_id === partner.id) {
           setIsPartnerTyping(true)
           // Clear typing indicator after 3 seconds
@@ -186,18 +185,49 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
           }, 3000)
         }
       })
-      .subscribe()
+      .subscribe((status: string) => {
+        console.log('[v0] msg-typing channel:', status)
+      })
+
+    typingChannelRef.current = typingChannel
 
     return () => {
       supabase.removeChannel(messagesChannel)
       supabase.removeChannel(presenceChannel)
       supabase.removeChannel(typingChannel)
+      typingChannelRef.current = null
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current)
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pairing.id, partner.id, profile.id])
+  }, [pairing.id, partner.id, profile.id, realtimeReady])
+
+  // Polling fallback: fetch latest messages every 10s in case realtime drops
+  useEffect(() => {
+    const poll = async () => {
+      const { data } = await supabase
+        .from('messages')
+        .select(`
+          *,
+          sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)
+        `)
+        .eq('pairing_id', pairing.id)
+        .order('created_at', { ascending: true })
+
+      if (data) {
+        setMessages(prev => {
+          // Only update if message count or latest message changed
+          if (prev.length === data.length && prev[prev.length - 1]?.id === data[data.length - 1]?.id) return prev
+          return data
+        })
+      }
+    }
+
+    const interval = setInterval(poll, 10000)
+    return () => clearInterval(interval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairing.id])
 
   const handleSend = async () => {
     if (!newMessage.trim()) return
@@ -249,13 +279,17 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
       prev.map((m) => m.id === tempId ? { ...optimisticMessage, id: data.id } : m)
     )
 
-    // Send notification to partner (don't await to keep UI responsive)
+    // Send notification to partner
     notifyNewMessage(
       partner.id,
       profile.full_name || 'Your partner',
       pairing.id,
       messageContent
-    )
+    ).then(result => {
+      console.log('[v0] notifyNewMessage result:', result)
+    }).catch(err => {
+      console.error('[v0] notifyNewMessage error:', err)
+    })
 
     setIsLoading(false)
   }
@@ -308,7 +342,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
           <div className="flex items-center gap-3">
             <div className="relative">
               <Avatar className="h-10 w-10">
-                <AvatarImage src={partner.avatar_url || undefined} />
+                {partner.avatar_url ? <AvatarImage src={partner.avatar_url} alt={partner.full_name!} /> : null}
                 <AvatarFallback className="bg-primary/10 text-primary">
                   {partnerInitials}
                 </AvatarFallback>
@@ -373,7 +407,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                           className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}
                         >
                           <Avatar className="h-8 w-8 shrink-0">
-                            <AvatarImage src={senderAvatar || undefined} />
+                            {senderAvatar ? <AvatarImage src={senderAvatar} alt="" /> : null}
                             <AvatarFallback className="text-xs bg-primary/10 text-primary">
                               {senderInitials}
                             </AvatarFallback>
@@ -409,7 +443,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
               {isPartnerTyping && (
                 <div className="flex items-end gap-3">
                   <Avatar className="h-8 w-8 shrink-0">
-                    <AvatarImage src={partner.avatar_url || undefined} />
+                    {partner.avatar_url ? <AvatarImage src={partner.avatar_url} alt={partner.full_name!} /> : null}
                     <AvatarFallback className="text-xs bg-primary/10 text-primary">
                       {partnerInitials}
                     </AvatarFallback>

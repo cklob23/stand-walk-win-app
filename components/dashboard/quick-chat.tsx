@@ -10,17 +10,21 @@ import { Send, Loader2, Check, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Message } from '@/lib/types'
 import { formatDistanceToNow } from 'date-fns'
+import { notifyNewMessage } from '@/lib/notifications'
+import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
 
 interface QuickChatProps {
   pairingId: string
   odUserId: string
+  odUserName: string
+  odUserAvatar?: string | null
   partnerId: string
   recentMessages: Message[]
   partnerName: string
   partnerAvatar?: string | null
 }
 
-export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, partnerName, partnerAvatar }: QuickChatProps) {
+export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partnerId, recentMessages, partnerName, partnerAvatar }: QuickChatProps) {
   const router = useRouter()
   const [messages, setMessages] = useState(recentMessages)
   const [message, setMessage] = useState('')
@@ -32,6 +36,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
   const userId = odUserId; // Declare userId variable
 
   const supabase = createClient()
+  const realtimeReady = useRealtimeAuth()
 
   // Scroll to bottom within chat container when messages change or typing indicator appears
   useEffect(() => {
@@ -41,23 +46,24 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
     }
   }, [messages, isPartnerTyping])
 
-  // Broadcast typing status
-  const broadcastTyping = useCallback(() => {
-    supabase.channel(`typing:${pairingId}`).send({
+  // Channel ref to send typing broadcasts from
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+
+  // Broadcast typing status using the ref'd channel
+  const handleTyping = useCallback(() => {
+    typingChannelRef.current?.send({
       type: 'broadcast',
       event: 'typing',
       payload: { user_id: odUserId }
     })
-  }, [supabase, pairingId, odUserId])
+  }, [odUserId])
 
-  // Handle typing indicator
-  const handleTyping = useCallback(() => {
-    broadcastTyping()
-  }, [broadcastTyping])
-
-  // Subscribe to real-time messages and typing
+  // Subscribe to real-time messages and typing (gated on auth being ready)
   useEffect(() => {
-    // Messages channel
+    if (!realtimeReady) return
+
+    console.log('[v0] quick-chat: subscribing to realtime for pairing:', pairingId)
+    // Messages channel - listens for DB changes
     const messagesChannel = supabase
       .channel(`quick-messages:${pairingId}`)
       .on(
@@ -68,9 +74,9 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
           table: 'messages',
           filter: `pairing_id=eq.${pairingId}`,
         },
-        async (payload) => {
+        async (payload: any) => {
+          console.log('[v0] quick-chat INSERT received:', payload.new.id, 'sender:', payload.new.sender_id)
           if (payload.new.sender_id !== odUserId) {
-            // Immediately clear typing indicator and cancel any pending timeout
             setIsPartnerTyping(false)
             if (typingTimeoutRef.current) {
               clearTimeout(typingTimeoutRef.current)
@@ -89,7 +95,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
             if (data) {
               setMessages((prev) => {
                 if (prev.some(m => m.id === data.id)) return prev
-                return [...prev, data].slice(-3) // Keep only last 3
+                return [...prev, data].slice(-3)
               })
             }
           }
@@ -103,7 +109,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
           table: 'messages',
           filter: `pairing_id=eq.${pairingId}`,
         },
-        (payload) => {
+        (payload: any) => {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === payload.new.id ? { ...m, is_read: payload.new.is_read } : m
@@ -111,12 +117,14 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
           )
         }
       )
-      .subscribe()
+      .subscribe((status: any) => {
+        console.log('[v0] quick-messages channel:', status)
+      })
 
-    // Typing channel
+    // Typing channel - uses broadcast (no DB, instant)
     const typingChannel = supabase
-      .channel(`typing:${pairingId}`)
-      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+      .channel(`quick-typing:${pairingId}`)
+      .on('broadcast', { event: 'typing' }, ({ payload }: { payload: { user_id: string } }) => {
         if (payload.user_id === partnerId) {
           setIsPartnerTyping(true)
           if (typingTimeoutRef.current) {
@@ -127,16 +135,52 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
           }, 3000)
         }
       })
-      .subscribe()
+      .subscribe((status: any) => {
+        console.log('[v0] quick-typing channel:', status)
+      })
+
+    typingChannelRef.current = typingChannel
 
     return () => {
       supabase.removeChannel(messagesChannel)
       supabase.removeChannel(typingChannel)
+      typingChannelRef.current = null
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current)
       }
     }
-  }, [pairingId, partnerId, odUserId, supabase])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairingId, partnerId, odUserId, realtimeReady])
+
+  // Polling fallback: fetch latest messages every 10s in case realtime drops
+  useEffect(() => {
+    const poll = async () => {
+      const { data } = await supabase
+        .from('messages')
+        .select(`
+          *,
+          sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)
+        `)
+        .eq('pairing_id', pairingId)
+        .order('created_at', { ascending: false })
+        .limit(3)
+
+      if (data) {
+        const sorted = data.reverse()
+        setMessages(prev => {
+          // Only update if the latest message is different
+          const prevLatest = prev[prev.length - 1]?.id
+          const newLatest = sorted[sorted.length - 1]?.id
+          if (prevLatest === newLatest && prev.length === sorted.length) return prev
+          return sorted
+        })
+      }
+    }
+
+    const interval = setInterval(poll, 10000)
+    return () => clearInterval(interval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairingId])
 
   const handleSend = async () => {
     if (!message.trim()) return
@@ -152,7 +196,11 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
       content: messageContent,
       created_at: new Date().toISOString(),
       is_read: false,
-      sender: null
+      sender: {
+        id: odUserId,
+        full_name: odUserName,
+        avatar_url: odUserAvatar || null,
+      }
     }
     
     setMessages((prev) => [...prev, optimisticMessage].slice(-3))
@@ -182,6 +230,18 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
       prev.map((m) => m.id === tempId ? { ...optimisticMessage, id: data.id } : m)
     )
 
+    // Send notification to partner
+    notifyNewMessage(
+      partnerId,
+      odUserName || 'Your partner',
+      pairingId,
+      messageContent
+    ).then(result => {
+      console.log('[v0] quick-chat notifyNewMessage result:', result)
+    }).catch(err => {
+      console.error('[v0] quick-chat notifyNewMessage error:', err)
+    })
+
     setIsLoading(false)
   }
 
@@ -196,7 +256,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
               ?.split(' ')
               .map((n) => n[0])
               .join('')
-              .toUpperCase() || 'L'
+              .toUpperCase() || '?'
 
             return (
               <div
@@ -204,7 +264,9 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
                 className={`flex gap-2 ${isOwn ? 'flex-row-reverse' : ''}`}
               >
                 <Avatar className="h-7 w-7 shrink-0">
-                  <AvatarImage src={msg.sender?.avatar_url || undefined} />
+                  {msg.sender?.avatar_url ? (
+                    <AvatarImage src={msg.sender.avatar_url} alt={msg.sender?.full_name || 'User'} />
+                  ) : null}
                   <AvatarFallback className="text-xs bg-primary/10 text-primary">
                     {senderInitials}
                   </AvatarFallback>
@@ -238,9 +300,11 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
           {isPartnerTyping && (
             <div className="flex items-end gap-2">
               <Avatar className="h-7 w-7 shrink-0">
-                <AvatarImage src={partnerAvatar || undefined} />
+                {partnerAvatar ? (
+                  <AvatarImage src={partnerAvatar} alt={partnerName} />
+                ) : null}
                 <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                  {partnerName?.split(' ').map((n) => n[0]).join('').toUpperCase() || 'L'}
+                  {partnerName?.split(' ').map((n) => n[0]).join('').toUpperCase() || '?'}
                 </AvatarFallback>
               </Avatar>
               <div className="inline-flex items-center rounded-lg bg-muted px-3 h-8">

@@ -18,6 +18,7 @@ import { toast } from 'sonner'
 import type { Notification } from '@/lib/types'
 import { formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
 
 interface NotificationsViewProps {
   userId: string
@@ -53,9 +54,12 @@ export function NotificationsView({ userId, notifications: initialNotifications 
   const [notifications, setNotifications] = useState(initialNotifications)
 
   const supabase = createClient()
+  const realtimeReady = useRealtimeAuth()
 
-  // Real-time subscription for new notifications
+  // Real-time subscription for new notifications (gated on auth)
   useEffect(() => {
+    if (!realtimeReady) return
+
     const channel = supabase
       .channel('page-notifications')
       .on(
@@ -66,7 +70,7 @@ export function NotificationsView({ userId, notifications: initialNotifications 
           table: 'notifications',
           filter: `user_id=eq.${userId}`,
         },
-        (payload) => {
+        (payload: any) => {
           const newNotif = payload.new as Notification
           setNotifications(prev => {
             if (prev.some(n => n.id === newNotif.id)) return prev
@@ -81,7 +85,7 @@ export function NotificationsView({ userId, notifications: initialNotifications 
           schema: 'public',
           table: 'notifications',
         },
-        (payload) => {
+        (payload: any) => {
           setNotifications(prev => prev.filter(n => n.id !== payload.old.id))
         }
       )
@@ -91,7 +95,7 @@ export function NotificationsView({ userId, notifications: initialNotifications 
       supabase.removeChannel(channel)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId])
+  }, [userId, realtimeReady])
 
   const handleMarkAsRead = async (id: string) => {
     const { error } = await supabase
