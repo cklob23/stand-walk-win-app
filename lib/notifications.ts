@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient as createClient } from '@/lib/supabase/server'
 
 type NotificationType = 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing'
 
@@ -21,9 +21,7 @@ export async function createNotification({
 }: CreateNotificationParams) {
   const supabase = await createClient()
 
-  console.log('[v0] createNotification called:', { userId, type, title })
-  
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('notifications')
     .insert({
       user_id: userId,
@@ -33,14 +31,12 @@ export async function createNotification({
       message,
       read: false,
     })
-    .select()
 
   if (error) {
-    console.log('[v0] createNotification ERROR:', error)
+    console.error('Failed to create notification:', error)
     return { error: error.message }
   }
 
-  console.log('[v0] createNotification SUCCESS:', data)
   return { success: true }
 }
 
@@ -167,7 +163,6 @@ export async function advanceToNextWeek(
   currentWeek: number,
   learnerName: string,
   leaderId: string,
-  learnerId: string,
   weeklyContent: { week_number: number; title: string }[]
 ) {
   const supabase = await createClient()
@@ -193,7 +188,7 @@ export async function advanceToNextWeek(
   }
   
   // Notify both parties
-  await notifyWeekUnlocked(learnerId, pairingId, nextWeek, nextWeekContent.title)
+  await notifyWeekUnlocked(leaderId, pairingId, nextWeek, nextWeekContent.title)
   await notifyWeekUnlocked(leaderId, pairingId, nextWeek, nextWeekContent.title)
   
   return { success: true, newWeek: nextWeek }

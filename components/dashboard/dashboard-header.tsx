@@ -88,7 +88,6 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
           filter: `user_id=eq.${profile.id}`,
         },
         (payload) => {
-          console.log('[v0] New notification received:', payload.new)
           const newNotif = payload.new as Notification
           setNotifications(prev => {
             if (prev.some(n => n.id === newNotif.id)) return prev
@@ -130,9 +129,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
           )
         }
       )
-      .subscribe((status) => {
-        console.log('[v0] header-notifications channel status:', status)
-      })
+      .subscribe()
 
     return () => {
       supabase.removeChannel(channel)

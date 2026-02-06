@@ -44,13 +44,13 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
       event: 'typing',
       payload: { user_id: profile.id }
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pairing.id, profile.id])
 
   // Handle typing indicator with debounce
   const handleTyping = useCallback(() => {
     broadcastTyping()
-
+    
     // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current)
@@ -69,7 +69,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         .eq('is_read', false)
     }
     markAsRead()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, pairing.id, profile.id])
 
   // Subscribe to real-time messages, presence, and typing
@@ -196,7 +196,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         clearTimeout(typingTimeoutRef.current)
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pairing.id, partner.id, profile.id])
 
   const handleSend = async () => {
@@ -204,7 +204,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
 
     const messageContent = newMessage.trim()
     const tempId = `temp-${Date.now()}`
-
+    
     // Optimistic update - add message immediately
     const optimisticMessage: Message = {
       id: tempId,
@@ -219,7 +219,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         avatar_url: profile.avatar_url
       }
     }
-
+    
     setMessages((prev) => [...prev, optimisticMessage])
     setNewMessage('')
     setIsPartnerTyping(false)
@@ -245,18 +245,17 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
     }
 
     // Replace temp message with real one
-    setMessages((prev) =>
+    setMessages((prev) => 
       prev.map((m) => m.id === tempId ? { ...optimisticMessage, id: data.id } : m)
     )
 
-    // Send notification to partner
-    console.log('[v0] Sending notification to partner:', partner.id)
+    // Send notification to partner (don't await to keep UI responsive)
     notifyNewMessage(
       partner.id,
       profile.full_name || 'Your partner',
       pairing.id,
       messageContent
-    ).then(result => console.log('[v0] notifyNewMessage result:', result))
+    )
 
     setIsLoading(false)
   }
@@ -283,7 +282,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
   // Group messages by date
   const groupedMessages: { date: string; messages: Message[] }[] = []
   let currentDate = ''
-
+  
   messages.forEach((msg) => {
     const msgDate = format(new Date(msg.created_at), 'yyyy-MM-dd')
     if (msgDate !== currentDate) {
@@ -381,10 +380,11 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                           </Avatar>
                           <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${isOwn ? 'text-right' : 'text-left'}`}>
                             <div
-                              className={`inline-block rounded-2xl px-4 py-2 ${isOwn
+                              className={`inline-block rounded-2xl px-4 py-2 ${
+                                isOwn
                                   ? 'bg-primary text-primary-foreground rounded-tr-sm'
                                   : 'bg-muted text-foreground rounded-tl-sm'
-                                }`}
+                              }`}
                             >
                               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                             </div>
@@ -448,8 +448,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                 }
               }}
             />
-            <Button
-              onClick={handleSend}
+            <Button 
+              onClick={handleSend} 
               disabled={isLoading || !newMessage.trim()}
               size="icon"
               className="h-auto aspect-square"
