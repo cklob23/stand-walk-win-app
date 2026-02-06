@@ -11,7 +11,7 @@ export default function SignupPage() {
             <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-primary">
               <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-primary-foreground" />
             </div>
-            <span className="text-lg sm:text-xl font-semibold text-foreground">Stand Walk Win</span>
+            <span className="text-lg sm:text-xl font-semibold text-foreground">Stand Walk Run</span>
           </Link>
           <h1 className="text-xl sm:text-2xl font-bold text-foreground">Begin your journey</h1>
           <p className="mt-2 text-sm sm:text-base text-muted-foreground">

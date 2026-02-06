@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import type { Profile, Pairing, Message } from '@/lib/types'
 import { format, isToday, isYesterday } from 'date-fns'
 import { notifyNewMessage } from '@/lib/notifications'
+import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
 
 interface MessagesViewProps {
   profile: Profile
@@ -26,6 +27,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
   const [isPartnerOnline, setIsPartnerOnline] = useState(false)
   const [isPartnerTyping, setIsPartnerTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const { sendNotification } = useBrowserNotifications()
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const supabase = createClient()
@@ -42,7 +44,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
       event: 'typing',
       payload: { user_id: profile.id }
     })
-  }, [supabase, pairing.id, profile.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairing.id, profile.id])
 
   // Handle typing indicator with debounce
   const handleTyping = useCallback(() => {
@@ -66,7 +69,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         .eq('is_read', false)
     }
     markAsRead()
-  }, [messages, pairing.id, profile.id, supabase])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, pairing.id, profile.id])
 
   // Subscribe to real-time messages, presence, and typing
   useEffect(() => {
@@ -84,7 +88,6 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         async (payload) => {
           // Only add if not our own message (we use optimistic update)
           if (payload.new.sender_id !== profile.id) {
-
             // Immediately clear typing indicator and cancel any pending timeout
             setIsPartnerTyping(false)
             if (typingTimeoutRef.current) {
@@ -112,6 +115,12 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                 .from('messages')
                 .update({ is_read: true })
                 .eq('id', data.id)
+
+              // Send browser push notification if tab is in background
+              sendNotification(`New message from ${partner.full_name}`, {
+                body: data.content?.slice(0, 100) || 'Sent you a message',
+                tag: `msg-${data.id}`,
+              })
             }
           }
         }
@@ -187,7 +196,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         clearTimeout(typingTimeoutRef.current)
       }
     }
-  }, [pairing.id, partner.id, profile.id, supabase])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairing.id, partner.id, profile.id])
 
   const handleSend = async () => {
     if (!newMessage.trim()) return
@@ -239,13 +249,14 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
       prev.map((m) => m.id === tempId ? { ...optimisticMessage, id: data.id } : m)
     )
 
-    // Send notification to partner (don't await to keep UI responsive)
+    // Send notification to partner
+    console.log('[v0] Sending notification to partner:', partner.id)
     notifyNewMessage(
       partner.id,
       profile.full_name || 'Your partner',
       pairing.id,
       messageContent
-    )
+    ).then(result => console.log('[v0] notifyNewMessage result:', result))
 
     setIsLoading(false)
   }
@@ -371,8 +382,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                           <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${isOwn ? 'text-right' : 'text-left'}`}>
                             <div
                               className={`inline-block rounded-2xl px-4 py-2 ${isOwn
-                                ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                                : 'bg-muted text-foreground rounded-tl-sm'
+                                  ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                                  : 'bg-muted text-foreground rounded-tl-sm'
                                 }`}
                             >
                               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -394,7 +405,6 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                   </div>
                 </div>
               ))}
-
               {/* Typing Indicator */}
               {isPartnerTyping && (
                 <div className="flex items-end gap-3">

@@ -13,7 +13,7 @@ const _merriweather = Merriweather({
 });
 
 export const metadata: Metadata = {
-  title: 'Stand Walk Win - Grow Together in Faith',
+  title: 'Stand Walk Run - Grow Together in Faith',
   description: 'A 6-week discipleship journey connecting Leaders and Learners for spiritual growth and mentorship.',
   generator: 'Developed by Caleb Klobe',
 

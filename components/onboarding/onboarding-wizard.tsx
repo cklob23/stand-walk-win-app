@@ -211,7 +211,7 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
                 </div>
               </div>
               <div className="space-y-2">
-                <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Welcome to Stand Walk Win</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Welcome to Stand Walk Run</h1>
                 <p className="text-base sm:text-lg text-muted-foreground max-w-md mx-auto px-4">
                   Embark on a transformative 6-week journey of spiritual growth and mentorship.
                 </p>

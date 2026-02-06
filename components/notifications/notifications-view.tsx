@@ -1,232 +1,200 @@
-'use client'
+'use server'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import {
-  Bell,
-  MessageSquare,
-  CheckCircle2,
-  Users,
-  BookOpen,
-  Trash2,
-  Check
-} from 'lucide-react'
-import { toast } from 'sonner'
-import type { Notification } from '@/lib/types'
-import { formatDistanceToNow } from 'date-fns'
-import { cn } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/server'
 
-interface NotificationsViewProps {
+type NotificationType = 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing'
+
+interface CreateNotificationParams {
   userId: string
-  notifications: Notification[]
+  pairingId?: string
+  type: NotificationType
+  title: string
+  message: string
 }
 
-const notificationIcons: Record<string, typeof Bell> = {
-  message: MessageSquare,
-  assignment: BookOpen,
-  week_complete: CheckCircle2,
-  encouragement: Bell,
-  covenant: BookOpen,
-  pairing: Users,
+export async function createNotification({
+  userId,
+  pairingId,
+  type,
+  title,
+  message,
+}: CreateNotificationParams) {
+  const supabase = await createClient()
+
+  console.log('[v0] createNotification called:', { userId, type, title })
+  
+  const { data, error } = await supabase
+    .from('notifications')
+    .insert({
+      user_id: userId,
+      pairing_id: pairingId || null,
+      type,
+      title,
+      message,
+      read: false,
+    })
+    .select()
+
+  if (error) {
+    console.log('[v0] createNotification ERROR:', error)
+    return { error: error.message }
+  }
+
+  console.log('[v0] createNotification SUCCESS:', data)
+  return { success: true }
 }
 
-function getNotificationHref(notification: Notification): string {
-  switch (notification.type) {
-    case 'message':
-      return '/dashboard/messages'
-    case 'covenant':
-      return '/dashboard/covenant'
-    case 'assignment':
-    case 'week_complete':
-    case 'pairing':
-    case 'encouragement':
-    default:
-      return '/dashboard'
-  }
+export async function notifyNewMessage(
+  recipientId: string,
+  senderName: string,
+  pairingId: string,
+  messagePreview: string
+) {
+  return createNotification({
+    userId: recipientId,
+    pairingId,
+    type: 'message',
+    title: `New message from ${senderName}`,
+    message: messagePreview.length > 100 ? messagePreview.slice(0, 100) + '...' : messagePreview,
+  })
 }
 
-export function NotificationsView({ userId, notifications: initialNotifications }: NotificationsViewProps) {
-  const router = useRouter()
-  const [notifications, setNotifications] = useState(initialNotifications)
+export async function notifyAssignmentCompleted(
+  leaderId: string,
+  learnerName: string,
+  pairingId: string,
+  assignmentTitle: string,
+  weekNumber: number
+) {
+  return createNotification({
+    userId: leaderId,
+    pairingId,
+    type: 'assignment',
+    title: `${learnerName} completed an assignment`,
+    message: `Week ${weekNumber}: "${assignmentTitle}" has been marked as complete.`,
+  })
+}
 
-  const supabase = createClient()
+export async function notifyWeekCompleted(
+  partnerId: string,
+  completedByName: string,
+  pairingId: string,
+  weekNumber: number,
+  weekTitle: string
+) {
+  return createNotification({
+    userId: partnerId,
+    pairingId,
+    type: 'week_complete',
+    title: `Week ${weekNumber} completed!`,
+    message: `${completedByName} has completed all assignments for "${weekTitle}".`,
+  })
+}
 
-  const handleMarkAsRead = async (id: string) => {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('id', id)
+export async function notifyCovenantSigned(
+  partnerId: string,
+  signerName: string,
+  pairingId: string
+) {
+  return createNotification({
+    userId: partnerId,
+    pairingId,
+    type: 'covenant',
+    title: `${signerName} signed the covenant`,
+    message: 'Your partner has signed the discipleship covenant. Sign yours to begin the journey!',
+  })
+}
 
-    if (error) {
-      toast.error('Failed to mark as read')
-      return
-    }
+export async function notifyCovenantComplete(
+  userId: string,
+  partnerName: string,
+  pairingId: string
+) {
+  return createNotification({
+    userId,
+    pairingId,
+    type: 'covenant',
+    title: 'Covenant Complete!',
+    message: `Both you and ${partnerName} have signed. Your discipleship journey begins now!`,
+  })
+}
 
-    setNotifications(prev => 
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
-    )
+export async function notifyPairingCreated(
+  learnerId: string,
+  leaderName: string,
+  pairingId: string
+) {
+  return createNotification({
+    userId: learnerId,
+    pairingId,
+    type: 'pairing',
+    title: 'You have been paired!',
+    message: `${leaderName} has accepted you as their Learner. Sign the covenant to begin your journey.`,
+  })
+}
+
+export async function notifyLearnerJoined(
+  leaderId: string,
+  learnerName: string,
+  pairingId: string
+) {
+  return createNotification({
+    userId: leaderId,
+    pairingId,
+    type: 'pairing',
+    title: `${learnerName} joined your journey`,
+    message: `${learnerName} has used your invite code and is ready to begin. Sign the covenant together to start.`,
+  })
+}
+
+export async function notifyWeekUnlocked(
+  userId: string,
+  pairingId: string,
+  newWeekNumber: number,
+  newWeekTitle: string
+) {
+  return createNotification({
+    userId,
+    pairingId,
+    type: 'week_complete',
+    title: `Week ${newWeekNumber} Unlocked!`,
+    message: `Congratulations! You can now begin "${newWeekTitle}".`,
+  })
+}
+
+export async function advanceToNextWeek(
+  pairingId: string,
+  currentWeek: number,
+  learnerName: string,
+  leaderId: string,
+  learnerId: string,
+  weeklyContent: { week_number: number; title: string }[]
+) {
+  const supabase = await createClient()
+  
+  const nextWeek = currentWeek + 1
+  const nextWeekContent = weeklyContent.find(w => w.week_number === nextWeek)
+  
+  // Only advance if there's a next week (max 6 weeks)
+  if (nextWeek > 6 || !nextWeekContent) {
+    // Journey complete!
+    return { success: true, journeyComplete: true }
   }
-
-  const handleMarkAllAsRead = async () => {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('user_id', userId)
-      .eq('read', false)
-
-    if (error) {
-      toast.error('Failed to mark all as read')
-      return
-    }
-
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-    toast.success('All notifications marked as read')
-    router.refresh()
+  
+  // Update the pairing's current week
+  const { error } = await supabase
+    .from('pairings')
+    .update({ current_week: nextWeek })
+    .eq('id', pairingId)
+  
+  if (error) {
+    console.error('Failed to advance week:', error)
+    return { error: error.message }
   }
-
-  const handleNotificationClick = async (notification: Notification) => {
-    if (!notification.read) {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ read: true })
-        .eq('id', notification.id)
-
-      if (!error) {
-        setNotifications(prev =>
-          prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
-        )
-      }
-    }
-    router.push(getNotificationHref(notification))
-  }
-
-  const handleDelete = async (id: string) => {
-    const { error } = await supabase
-      .from('notifications')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      toast.error('Failed to delete notification')
-      return
-    }
-
-    setNotifications(prev => prev.filter(n => n.id !== id))
-    toast.success('Notification deleted')
-  }
-
-  const unreadCount = notifications.filter(n => !n.read).length
-
-  return (
-    <div className="mx-auto max-w-2xl px-4 py-4 sm:py-6">
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                <Bell className="h-5 w-5 text-primary" />
-                Notifications
-              </CardTitle>
-              <CardDescription>
-                {unreadCount > 0 
-                  ? `You have ${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}`
-                  : 'All caught up!'}
-              </CardDescription>
-            </div>
-            {unreadCount > 0 && (
-              <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
-                <Check className="h-4 w-4 mr-2" />
-                Mark all read
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {notifications.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mx-auto mb-4">
-                <Bell className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="font-medium text-foreground">No notifications</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                {"You're"} all caught up! Check back later.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {notifications.map((notification) => {
-                const Icon = notificationIcons[notification.type] || Bell
-
-                return (
-                  <div
-                    key={notification.id}
-                    onClick={() => handleNotificationClick(notification)}
-                    className={cn(
-                      "flex items-start gap-4 p-4 rounded-lg border transition-colors w-full text-left cursor-pointer",
-                      !notification.read 
-                        ? "bg-primary/5 border-primary/20 hover:bg-primary/10" 
-                        : "bg-card hover:bg-muted/50"
-                    )}
-                  >
-                    <div className={cn(
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                      !notification.read
-                        ? "bg-primary/10 text-primary"
-                        : "bg-muted text-muted-foreground"
-                    )}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h4 className={cn(
-                            "font-medium text-foreground",
-                            !notification.read && "font-semibold"
-                          )}>
-                            {notification.title}
-                          </h4>
-                          <p className="text-sm text-muted-foreground mt-0.5">
-                            {notification.message}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {!notification.read && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={(e) => { e.stopPropagation(); handleMarkAsRead(notification.id) }}
-                            >
-                              <Check className="h-4 w-4" />
-                              <span className="sr-only">Mark as read</span>
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            onClick={(e) => { e.stopPropagation(); handleDelete(notification.id) }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Delete</span>
-                          </Button>
-                        </div>
-                      </div>
-                      
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  )
+  
+  // Notify both parties
+  await notifyWeekUnlocked(learnerId, pairingId, nextWeek, nextWeekContent.title)
+  await notifyWeekUnlocked(leaderId, pairingId, nextWeek, nextWeekContent.title)
+  
+  return { success: true, newWeek: nextWeek }
 }

@@ -21,11 +21,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { BookOpen, Bell, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check } from 'lucide-react'
+import { Bell, BookOpen, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check } from 'lucide-react'
 import type { Notification, Profile } from '@/lib/types'
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
+import { toast } from 'sonner'
 
 interface DashboardHeaderProps {
   profile: Profile
@@ -71,6 +73,72 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const [notifications, setNotifications] = useState(recentNotifications)
   const [unreadCount, setUnreadCount] = useState(notificationCount)
   const supabase = createClient()
+  const { sendNotification, requestPermission, permission } = useBrowserNotifications()
+
+  // Real-time subscription for new notifications
+  useEffect(() => {
+    const channel = supabase
+      .channel('header-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${profile.id}`,
+        },
+        (payload) => {
+          console.log('[v0] New notification received:', payload.new)
+          const newNotif = payload.new as Notification
+          setNotifications(prev => {
+            if (prev.some(n => n.id === newNotif.id)) return prev
+            return [newNotif, ...prev].slice(0, 5)
+          })
+          setUnreadCount(prev => prev + 1)
+
+          // In-app toast notification (always shown)
+          toast(newNotif.title, {
+            description: newNotif.message,
+            action: {
+              label: 'View',
+              onClick: () => router.push(getNotificationHref(newNotif)),
+            },
+          })
+
+          // Browser push notification (only when tab is in background)
+          sendNotification(newNotif.title, {
+            body: newNotif.message,
+            tag: `notif-${newNotif.id}`,
+            onClick: () => {
+              router.push(getNotificationHref(newNotif))
+            },
+          })
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${profile.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as Notification
+          setNotifications(prev =>
+            prev.map(n => n.id === updated.id ? updated : n)
+          )
+        }
+      )
+      .subscribe((status) => {
+        console.log('[v0] header-notifications channel status:', status)
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.id])
 
   const handleMarkAsRead = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -132,7 +200,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
             <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg bg-primary">
               <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
             </div>
-            <span className="hidden sm:block font-semibold text-foreground text-sm sm:text-base">Stand Walk Win</span>
+            <span className="hidden sm:block font-semibold text-foreground text-sm sm:text-base">Stand Walk Run</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -143,11 +211,10 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    isActive
+                  className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive
                       ? 'bg-primary/10 text-primary'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                  }`}
+                    }`}
                 >
                   <item.icon className="h-4 w-4" />
                   {item.label}
@@ -184,6 +251,19 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                     </button>
                   )}
                 </div>
+                {permission === 'default' && (
+                  <div className="px-4 py-2.5 border-b bg-muted/50 flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">Enable push notifications</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs bg-transparent"
+                      onClick={() => requestPermission()}
+                    >
+                      Enable
+                    </Button>
+                  </div>
+                )}
                 <div className="max-h-80 overflow-y-auto">
                   {notifications.length === 0 ? (
                     <div className="py-8 text-center">
@@ -319,11 +399,10 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                     key={item.href}
                     href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive
                         ? 'bg-primary/10 text-primary'
                         : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                    }`}
+                      }`}
                   >
                     <item.icon className="h-4 w-4" />
                     {item.label}

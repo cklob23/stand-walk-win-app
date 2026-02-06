@@ -196,7 +196,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
               ?.split(' ')
               .map((n) => n[0])
               .join('')
-              .toUpperCase() || '?'
+              .toUpperCase() || 'L'
 
             return (
               <div
@@ -240,7 +240,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
               <Avatar className="h-7 w-7 shrink-0">
                 <AvatarImage src={partnerAvatar || undefined} />
                 <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                  {partnerName?.split(' ').map((n) => n[0]).join('').toUpperCase() || '?'}
+                  {partnerName?.split(' ').map((n) => n[0]).join('').toUpperCase() || 'L'}
                 </AvatarFallback>
               </Avatar>
               <div className="inline-flex items-center rounded-lg bg-muted px-3 h-8">
