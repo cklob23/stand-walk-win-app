@@ -27,9 +27,15 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
   const [isLoading, setIsLoading] = useState(false)
   const [isPartnerTyping, setIsPartnerTyping] = useState(false)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const chatEndRef = useRef<HTMLDivElement>(null)
   const userId = odUserId; // Declare userId variable
 
   const supabase = createClient()
+
+  // Scroll to bottom when messages change or typing indicator appears
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, isPartnerTyping])
 
   // Broadcast typing status
   const broadcastTyping = useCallback(() => {
@@ -60,7 +66,6 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
         },
         async (payload) => {
           if (payload.new.sender_id !== odUserId) {
-
             // Immediately clear typing indicator and cancel any pending timeout
             setIsPartnerTyping(false)
             if (typingTimeoutRef.current) {
@@ -134,7 +139,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
 
     const messageContent = message.trim()
     const tempId = `temp-${Date.now()}`
-
+    
     // Optimistic update
     const optimisticMessage: Message = {
       id: tempId,
@@ -145,7 +150,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
       is_read: false,
       sender: null
     }
-
+    
     setMessages((prev) => [...prev, optimisticMessage].slice(-3))
     setMessage('')
     setIsLoading(true)
@@ -169,7 +174,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
     }
 
     // Replace temp message with real one
-    setMessages((prev) =>
+    setMessages((prev) => 
       prev.map((m) => m.id === tempId ? { ...optimisticMessage, id: data.id } : m)
     )
 
@@ -202,10 +207,11 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
                 </Avatar>
                 <div className={`flex-1 min-w-0 ${isOwn ? 'text-right' : 'text-left'}`}>
                   <div
-                    className={`inline-block rounded-lg px-3 py-2 text-sm max-w-full ${isOwn
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-foreground'
-                      }`}
+                    className={`inline-block rounded-lg px-3 py-2 text-sm max-w-full ${
+                      isOwn
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-foreground'
+                    }`}
                   >
                     <p className="break-words">{msg.content}</p>
                   </div>
@@ -223,7 +229,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
               </div>
             )
           })}
-
+          
           {/* Typing Indicator */}
           {isPartnerTyping && (
             <div className="flex items-end gap-2">
@@ -242,6 +248,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
               </div>
             </div>
           )}
+          <div ref={chatEndRef} />
         </div>
       )}
 
@@ -272,8 +279,8 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
             }
           }}
         />
-        <Button
-          onClick={handleSend}
+        <Button 
+          onClick={handleSend} 
           disabled={isLoading || !message.trim()}
           size="icon"
           className="h-auto"
