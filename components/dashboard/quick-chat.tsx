@@ -27,14 +27,18 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
   const [isLoading, setIsLoading] = useState(false)
   const [isPartnerTyping, setIsPartnerTyping] = useState(false)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const userId = odUserId; // Declare userId variable
 
   const supabase = createClient()
 
-  // Scroll to bottom when messages change or typing indicator appears
+  // Scroll to bottom within chat container when messages change or typing indicator appears
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = chatContainerRef.current
+    if (el) {
+      el.scrollTop = el.scrollHeight
+    }
   }, [messages, isPartnerTyping])
 
   // Broadcast typing status
@@ -185,7 +189,7 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
     <div className="space-y-4">
       {/* Recent Messages Preview */}
       {messages.length > 0 && (
-        <div className="space-y-3 max-h-48 overflow-y-auto">
+        <div ref={chatContainerRef} className="space-y-3 max-h-48 overflow-y-auto">
           {messages.slice(-3).map((msg) => {
             const isOwn = msg.sender_id === odUserId
             const senderInitials = msg.sender?.full_name
@@ -248,7 +252,6 @@ export function QuickChat({ pairingId, odUserId, partnerId, recentMessages, part
               </div>
             </div>
           )}
-          <div ref={chatEndRef} />
         </div>
       )}
 
