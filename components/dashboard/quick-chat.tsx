@@ -117,7 +117,7 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
           )
         }
       )
-      .subscribe((status: any) => {
+      .subscribe((status: string) => {
         console.log('[v0] quick-messages channel:', status)
       })
 
@@ -135,7 +135,7 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
           }, 3000)
         }
       })
-      .subscribe((status: any) => {
+      .subscribe((status: string) => {
         console.log('[v0] quick-typing channel:', status)
       })
 
@@ -168,10 +168,10 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
       if (data) {
         const sorted = data.reverse()
         setMessages(prev => {
-          // Only update if the latest message is different
-          const prevLatest = prev[prev.length - 1]?.id
-          const newLatest = sorted[sorted.length - 1]?.id
-          if (prevLatest === newLatest && prev.length === sorted.length) return prev
+          // Check if anything changed (new messages or read status updates)
+          const hasChanges = prev.length !== sorted.length ||
+            prev.some((m, i) => m.id !== sorted[i]?.id || m.is_read !== sorted[i]?.is_read)
+          if (!hasChanges) return prev
           return sorted
         })
       }
