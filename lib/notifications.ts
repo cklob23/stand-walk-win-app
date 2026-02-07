@@ -1,6 +1,16 @@
 'use server'
 
 import { createAdminClient as createClient } from '@/lib/supabase/server'
+import webpush from 'web-push'
+
+// Configure VAPID for Web Push
+if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    'mailto:support@gatekeeperio.com',
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  )
+}
 
 type NotificationType = 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing'
 
@@ -12,6 +22,49 @@ interface CreateNotificationParams {
   message: string
 }
 
+function getNotificationUrl(type: NotificationType, pairingId?: string): string {
+  if (type === 'message' && pairingId) return `/dashboard/messages/${pairingId}`
+  return '/dashboard'
+}
+
+async function sendWebPush(userId: string, title: string, body: string, url: string, tag: string) {
+  try {
+    if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return
+
+    const supabase = createClient()
+
+    const { data: subscriptions } = await supabase
+      .from('push_subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+
+    if (!subscriptions?.length) return
+
+    const payload = JSON.stringify({ title, body, url, tag })
+
+    await Promise.allSettled(
+      subscriptions.map(async (sub: { id: string; endpoint: string; p256dh: string; auth: string }) => {
+        try {
+          await webpush.sendNotification(
+            {
+              endpoint: sub.endpoint,
+              keys: { p256dh: sub.p256dh, auth: sub.auth },
+            },
+            payload
+          )
+        } catch (err: unknown) {
+          const pushError = err as { statusCode?: number }
+          if (pushError.statusCode === 410 || pushError.statusCode === 404) {
+            await supabase.from('push_subscriptions').delete().eq('id', sub.id)
+          }
+        }
+      })
+    )
+  } catch {
+    // Don't let push errors prevent notification creation
+  }
+}
+
 export async function createNotification({
   userId,
   pairingId,
@@ -19,9 +72,9 @@ export async function createNotification({
   title,
   message,
 }: CreateNotificationParams) {
-  const supabase = await createClient()
+  const supabase = createClient()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('notifications')
     .insert({
       user_id: userId,
@@ -31,11 +84,17 @@ export async function createNotification({
       message,
       read: false,
     })
+    .select()
+    .single()
 
   if (error) {
-    console.error('Failed to create notification:', error)
+    console.error('createNotification error:', error)
     return { error: error.message }
   }
+
+  // Send Web Push notification (fire-and-forget, don't block)
+  const url = getNotificationUrl(type, pairingId || undefined)
+  sendWebPush(userId, title, message, url, `notif-${data?.id}`)
 
   return { success: true }
 }
@@ -165,7 +224,7 @@ export async function advanceToNextWeek(
   leaderId: string,
   weeklyContent: { week_number: number; title: string }[]
 ) {
-  const supabase = await createClient()
+  const supabase = createClient()
   
   const nextWeek = currentWeek + 1
   const nextWeekContent = weeklyContent.find(w => w.week_number === nextWeek)

@@ -70,8 +70,6 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
   useEffect(() => {
     if (!realtimeReady) return
 
-    console.log('[v0] messages-view: subscribing to realtime for pairing:', pairing.id)
-    
     // Messages channel for new messages and updates
     const messagesChannel = supabase
       .channel(`messages:${pairing.id}`)
@@ -84,7 +82,6 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
           filter: `pairing_id=eq.${pairing.id}`,
         },
         async (payload: any) => {
-          console.log('[v0] messages INSERT received:', payload.new.id, 'sender:', payload.new.sender_id)
           // Only add if not our own message (we use optimistic update)
           if (payload.new.sender_id !== profile.id) {
             // Immediately clear typing indicator and cancel any pending timeout
@@ -141,9 +138,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
           )
         }
       )
-      .subscribe((status: string) => {
-        console.log('[v0] messages channel:', status)
-      })
+      .subscribe()
 
     // Presence channel for online status
     const presenceChannel = supabase
@@ -185,9 +180,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
           }, 3000)
         }
       })
-      .subscribe((status: string) => {
-        console.log('[v0] msg-typing channel:', status)
-      })
+      .subscribe()
 
     typingChannelRef.current = typingChannel
 
@@ -217,8 +210,10 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
 
       if (data) {
         setMessages(prev => {
-          // Only update if message count or latest message changed
-          if (prev.length === data.length && prev[prev.length - 1]?.id === data[data.length - 1]?.id) return prev
+          // Check if anything changed (new messages or read status updates)
+          const hasChanges = prev.length !== data.length ||
+            prev.some((m, i) => m.id !== data[i]?.id || m.is_read !== data[i]?.is_read)
+          if (!hasChanges) return prev
           return data
         })
       }
@@ -285,10 +280,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
       profile.full_name || 'Your partner',
       pairing.id,
       messageContent
-    ).then(result => {
-      console.log('[v0] notifyNewMessage result:', result)
-    }).catch(err => {
-      console.error('[v0] notifyNewMessage error:', err)
+    ).catch(() => {
+      // Push notification failed silently
     })
 
     setIsLoading(false)

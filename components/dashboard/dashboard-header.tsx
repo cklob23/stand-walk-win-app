@@ -22,6 +22,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Bell, BookOpen, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check } from 'lucide-react'
+import { AppLogo } from '@/components/app-logo'
 import type { Notification, Profile } from '@/lib/types'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { formatDistanceToNow } from 'date-fns'
@@ -74,7 +75,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const [notifications, setNotifications] = useState(recentNotifications)
   const [unreadCount, setUnreadCount] = useState(notificationCount)
   const supabase = createClient()
-  const { sendNotification, requestPermission, permission } = useBrowserNotifications()
+  const { sendNotification, requestPermission, permission, isSubscribed, isSupported } = useBrowserNotifications()
   const realtimeReady = useRealtimeAuth()
 
   // Track known notification IDs to detect new ones from polling
@@ -110,7 +111,6 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   useEffect(() => {
     if (!realtimeReady) return
 
-    console.log('[v0] header: subscribing to notifications realtime for user:', profile.id)
     const channel = supabase
       .channel('header-notifications')
       .on(
@@ -122,7 +122,6 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
           filter: `user_id=eq.${profile.id}`,
         },
         (payload: any) => {
-          console.log('[v0] header: notification INSERT received:', payload.new)
           const newNotif = payload.new as Notification
           knownNotifIds.current.add(newNotif.id)
           handleNewNotification(newNotif)
@@ -143,9 +142,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
           )
         }
       )
-      .subscribe((status: any) => {
-        console.log('[v0] header-notifications channel:', status)
-      })
+      .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
@@ -294,9 +291,9 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                     </button>
                   )}
                 </div>
-                {permission === 'default' && (
+                {isSupported && permission !== 'granted' && permission !== 'denied' && (
                   <div className="px-4 py-2.5 border-b bg-muted/50 flex items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground">Enable push notifications</p>
+                    <p className="text-xs text-muted-foreground">Enable notifications</p>
                     <Button
                       variant="outline"
                       size="sm"

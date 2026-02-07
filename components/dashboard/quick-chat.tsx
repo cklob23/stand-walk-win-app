@@ -33,7 +33,6 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
-  const userId = odUserId; // Declare userId variable
 
   const supabase = createClient()
   const realtimeReady = useRealtimeAuth()
@@ -62,7 +61,6 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
   useEffect(() => {
     if (!realtimeReady) return
 
-    console.log('[v0] quick-chat: subscribing to realtime for pairing:', pairingId)
     // Messages channel - listens for DB changes
     const messagesChannel = supabase
       .channel(`quick-messages:${pairingId}`)
@@ -75,7 +73,6 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
           filter: `pairing_id=eq.${pairingId}`,
         },
         async (payload: any) => {
-          console.log('[v0] quick-chat INSERT received:', payload.new.id, 'sender:', payload.new.sender_id)
           if (payload.new.sender_id !== odUserId) {
             setIsPartnerTyping(false)
             if (typingTimeoutRef.current) {
@@ -117,9 +114,7 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
           )
         }
       )
-      .subscribe((status: string) => {
-        console.log('[v0] quick-messages channel:', status)
-      })
+      .subscribe()
 
     // Typing channel - uses broadcast (no DB, instant)
     const typingChannel = supabase
@@ -135,9 +130,7 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
           }, 3000)
         }
       })
-      .subscribe((status: string) => {
-        console.log('[v0] quick-typing channel:', status)
-      })
+      .subscribe()
 
     typingChannelRef.current = typingChannel
 
@@ -236,10 +229,8 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
       odUserName || 'Your partner',
       pairingId,
       messageContent
-    ).then(result => {
-      console.log('[v0] quick-chat notifyNewMessage result:', result)
-    }).catch(err => {
-      console.error('[v0] quick-chat notifyNewMessage error:', err)
+    ).catch(() => {
+      // Push notification failed silently
     })
 
     setIsLoading(false)
