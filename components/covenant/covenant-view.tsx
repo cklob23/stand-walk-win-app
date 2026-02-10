@@ -72,7 +72,7 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
     setIsLoading(true)
 
     const updateField = isLeader ? 'covenant_accepted_leader' : 'covenant_accepted_learner'
-    
+
     const { error } = await supabase
       .from('pairings')
       .update({ [updateField]: true })
@@ -129,12 +129,11 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
 
       {/* Signature Status */}
       <Card className="mb-6">
-        <CardContent className="pt-6">
+        <CardContent>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                hasSigned ? 'bg-success text-success-foreground' : 'bg-muted'
-              }`}>
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${hasSigned ? 'bg-success text-success-foreground' : 'bg-muted'
+                }`}>
                 {hasSigned ? (
                   <CheckCircle2 className="h-5 w-5" />
                 ) : (
@@ -149,9 +148,8 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                partnerHasSigned ? 'bg-success text-success-foreground' : 'bg-muted'
-              }`}>
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${partnerHasSigned ? 'bg-success text-success-foreground' : 'bg-muted'
+                }`}>
                 {partnerHasSigned ? (
                   <CheckCircle2 className="h-5 w-5" />
                 ) : (
@@ -176,14 +174,14 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
         <CardHeader>
           <CardTitle>Our Commitments</CardTitle>
           <CardDescription>
-            {hasSigned 
+            {hasSigned
               ? 'You have agreed to the following commitments'
               : 'Read and agree to each commitment to sign the covenant'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {covenantPoints.map((point, index) => (
-            <div 
+            <div
               key={index}
               className="flex gap-4 p-4 rounded-lg border bg-card hover:bg-muted/30 transition-colors"
             >
@@ -201,7 +199,7 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
                   />
                 )}
               </div>
-              <label 
+              <label
                 htmlFor={`agreement-${index}`}
                 className="flex-1 cursor-pointer"
               >
@@ -216,8 +214,8 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
       {/* Sign Button */}
       {!hasSigned && (
         <div className="mt-6 text-center">
-          <Button 
-            size="lg" 
+          <Button
+            size="lg"
             onClick={handleSign}
             disabled={!allAgreed || isLoading}
           >
@@ -250,6 +248,24 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
           <p className="text-sm text-muted-foreground mt-2">
             Both parties have signed the covenant. Your discipleship journey is blessed!
           </p>
+          <Button
+            size="lg"
+            className="mt-4"
+            onClick={() => router.push('/dashboard')}
+          >
+            Go to Dashboard
+          </Button>
+        </div>
+      )}
+
+      {hasSigned && !partnerHasSigned && (
+        <div className="mt-6 text-center">
+          <Button
+            variant="outline"
+            onClick={() => router.push('/dashboard')}
+          >
+            Go to Dashboard
+          </Button>
         </div>
       )}
     </div>
