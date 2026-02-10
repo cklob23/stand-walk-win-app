@@ -98,12 +98,24 @@ export default async function WeekPage({ params }: WeekPageProps) {
     .eq('week_number', weekNum)
     .order('order_index', { ascending: true })
 
-  // Get assignment progress
+  // Get assignment progress for the current user
   const { data: assignmentProgress } = await supabase
     .from('assignment_progress')
     .select('*')
     .eq('pairing_id', pairing.id)
     .eq('user_id', user.id)
+
+  // If user is a leader, also fetch learner's progress so we can show their responses
+  let learnerProgress: typeof assignmentProgress = null
+  if (profile.role === 'leader' && pairing.learner_id) {
+    const { data } = await supabase
+      .from('assignment_progress')
+      .select('*')
+      .eq('pairing_id', pairing.id)
+      .eq('user_id', pairing.learner_id)
+
+    learnerProgress = data
+  }
 
   // Get reflections for this week
   const { data: reflections } = await supabase
@@ -124,6 +136,7 @@ export default async function WeekPage({ params }: WeekPageProps) {
       weekContent={weekContent}
       assignments={assignments || []}
       assignmentProgress={assignmentProgress || []}
+      learnerProgress={learnerProgress || []}
       reflections={reflections || []}
     />
   )

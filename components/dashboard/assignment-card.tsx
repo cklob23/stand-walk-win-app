@@ -37,6 +37,13 @@ interface AssignmentCardProps {
     notes: string | null
     completed_at: string | null
   }
+  learnerProgress?: {
+    id?: string
+    assignment_id: string
+    status: string
+    notes: string | null
+    completed_at: string | null
+  }
   pairingId: string
   userId: string
   userRole?: 'leader' | 'learner'
@@ -66,6 +73,7 @@ const typeColors = {
 export function AssignmentCard({ 
   assignment, 
   progress, 
+  learnerProgress,
   pairingId, 
   userId, 
   userRole,
@@ -81,8 +89,12 @@ export function AssignmentCard({
   const [isLoading, setIsLoading] = useState(false)
 
   const supabase = createClient()
+
+  const isLeader = userRole === 'leader'
   
-  const status = progress?.status || 'not_started'
+  // For leaders, show learner's status; for learners, show own status
+  const displayProgress = isLeader ? learnerProgress : progress
+  const status = displayProgress?.status || 'not_started'
   const isCompleted = status === 'completed'
   const Icon = typeIcons[assignment.assignment_type] || Circle
 
@@ -138,9 +150,8 @@ export function AssignmentCard({
           await advanceToNextWeek(
             pairingId,
             currentWeek,
-            learnerName,
-            leaderId,
-            userId,
+            learnerName || 'Learner',
+            leaderId || '',
             weeklyContent
           )
           toast.success('Congratulations! Week ' + currentWeek + ' complete. Next week unlocked!')
@@ -211,8 +222,59 @@ export function AssignmentCard({
               {assignment.description}
             </p>
 
-            {/* Response Input */}
-            {(assignment.assignment_type === 'reflection' || 
+            {/* Leader view: show learner's response (read-only) */}
+            {isLeader && learnerProgress && (
+              <div className="space-y-3">
+                {/* Learner status */}
+                <div className="flex items-center gap-2">
+                  {learnerProgress.status === 'completed' ? (
+                    <Badge variant="secondary" className="bg-success/10 text-success border-success/20">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      {learnerName || 'Learner'} completed
+                      {learnerProgress.completed_at && (
+                        <span className="ml-1 opacity-75">
+                          {new Date(learnerProgress.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                      )}
+                    </Badge>
+                  ) : learnerProgress.status === 'in_progress' ? (
+                    <Badge variant="secondary" className="bg-warning/10 text-warning border-warning/20">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {learnerName || 'Learner'} in progress
+                    </Badge>
+                  ) : null}
+                </div>
+
+                {/* Learner's written response */}
+                {learnerProgress.notes && (
+                  <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      {learnerName ? `${learnerName}'s` : "Learner's"} Response
+                    </p>
+                    <p className="text-sm text-foreground whitespace-pre-wrap">
+                      {learnerProgress.notes}
+                    </p>
+                  </div>
+                )}
+
+                {/* No response yet */}
+                {!learnerProgress.notes && learnerProgress.status === 'completed' && (
+                  <p className="text-xs text-muted-foreground italic">
+                    Completed without a written response.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Leader view: learner hasn't started */}
+            {isLeader && !learnerProgress && (
+              <p className="text-xs text-muted-foreground italic">
+                {learnerName || 'Learner'} has not started this assignment yet.
+              </p>
+            )}
+
+            {/* Learner view: Response Input */}
+            {!isLeader && (assignment.assignment_type === 'reflection' || 
               assignment.assignment_type === 'discussion') && (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">
@@ -229,9 +291,9 @@ export function AssignmentCard({
               </div>
             )}
 
-            {/* Action Buttons */}
+            {/* Action Buttons (only for learners) */}
             <div className="flex gap-2">
-              {!isCompleted && (
+              {!isLeader && !isCompleted && (
                 <>
                   {status !== 'in_progress' && (
                     <Button
@@ -262,7 +324,7 @@ export function AssignmentCard({
                   </Button>
                 </>
               )}
-              {isCompleted && (
+              {!isLeader && isCompleted && (
                 <div className="flex items-center gap-2 text-sm text-success">
                   <CheckCircle2 className="h-4 w-4" />
                   Completed

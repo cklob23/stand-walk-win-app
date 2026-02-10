@@ -30,7 +30,8 @@ interface WeekDetailViewProps {
   partner: Profile | null
   weekContent: WeeklyContent
   assignments: Assignment[]
-  assignmentProgress: { id: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null }[]
+  assignmentProgress: { id: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; user_id?: string }[]
+  learnerProgress: { id: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; user_id?: string }[]
   reflections: (Reflection & { user: { id: string; full_name: string | null; avatar_url: string | null } | null })[]
 }
 
@@ -41,6 +42,7 @@ export function WeekDetailView({
   weekContent,
   assignments,
   assignmentProgress,
+  learnerProgress,
   reflections,
 }: WeekDetailViewProps) {
   const router = useRouter()
@@ -51,8 +53,11 @@ export function WeekDetailView({
   const supabase = createClient()
 
   // Only count progress for assignments that belong to THIS week
+  // For leaders, show learner's progress; for learners, show own progress
   const assignmentIds = new Set(assignments.map(a => a.id))
-  const weekProgress = assignmentProgress.filter(p => assignmentIds.has(p.assignment_id))
+  const isLeader = profile.role === 'leader'
+  const progressSource = isLeader && learnerProgress.length > 0 ? learnerProgress : assignmentProgress
+  const weekProgress = progressSource.filter(p => assignmentIds.has(p.assignment_id))
   const completedCount = weekProgress.filter(p => p.status === 'completed').length
   const progressPercentage = assignments.length > 0 
     ? Math.round((completedCount / assignments.length) * 100) 
@@ -95,6 +100,7 @@ export function WeekDetailView({
   const assignmentsWithProgress = assignments.map(assignment => ({
     ...assignment,
     progress: assignmentProgress.find(p => p.assignment_id === assignment.id),
+    learnerProgress: learnerProgress.find(p => p.assignment_id === assignment.id),
   }))
 
   return (
@@ -175,6 +181,7 @@ export function WeekDetailView({
                   key={assignment.id}
                   assignment={assignment}
                   progress={assignment.progress}
+                  learnerProgress={assignment.learnerProgress}
                   pairingId={pairing.id}
                   userId={profile.id}
                   userRole={profile.role || undefined}

@@ -6,7 +6,7 @@ import webpush from 'web-push'
 // Configure VAPID for Web Push
 if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
-    'mailto:support@gatekeeperio.com',
+    'mailto:support@standwalkrun.com',
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
     process.env.VAPID_PRIVATE_KEY
   )
