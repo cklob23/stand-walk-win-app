@@ -236,11 +236,8 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
       <div className="mx-auto max-w-7xl px-4">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg bg-primary">
-              <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
-            </div>
-            <span className="hidden sm:block font-semibold text-foreground text-sm sm:text-base">Stand Walk Run</span>
+          <Link href="/dashboard">
+            <AppLogo textClassName="hidden sm:block text-sm sm:text-base" />
           </Link>
 
           {/* Desktop Navigation */}
@@ -377,9 +374,9 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                  <Avatar className="h-9 w-9">
-                    {profile.avatar_url ? <AvatarImage src={profile.avatar_url} alt={profile.full_name || 'User'} /> : null}
-                    <AvatarFallback className="bg-primary/10 text-primary">{initials}</AvatarFallback>
+                  <Avatar key={profile.avatar_url || 'no-avatar'} className="h-9 w-9">
+                    {profile.avatar_url && profile.avatar_url.length > 0 ? <AvatarImage src={profile.avatar_url} alt={profile.full_name || 'User'} /> : null}
+                    <AvatarFallback className="bg-primary/10 text-primary" delayMs={0}>{initials}</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>

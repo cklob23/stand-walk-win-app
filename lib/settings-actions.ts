@@ -39,6 +39,43 @@ export async function updateNotificationSettings(settings: {
   }
 }
 
+export async function removeAvatar() {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: 'Not authenticated' }
+    }
+
+    // Delete all avatar files for this user
+    const { data: existingFiles } = await supabase.storage
+      .from('avatars')
+      .list(user.id)
+
+    if (existingFiles && existingFiles.length > 0) {
+      const filesToDelete = existingFiles.map(f => `${user.id}/${f.name}`)
+      await supabase.storage.from('avatars').remove(filesToDelete)
+    }
+
+    // Clear avatar URL in profile
+    const { error } = await supabase
+      .from('profiles')
+      .update({ avatar_url: null, updated_at: new Date().toISOString() })
+      .eq('id', user.id)
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    revalidatePath('/dashboard/settings')
+    revalidatePath('/dashboard')
+    return { success: true }
+  } catch {
+    return { error: 'Unable to remove avatar. Please try again.' }
+  }
+}
+
 export async function deleteAccount() {
   try {
     const supabase = await createClient()

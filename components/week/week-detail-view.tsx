@@ -10,10 +10,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
-import { 
-  ArrowLeft, 
-  ArrowRight, 
-  BookOpen, 
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
   CheckCircle2,
   PenLine,
   Loader2,
@@ -59,8 +59,8 @@ export function WeekDetailView({
   const progressSource = isLeader && learnerProgress.length > 0 ? learnerProgress : assignmentProgress
   const weekProgress = progressSource.filter(p => assignmentIds.has(p.assignment_id))
   const completedCount = weekProgress.filter(p => p.status === 'completed').length
-  const progressPercentage = assignments.length > 0 
-    ? Math.round((completedCount / assignments.length) * 100) 
+  const progressPercentage = assignments.length > 0
+    ? Math.round((completedCount / assignments.length) * 100)
     : 0
 
   const weekNumber = weekContent.week_number
@@ -107,14 +107,14 @@ export function WeekDetailView({
     <div className="mx-auto max-w-4xl px-4 py-4 sm:py-6">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
-        <Link 
+        <Link
           href="/dashboard"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-3 sm:mb-4"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Dashboard
         </Link>
-        
+
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
           <div>
             <Badge variant="secondary" className="mb-2">Week {weekNumber}</Badge>
@@ -232,7 +232,7 @@ export function WeekDetailView({
                       Share with Leader
                     </span>
                   </label>
-                  <Button 
+                  <Button
                     onClick={handleSubmitReflection}
                     disabled={isSubmitting || !reflectionText.trim()}
                   >
@@ -295,8 +295,8 @@ export function WeekDetailView({
                       <div key={reflection.id} className="space-y-2">
                         <div className="flex items-center gap-2">
                           <Avatar className="h-6 w-6">
-                            {reflection.user?.avatar_url ? <AvatarImage src={reflection.user.avatar_url} alt={reflection.user.full_name || ''} /> : null}
-                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                            {reflection.user?.avatar_url && reflection.user.avatar_url.length > 0 ? <AvatarImage src={reflection.user.avatar_url} alt={reflection.user.full_name || ''} /> : null}
+                            <AvatarFallback className="text-xs bg-primary/10 text-primary" delayMs={0}>
                               {userInitials}
                             </AvatarFallback>
                           </Avatar>

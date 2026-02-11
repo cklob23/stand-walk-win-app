@@ -5,10 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { 
-  ScrollText, 
-  CheckCircle2, 
-  Clock, 
+import {
+  ScrollText,
+  CheckCircle2,
+  Clock,
   ArrowRight,
   Handshake,
   Heart
@@ -54,8 +54,8 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
           <CardContent>
             <div className="flex items-center gap-4">
               <Avatar className="h-14 w-14">
-                {partner.avatar_url ? <AvatarImage src={partner.avatar_url} alt={partner.full_name || 'Partner'} /> : null}
-                <AvatarFallback className="bg-primary/10 text-primary text-lg">
+                {partner.avatar_url && partner.avatar_url.length > 0 ? <AvatarImage src={partner.avatar_url} alt={partner.full_name || 'Partner'} /> : null}
+                <AvatarFallback className="bg-primary/10 text-primary text-lg" delayMs={0}>
                   {partnerInitials}
                 </AvatarFallback>
               </Avatar>
@@ -87,9 +87,8 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
           {/* Your Status */}
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
             <div className="flex items-center gap-3">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                hasSigned ? 'bg-success text-success-foreground' : 'bg-warning/20 text-warning'
-              }`}>
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${hasSigned ? 'bg-success text-success-foreground' : 'bg-warning/20 text-warning'
+                }`}>
                 {hasSigned ? (
                   <CheckCircle2 className="h-5 w-5" />
                 ) : (
@@ -115,9 +114,8 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
           {/* Partner Status */}
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
             <div className="flex items-center gap-3">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                partnerHasSigned ? 'bg-success text-success-foreground' : 'bg-muted'
-              }`}>
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${partnerHasSigned ? 'bg-success text-success-foreground' : 'bg-muted'
+                }`}>
                 {partnerHasSigned ? (
                   <CheckCircle2 className="h-5 w-5" />
                 ) : (
@@ -129,7 +127,7 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
                   {partner?.full_name || (isLeader ? 'Learner' : 'Leader')}&apos;s Signature
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {partnerHasSigned 
+                  {partnerHasSigned
                     ? `${partner?.full_name || 'They'} signed the covenant`
                     : `Waiting for ${partner?.full_name || 'them'} to sign`
                   }
@@ -155,8 +153,8 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
             <div>
               <h3 className="font-medium text-foreground mb-2">Why Sign a Covenant?</h3>
               <p className="text-sm text-muted-foreground">
-                The discipleship covenant establishes mutual commitment, confidentiality, and accountability 
-                between you and your partner. It creates a sacred space for growth and ensures both parties 
+                The discipleship covenant establishes mutual commitment, confidentiality, and accountability
+                between you and your partner. It creates a sacred space for growth and ensures both parties
                 are ready to invest in this transformative 6-week journey together.
               </p>
             </div>

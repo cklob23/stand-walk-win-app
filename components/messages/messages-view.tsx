@@ -63,7 +63,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         .eq('is_read', false)
     }
     markAsRead()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, pairing.id, profile.id])
 
   // Subscribe to real-time messages, presence, and typing (gated on auth)
@@ -193,7 +193,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         clearTimeout(typingTimeoutRef.current)
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pairing.id, partner.id, profile.id, realtimeReady])
 
   // Polling fallback: fetch latest messages every 10s in case realtime drops
@@ -221,7 +221,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
 
     const interval = setInterval(poll, 10000)
     return () => clearInterval(interval)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pairing.id])
 
   const handleSend = async () => {
@@ -229,7 +229,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
 
     const messageContent = newMessage.trim()
     const tempId = `temp-${Date.now()}`
-    
+
     // Optimistic update - add message immediately
     const optimisticMessage: Message = {
       id: tempId,
@@ -244,7 +244,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         avatar_url: profile.avatar_url
       }
     }
-    
+
     setMessages((prev) => [...prev, optimisticMessage])
     setNewMessage('')
     setIsPartnerTyping(false)
@@ -270,7 +270,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
     }
 
     // Replace temp message with real one
-    setMessages((prev) => 
+    setMessages((prev) =>
       prev.map((m) => m.id === tempId ? { ...optimisticMessage, id: data.id } : m)
     )
 
@@ -309,7 +309,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
   // Group messages by date
   const groupedMessages: { date: string; messages: Message[] }[] = []
   let currentDate = ''
-  
+
   messages.forEach((msg) => {
     const msgDate = format(new Date(msg.created_at), 'yyyy-MM-dd')
     if (msgDate !== currentDate) {
@@ -335,8 +335,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
           <div className="flex items-center gap-3">
             <div className="relative">
               <Avatar className="h-10 w-10">
-                {partner.avatar_url ? <AvatarImage src={partner.avatar_url} alt={partner.full_name!} /> : null}
-                <AvatarFallback className="bg-primary/10 text-primary">
+                {partner.avatar_url && partner.avatar_url.length > 0 ? <AvatarImage src={partner.avatar_url} alt={partner.full_name!} /> : null}
+                <AvatarFallback className="bg-primary/10 text-primary" delayMs={0}>
                   {partnerInitials}
                 </AvatarFallback>
               </Avatar>
@@ -400,18 +400,17 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                           className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}
                         >
                           <Avatar className="h-8 w-8 shrink-0">
-                            {senderAvatar ? <AvatarImage src={senderAvatar} alt="" /> : null}
-                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                            {senderAvatar && senderAvatar.length > 0 ? <AvatarImage src={senderAvatar} alt="" /> : null}
+                            <AvatarFallback className="text-xs bg-primary/10 text-primary" delayMs={0}>
                               {senderInitials}
                             </AvatarFallback>
                           </Avatar>
                           <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${isOwn ? 'text-right' : 'text-left'}`}>
                             <div
-                              className={`inline-block rounded-2xl px-4 py-2 ${
-                                isOwn
+                              className={`inline-block rounded-2xl px-4 py-2 ${isOwn
                                   ? 'bg-primary text-primary-foreground rounded-tr-sm'
                                   : 'bg-muted text-foreground rounded-tl-sm'
-                              }`}
+                                }`}
                             >
                               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                             </div>
@@ -436,8 +435,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
               {isPartnerTyping && (
                 <div className="flex items-end gap-3">
                   <Avatar className="h-8 w-8 shrink-0">
-                    {partner.avatar_url ? <AvatarImage src={partner.avatar_url} alt={partner.full_name!} /> : null}
-                    <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                    {partner.avatar_url && partner.avatar_url.length > 0 ? <AvatarImage src={partner.avatar_url} alt={partner.full_name!} /> : null}
+                    <AvatarFallback className="text-xs bg-primary/10 text-primary" delayMs={0}>
                       {partnerInitials}
                     </AvatarFallback>
                   </Avatar>
@@ -475,8 +474,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                 }
               }}
             />
-            <Button 
-              onClick={handleSend} 
+            <Button
+              onClick={handleSend}
               disabled={isLoading || !newMessage.trim()}
               size="icon"
               className="h-auto aspect-square"

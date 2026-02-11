@@ -210,8 +210,8 @@ export function LearnerDashboard({
             <CardContent>
               <div className="flex items-center gap-4">
                 <Avatar className="h-14 w-14">
-                  {partner?.avatar_url ? <AvatarImage src={partner.avatar_url} alt={partner.full_name || 'Partner'} /> : null}
-                  <AvatarFallback className="bg-primary/10 text-primary text-lg">
+                  {partner?.avatar_url && partner.avatar_url.length > 0 ? <AvatarImage src={partner.avatar_url} alt={partner.full_name || 'Partner'} /> : null}
+                  <AvatarFallback className="bg-primary/10 text-primary text-lg" delayMs={0}>
                     {partnerInitials}
                   </AvatarFallback>
                 </Avatar>
