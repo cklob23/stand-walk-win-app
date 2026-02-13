@@ -3,6 +3,35 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+export async function updateContactInfo(data: {
+    phone?: string
+    zoomLink?: string
+}) {
+    try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { error: 'Not authenticated' }
+
+        const updates: Record<string, string | null> = { updated_at: new Date().toISOString() }
+        if (data.phone !== undefined) updates.phone = data.phone || null
+        if (data.zoomLink !== undefined) updates.zoom_link = data.zoomLink || null
+
+        const { error } = await supabase
+            .from('profiles')
+            .update(updates)
+            .eq('id', user.id)
+
+        if (error) return { error: error.message }
+
+        revalidatePath('/dashboard/schedule')
+        revalidatePath('/dashboard')
+        revalidatePath('/dashboard/settings')
+        return { success: true }
+    } catch {
+        return { error: 'Unable to update contact info.' }
+    }
+}
+
 export async function saveAvailability(
     pairingId: string,
     slots: { day_of_week: number; start_time: string; end_time: string }[]

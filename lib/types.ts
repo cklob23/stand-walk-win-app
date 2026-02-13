@@ -8,6 +8,7 @@ export interface Profile {
   avatar_url: string | null
   bio: string | null
   phone: string | null
+  zoom_link: string | null
   onboarding_complete: boolean
   email_notifications?: boolean
   message_notifications?: boolean

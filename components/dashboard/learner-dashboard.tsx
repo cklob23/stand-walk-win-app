@@ -343,15 +343,29 @@ export function LearnerDashboard({
                   {(() => {
                     const type = nextMeeting.meeting_type
                     const link = nextMeeting.meeting_link
+                    // Learner sees leader's phone for calls, leader's zoom for zoom
                     const leaderPhone = partner?.phone
+                    const leaderZoom = partner?.zoom_link
                     if (type === 'facetime' || type === 'phone') {
                       const number = link?.match(/^(?:tel:|facetime:)(.+)$/)?.[1] || leaderPhone
                       if (number) {
-                        const href = type === 'facetime' ? `facetime:${number.replace(/[^0-9+]/g, '')}` : `tel:${number.replace(/[^0-9+]/g, '')}`
+                        const cleaned = number.replace(/[^0-9+]/g, '')
+                        const href = type === 'facetime' ? `facetime:${cleaned}` : `tel:${cleaned}`
                         return (
                           <a href={href} className="text-xs text-primary hover:underline flex items-center gap-1">
                             <Phone className="h-3 w-3" />
-                            {type === 'facetime' ? 'FaceTime' : 'Call'}
+                            {type === 'facetime' ? 'FaceTime' : 'Call'} {partner?.full_name?.split(' ')[0] || 'Leader'}
+                          </a>
+                        )
+                      }
+                    }
+                    if (type === 'zoom') {
+                      const zoomUrl = link || leaderZoom
+                      if (zoomUrl) {
+                        return (
+                          <a href={zoomUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
+                            <Monitor className="h-3 w-3" />
+                            Join Zoom
                           </a>
                         )
                       }

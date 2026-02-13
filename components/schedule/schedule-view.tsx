@@ -40,7 +40,7 @@ import {
     ArrowLeft,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { saveAvailability, bookMeeting, cancelMeeting, completeMeeting, updateMeetingLink } from '@/lib/scheduling-actions'
+import { saveAvailability, bookMeeting, cancelMeeting, completeMeeting, updateMeetingLink, updateContactInfo } from '@/lib/scheduling-actions'
 import type { Profile, Pairing, AvailabilitySlot, ScheduledMeeting } from '@/lib/types'
 import Link from 'next/link'
 
@@ -131,7 +131,7 @@ function formatPhone(phone: string): string {
 }
 
 // Get the appropriate action label and href for a meeting
-function getMeetingAction(meeting: ScheduledMeeting, partnerPhone?: string | null): { href: string; label: string } | null {
+function getMeetingAction(meeting: ScheduledMeeting, partnerPhone?: string | null, partnerZoomLink?: string | null): { href: string; label: string; phoneDisplay?: string } | null {
     const type = meeting.meeting_type
 
     if (type === 'facetime' || type === 'phone') {
@@ -139,26 +139,39 @@ function getMeetingAction(meeting: ScheduledMeeting, partnerPhone?: string | nul
         if (meeting.meeting_link) {
             const isCallUri = meeting.meeting_link.startsWith('tel:') || meeting.meeting_link.startsWith('facetime:')
             if (isCallUri) {
+                const phoneNum = extractPhoneFromLink(meeting.meeting_link)
                 return {
                     href: meeting.meeting_link,
                     label: type === 'facetime' ? 'FaceTime' : 'Call',
+                    phoneDisplay: phoneNum || undefined,
                 }
             }
-            // It's some other link, open directly
             return { href: meeting.meeting_link, label: 'Join Meeting' }
         }
         if (partnerPhone) {
             return {
                 href: buildCallLink(partnerPhone, type),
                 label: type === 'facetime' ? 'FaceTime' : 'Call',
+                phoneDisplay: partnerPhone,
             }
         }
         return null
     }
 
-    // Zoom / in-person - just use the meeting link if set
+    if (type === 'zoom') {
+        // Use meeting_link if set, otherwise fall back to partner's zoom link
+        if (meeting.meeting_link) {
+            return { href: meeting.meeting_link, label: 'Join Zoom' }
+        }
+        if (partnerZoomLink) {
+            return { href: partnerZoomLink, label: 'Join Zoom' }
+        }
+        return null
+    }
+
+    // in_person
     if (meeting.meeting_link) {
-        return { href: meeting.meeting_link, label: 'Join Meeting' }
+        return { href: meeting.meeting_link, label: 'Details' }
     }
     return null
 }
@@ -196,6 +209,13 @@ export function ScheduleView({
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Main area */}
                 <div className="lg:col-span-2 space-y-6">
+                    {/* Contact Info Card -- for both roles */}
+                    <ContactInfoCard
+                        profile={profile}
+                        isLeader={isLeader}
+                        partnerName={partner?.full_name || 'Partner'}
+                    />
+
                     {isLeader ? (
                         <AvailabilityEditor
                             pairingId={pairing.id}
@@ -208,6 +228,7 @@ export function ScheduleView({
                             upcomingMeetings={upcomingMeetings}
                             leaderName={partner?.full_name || 'Leader'}
                             leaderPhone={partner?.phone || null}
+                            leaderZoomLink={partner?.zoom_link || null}
                         />
                     )}
                 </div>
@@ -219,6 +240,7 @@ export function ScheduleView({
                         profile={profile}
                         partnerName={partner?.full_name || 'Partner'}
                         partnerPhone={partner?.phone || null}
+                        partnerZoomLink={partner?.zoom_link || null}
                     />
                     <PastMeetings
                         meetings={pastMeetings}
@@ -227,6 +249,152 @@ export function ScheduleView({
                 </div>
             </div>
         </div>
+    )
+}
+
+// ========================
+// Contact Info Card (both roles)
+// ========================
+function ContactInfoCard({
+    profile,
+    isLeader,
+    partnerName,
+}: {
+    profile: Profile
+    isLeader: boolean
+    partnerName: string
+}) {
+    const router = useRouter()
+    const [phone, setPhone] = useState(profile.phone || '')
+    const [zoomLink, setZoomLink] = useState(profile.zoom_link || '')
+    const [isSaving, setIsSaving] = useState(false)
+    const [isEditing, setIsEditing] = useState(false)
+
+    const hasPhone = !!profile.phone
+    const hasZoom = !!profile.zoom_link
+
+    // Auto-show edit mode if leader has neither phone nor zoom
+    const needsSetup = isLeader && !hasPhone && !hasZoom
+
+    if (!needsSetup && !isEditing && hasPhone) {
+        // Compact display mode
+        return (
+            <Card>
+                <CardContent className="py-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 flex-wrap">
+                            {profile.phone && (
+                                <div className="flex items-center gap-2 text-sm">
+                                    <Phone className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-foreground">{formatPhone(profile.phone)}</span>
+                                </div>
+                            )}
+                            {profile.zoom_link && (
+                                <div className="flex items-center gap-2 text-sm">
+                                    <Monitor className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-foreground truncate max-w-[200px]">{profile.zoom_link}</span>
+                                </div>
+                            )}
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsEditing(true)}
+                            className="text-xs text-muted-foreground"
+                        >
+                            Edit
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+        )
+    }
+
+    const handleSave = async () => {
+        setIsSaving(true)
+        const result = await updateContactInfo({
+            phone: phone.trim(),
+            zoomLink: zoomLink.trim(),
+        })
+        if (result.error) {
+            toast.error(result.error)
+        } else {
+            toast.success('Contact info updated!')
+            setIsEditing(false)
+            router.refresh()
+        }
+        setIsSaving(false)
+    }
+
+    return (
+        <Card className={needsSetup ? 'border-primary/30 bg-primary/5' : ''}>
+            <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-primary" />
+                    {isLeader ? 'Your Contact Info' : 'Your Phone Number'}
+                </CardTitle>
+                <CardDescription>
+                    {isLeader
+                        ? `${partnerName} will use this to call or join your meetings.`
+                        : `Your leader will use this to reach you for calls and FaceTime.`}
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="contact-phone">Phone Number</Label>
+                    <Input
+                        id="contact-phone"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="Enter your phone number..."
+                        type="tel"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Used for phone calls and FaceTime meetings.
+                    </p>
+                </div>
+
+                {isLeader && (
+                    <div className="space-y-2">
+                        <Label htmlFor="contact-zoom">Zoom Meeting Link</Label>
+                        <Input
+                            id="contact-zoom"
+                            value={zoomLink}
+                            onChange={(e) => setZoomLink(e.target.value)}
+                            placeholder="https://zoom.us/j/..."
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Your personal Zoom link for video meetings.
+                        </p>
+                    </div>
+                )}
+
+                <div className="flex gap-2">
+                    <Button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        size="sm"
+                    >
+                        {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                        Save Contact Info
+                    </Button>
+                    {!needsSetup && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                setPhone(profile.phone || '')
+                                setZoomLink(profile.zoom_link || '')
+                                setIsEditing(false)
+                            }}
+                            disabled={isSaving}
+                        >
+                            Cancel
+                        </Button>
+                    )}
+                </div>
+            </CardContent>
+        </Card>
     )
 }
 
@@ -425,12 +593,14 @@ function BookingView({
     upcomingMeetings,
     leaderName,
     leaderPhone,
+    leaderZoomLink,
 }: {
     pairingId: string
     availabilitySlots: AvailabilitySlot[]
     upcomingMeetings: ScheduledMeeting[]
     leaderName: string
     leaderPhone: string | null
+    leaderZoomLink: string | null
 }) {
     const router = useRouter()
     const [bookingDialog, setBookingDialog] = useState(false)
@@ -441,7 +611,7 @@ function BookingView({
         endTime: string
     } | null>(null)
     const [meetingType, setMeetingType] = useState<'facetime' | 'zoom' | 'phone' | 'in_person'>('zoom')
-    const [meetingLink, setMeetingLink] = useState('')
+    const [meetingLink, setMeetingLink] = useState(leaderZoomLink || '')
     const [phoneNumber, setPhoneNumber] = useState(leaderPhone || '')
     const [notes, setNotes] = useState('')
     const [isBooking, setIsBooking] = useState(false)
@@ -464,7 +634,7 @@ function BookingView({
     const handleSelectSlot = (date: string, dayOfWeek: number, startTime: string, endTime: string) => {
         setSelectedSlot({ date, dayOfWeek, startTime, endTime })
         setMeetingType('zoom')
-        setMeetingLink('')
+        setMeetingLink(leaderZoomLink || '')
         setPhoneNumber(leaderPhone || '')
         setNotes('')
         setBookingDialog(true)
@@ -657,12 +827,37 @@ function BookingView({
 
                         {meetingType === 'zoom' && (
                             <div className="space-y-2">
-                                <Label>Zoom Link (optional)</Label>
-                                <Input
-                                    value={meetingLink}
-                                    onChange={(e) => setMeetingLink(e.target.value)}
-                                    placeholder="https://zoom.us/j/..."
-                                />
+                                <Label>Zoom Meeting Link</Label>
+                                {leaderZoomLink ? (
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground rounded-md border px-3 py-2 bg-muted/30">
+                                            <Monitor className="h-3.5 w-3.5 shrink-0" />
+                                            <span className="truncate">{leaderZoomLink}</span>
+                                            <Badge variant="secondary" className="text-xs ml-auto shrink-0">{leaderName}</Badge>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            {"Using"} {leaderName}{"'s"} Zoom link. You can change it below.
+                                        </p>
+                                        <Input
+                                            value={meetingLink}
+                                            onChange={(e) => setMeetingLink(e.target.value)}
+                                            placeholder="Enter a different Zoom link..."
+                                            className="text-sm"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="space-y-1.5">
+                                        <Input
+                                            value={meetingLink}
+                                            onChange={(e) => setMeetingLink(e.target.value)}
+                                            placeholder="https://zoom.us/j/..."
+                                            className="text-sm"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            {leaderName} {"hasn't"} added a Zoom link to their profile yet. You can enter one or leave blank.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -700,11 +895,13 @@ function UpcomingMeetings({
     profile,
     partnerName,
     partnerPhone,
+    partnerZoomLink,
 }: {
     meetings: ScheduledMeeting[]
     profile: Profile
     partnerName: string
     partnerPhone: string | null
+    partnerZoomLink: string | null
 }) {
     const router = useRouter()
     const [loadingId, setLoadingId] = useState<string | null>(null)
@@ -781,10 +978,9 @@ function UpcomingMeetings({
                                     <p className="text-xs text-muted-foreground">with {partnerName}</p>
 
                                     {(() => {
-                                        const action = getMeetingAction(meeting, partnerPhone)
+                                        const action = getMeetingAction(meeting, partnerPhone, partnerZoomLink)
                                         if (!action) return null
                                         const isCallLink = action.href.startsWith('tel:') || action.href.startsWith('facetime:')
-                                        const phoneDisplay = extractPhoneFromLink(meeting.meeting_link)
                                         return (
                                             <div className="flex items-center gap-2">
                                                 <a
@@ -795,8 +991,8 @@ function UpcomingMeetings({
                                                     {isCallLink ? <Phone className="h-3 w-3" /> : <LinkIcon className="h-3 w-3" />}
                                                     {action.label}
                                                 </a>
-                                                {isCallLink && phoneDisplay && (
-                                                    <span className="text-xs text-muted-foreground">{formatPhone(phoneDisplay)}</span>
+                                                {isCallLink && action.phoneDisplay && (
+                                                    <span className="text-xs text-muted-foreground">{formatPhone(action.phoneDisplay)}</span>
                                                 )}
                                             </div>
                                         )
@@ -825,7 +1021,7 @@ function UpcomingMeetings({
                                     )}
 
                                     <div className="flex gap-1.5 flex-wrap">
-                                        {!meeting.meeting_link && linkEditId !== meeting.id && (
+                                        {!meeting.meeting_link && meeting.meeting_type !== 'phone' && meeting.meeting_type !== 'facetime' && linkEditId !== meeting.id && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
