@@ -42,7 +42,7 @@ export function useBrowserNotifications() {
     hasCheckedRef.current = true
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {})
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => { })
     }
   }, [])
 
@@ -80,25 +80,32 @@ export function useBrowserNotifications() {
   const requestPermission = useCallback(async (): Promise<NotifPermission> => {
     if (!isSupported) return 'denied'
 
-    if (Notification.permission === 'granted') {
-      setPermission('granted')
-      subscribeToPush() // best-effort, fire-and-forget
-      return 'granted'
-    }
+    try {
+      if (Notification.permission === 'granted') {
+        setPermission('granted')
+        subscribeToPush() // best-effort, fire-and-forget
+        return 'granted'
+      }
 
-    if (Notification.permission === 'denied') {
+      if (Notification.permission === 'denied') {
+        setPermission('denied')
+        return 'denied'
+      }
+
+      const result = await Notification.requestPermission()
+      setPermission(result as NotifPermission)
+
+      if (result === 'granted') {
+        subscribeToPush() // best-effort, fire-and-forget
+      }
+
+      return result as NotifPermission
+    } catch (err) {
+      console.error('[v0] Notification permission error:', err)
+      // Some environments (iframes, insecure contexts) block the Notification API
       setPermission('denied')
       return 'denied'
     }
-
-    const result = await Notification.requestPermission()
-    setPermission(result as NotifPermission)
-
-    if (result === 'granted') {
-      subscribeToPush() // best-effort, fire-and-forget
-    }
-
-    return result as NotifPermission
   }, [isSupported, subscribeToPush])
 
   // Show a browser notification (works whenever the tab is open and permission is granted)

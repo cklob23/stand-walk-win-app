@@ -7,18 +7,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import {
   Bell,
+  BellRing,
   MessageSquare,
   CheckCircle2,
   Users,
   BookOpen,
   Trash2,
-  Check
+  Check,
+  BellOff
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Notification } from '@/lib/types'
 import { formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
+import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
 
 interface NotificationsViewProps {
   userId: string
@@ -52,6 +55,7 @@ function getNotificationHref(notification: Notification): string {
 export function NotificationsView({ userId, notifications: initialNotifications }: NotificationsViewProps) {
   const router = useRouter()
   const [notifications, setNotifications] = useState(initialNotifications)
+  const { permission, isSupported, requestPermission } = useBrowserNotifications()
 
   const supabase = createClient()
   const realtimeReady = useRealtimeAuth()
@@ -94,7 +98,7 @@ export function NotificationsView({ userId, notifications: initialNotifications 
     return () => {
       supabase.removeChannel(channel)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, realtimeReady])
 
   const handleMarkAsRead = async (id: string) => {
@@ -108,7 +112,7 @@ export function NotificationsView({ userId, notifications: initialNotifications 
       return
     }
 
-    setNotifications(prev => 
+    setNotifications(prev =>
       prev.map(n => n.id === id ? { ...n, read: true } : n)
     )
   }
@@ -174,7 +178,7 @@ export function NotificationsView({ userId, notifications: initialNotifications 
                 Notifications
               </CardTitle>
               <CardDescription>
-                {unreadCount > 0 
+                {unreadCount > 0
                   ? `You have ${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}`
                   : 'All caught up!'}
               </CardDescription>
@@ -187,6 +191,61 @@ export function NotificationsView({ userId, notifications: initialNotifications 
             )}
           </div>
         </CardHeader>
+
+        {/* Browser Notification Permission Banner */}
+        {isSupported && (
+          <div className="mx-6 mb-4">
+            {permission === 'granted' ? (
+              <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                  <BellRing className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">Browser notifications enabled</p>
+                  <p className="text-xs text-muted-foreground">{"You'll"} receive alerts for new messages, assignments, and meetings.</p>
+                </div>
+                <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+              </div>
+            ) : permission === 'denied' ? (
+              <div className="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                  <BellOff className="h-4 w-4 text-destructive" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">Browser notifications blocked</p>
+                  <p className="text-xs text-muted-foreground">
+                    To enable, click the lock icon in your browser address bar and allow notifications.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 rounded-lg border bg-muted/50 px-4 py-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted">
+                  <Bell className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">Enable browser notifications</p>
+                  <p className="text-xs text-muted-foreground">Get notified about new messages, assignments, and scheduled meetings.</p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    const result = await requestPermission()
+                    if (result === 'granted') {
+                      toast.success('Notifications enabled!')
+                    } else if (result === 'denied') {
+                      toast.error('Notifications were blocked. You can enable them in your browser settings.')
+                    }
+                  }}
+                >
+                  <BellRing className="h-4 w-4 mr-2" />
+                  Enable
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
         <CardContent>
           {notifications.length === 0 ? (
             <div className="text-center py-12">
@@ -209,8 +268,8 @@ export function NotificationsView({ userId, notifications: initialNotifications 
                     onClick={() => handleNotificationClick(notification)}
                     className={cn(
                       "flex items-start gap-4 p-4 rounded-lg border transition-colors w-full text-left cursor-pointer",
-                      !notification.read 
-                        ? "bg-primary/5 border-primary/20 hover:bg-primary/10" 
+                      !notification.read
+                        ? "bg-primary/5 border-primary/20 hover:bg-primary/10"
                         : "bg-card hover:bg-muted/50"
                     )}
                   >
@@ -261,7 +320,7 @@ export function NotificationsView({ userId, notifications: initialNotifications 
                           </Button>
                         </div>
                       </div>
-                      
+
                     </div>
                   </div>
                 )

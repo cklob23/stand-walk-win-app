@@ -289,17 +289,28 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                     </button>
                   )}
                 </div>
-                {isSupported && permission !== 'granted' && permission !== 'denied' && (
+                {isSupported && permission !== 'granted' && (
                   <div className="px-4 py-2.5 border-b bg-muted/50 flex items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground">Enable notifications</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs bg-transparent"
-                      onClick={() => requestPermission()}
-                    >
-                      Enable
-                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      {permission === 'denied' ? 'Notifications blocked in browser settings' : 'Enable notifications'}
+                    </p>
+                    {permission !== 'denied' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs bg-transparent"
+                        onClick={async () => {
+                          const result = await requestPermission()
+                          if (result === 'granted') {
+                            toast.success('Notifications enabled!')
+                          } else if (result === 'denied') {
+                            toast.error('Notifications were blocked. You can enable them in your browser settings.')
+                          }
+                        }}
+                      >
+                        Enable
+                      </Button>
+                    )}
                   </div>
                 )}
                 <div className="max-h-80 overflow-y-auto">
