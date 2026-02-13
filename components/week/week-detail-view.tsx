@@ -33,6 +33,7 @@ interface WeekDetailViewProps {
   assignmentProgress: { id: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; user_id?: string }[]
   learnerProgress: { id: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; user_id?: string }[]
   reflections: (Reflection & { user: { id: string; full_name: string | null; avatar_url: string | null } | null })[]
+  hasWeeklyMeeting?: boolean
 }
 
 export function WeekDetailView({
@@ -44,6 +45,7 @@ export function WeekDetailView({
   assignmentProgress,
   learnerProgress,
   reflections,
+  hasWeeklyMeeting = false,
 }: WeekDetailViewProps) {
   const router = useRouter()
   const [reflectionText, setReflectionText] = useState('')
@@ -190,6 +192,7 @@ export function WeekDetailView({
                   currentWeek={weekNumber}
                   totalWeekAssignments={assignments.length}
                   completedWeekAssignments={completedCount}
+                  hasWeeklyMeeting={hasWeeklyMeeting}
                 />
               ))}
               {assignments.length === 0 && (

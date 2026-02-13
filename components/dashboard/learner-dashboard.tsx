@@ -173,6 +173,7 @@ export function LearnerDashboard({
                     currentWeek={currentWeek}
                     totalWeekAssignments={currentWeekAssignments.length}
                     completedWeekAssignments={currentWeekAssignments.filter(a => a.progress?.status === 'completed').length}
+                    hasWeeklyMeeting={hasWeeklyMeeting}
                   />
                 ))}
                 {currentWeekAssignments.length === 0 && (

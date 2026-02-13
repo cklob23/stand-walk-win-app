@@ -47,7 +47,7 @@ export default async function WeekPage({ params }: WeekPageProps) {
       .order('created_at', { ascending: false })
       .limit(1)
       .single()
-    
+
     if (data) {
       pairing = data
       partner = data.learner
@@ -64,7 +64,7 @@ export default async function WeekPage({ params }: WeekPageProps) {
       .order('created_at', { ascending: false })
       .limit(1)
       .single()
-    
+
     if (data) {
       pairing = data
       partner = data.leader
@@ -128,6 +128,30 @@ export default async function WeekPage({ params }: WeekPageProps) {
     .eq('week_number', weekNum)
     .order('created_at', { ascending: false })
 
+  // Check if meeting is scheduled for the current week (Mon-Sun)
+  let hasWeeklyMeeting = false
+  if (weekNum === pairing.current_week) {
+    const now = new Date()
+    const dayOfWeek = now.getDay()
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    const weekStart = new Date(now)
+    weekStart.setDate(now.getDate() + mondayOffset)
+    weekStart.setHours(0, 0, 0, 0)
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekStart.getDate() + 6)
+    weekEnd.setHours(23, 59, 59, 999)
+
+    const { count } = await supabase
+      .from('scheduled_meetings')
+      .select('*', { count: 'exact', head: true })
+      .eq('pairing_id', pairing.id)
+      .in('status', ['scheduled', 'completed'])
+      .gte('meeting_date', weekStart.toISOString().split('T')[0])
+      .lte('meeting_date', weekEnd.toISOString().split('T')[0])
+
+    hasWeeklyMeeting = (count ?? 0) > 0
+  }
+
   return (
     <WeekDetailView
       profile={profile}
@@ -138,6 +162,7 @@ export default async function WeekPage({ params }: WeekPageProps) {
       assignmentProgress={assignmentProgress || []}
       learnerProgress={learnerProgress || []}
       reflections={reflections || []}
+      hasWeeklyMeeting={hasWeeklyMeeting}
     />
   )
 }

@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
-import { 
-  MessageSquare, 
-  BookOpen, 
-  CheckCircle2, 
-  Clock, 
+import {
+  MessageSquare,
+  BookOpen,
+  CheckCircle2,
+  Clock,
   ArrowRight,
   Calendar,
   TrendingUp
@@ -46,21 +46,21 @@ export function LeaderDashboard({
   nextMeeting,
 }: LeaderDashboardProps) {
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
-  
+
   // Calculate overall progress - only count assignments from unlocked weeks
   const unlockedAssignments = assignments.filter(a => a.week_number <= currentWeek)
   const unlockedAssignmentIds = new Set(unlockedAssignments.map(a => a.id))
-  
+
   const totalAssignments = unlockedAssignments.length
-  const completedAssignments = assignmentProgress.filter(p => 
+  const completedAssignments = assignmentProgress.filter(p =>
     unlockedAssignmentIds.has(p.assignment_id) && p.status === 'completed'
   ).length
   const progressPercentage = totalAssignments > 0 ? Math.round((completedAssignments / totalAssignments) * 100) : 0
 
   // Calculate learner's progress for current week
   const currentWeekAssignments = assignments.filter(a => a.week_number === currentWeek)
-  const learnerProgress = assignmentProgress.filter(p => 
-    currentWeekAssignments.some(a => a.id === p.assignment_id) && 
+  const learnerProgress = assignmentProgress.filter(p =>
+    currentWeekAssignments.some(a => a.id === p.assignment_id) &&
     p.status === 'completed'
   ).length
 
@@ -143,7 +143,7 @@ export function LeaderDashboard({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <WeeklyTimeline 
+              <WeeklyTimeline
                 weeklyContent={weeklyContent}
                 currentWeek={currentWeek}
                 assignments={assignments}
@@ -164,7 +164,7 @@ export function LeaderDashboard({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <QuickChat 
+              <QuickChat
                 pairingId={pairing.id}
                 odUserId={profile.id}
                 odUserName={profile.full_name || 'You'}

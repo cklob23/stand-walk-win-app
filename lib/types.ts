@@ -54,7 +54,7 @@ export interface Assignment {
   week_number: number
   title: string
   description: string
-  assignment_type: 'reading' | 'reflection' | 'action' | 'discussion' | 'prayer'
+  assignment_type: 'reading' | 'reflection' | 'action' | 'discussion' | 'prayer' | 'meeting'
   order_index: number
   created_at: string
   weekly_content?: WeeklyContent

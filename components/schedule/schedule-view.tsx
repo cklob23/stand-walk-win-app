@@ -144,19 +144,7 @@ function getMeetingAction(meeting: ScheduledMeeting, partnerPhone?: string | nul
     const type = meeting.meeting_type
 
     if (type === 'facetime' || type === 'phone') {
-        // Use meeting_link if set (already a tel: or facetime: URI), otherwise fall back to partner's phone
-        if (meeting.meeting_link) {
-            const isCallUri = meeting.meeting_link.startsWith('tel:') || meeting.meeting_link.startsWith('facetime:')
-            if (isCallUri) {
-                const phoneNum = extractPhoneFromLink(meeting.meeting_link)
-                return {
-                    href: meeting.meeting_link,
-                    label: type === 'facetime' ? 'FaceTime' : 'Call',
-                    phoneDisplay: phoneNum || undefined,
-                }
-            }
-            return { href: meeting.meeting_link, label: 'Join Meeting' }
-        }
+        // Always use the partner's phone so each viewer calls the other person
         if (partnerPhone) {
             return {
                 href: buildCallLink(partnerPhone, type),
@@ -649,13 +637,12 @@ function BookingView({
         if (!selectedSlot) return
         setIsBooking(true)
 
-        // Build the meeting link: for phone/facetime, use leader's phone from profile
+        // Build the meeting link: for zoom, store the leader's zoom link
+        // For phone/facetime, do NOT store a phone number — each viewer resolves
+        // their partner's phone dynamically so the leader sees the learner's number
+        // and the learner sees the leader's number.
         let resolvedLink: string | undefined = undefined
-        if (meetingType === 'phone' || meetingType === 'facetime') {
-            if (leaderPhone) {
-                resolvedLink = buildCallLink(leaderPhone, meetingType)
-            }
-        } else if (meetingType === 'zoom') {
+        if (meetingType === 'zoom') {
             resolvedLink = leaderZoomLink || undefined
         }
 
@@ -865,10 +852,10 @@ function BookingConfirmation({
                 <div className="space-y-2">
                     <Label>Zoom Meeting</Label>
                     {leaderZoomLink ? (
-                        <div className="flex items-center gap-2 text-sm rounded-md border px-3 py-2 bg-muted/30 overflow-hidden">
+                        <div className="flex items-center gap-2 text-sm rounded-md border px-3 py-2 bg-muted/30 min-w-0 overflow-hidden">
                             <Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            <span className="truncate">{leaderZoomLink}</span>
-                            <Badge variant="secondary" className="text-xs ml-auto shrink-0">{leaderName}</Badge>
+                            <span className="truncate min-w-0 flex-1">{leaderZoomLink}</span>
+                            <Badge variant="secondary" className="text-xs shrink-0">{leaderName}</Badge>
                         </div>
                     ) : (
                         <div className="rounded-md border border-dashed px-3 py-3 text-center">
@@ -934,12 +921,12 @@ function BookingConfirmation({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-xl">
+            <DialogContent className="sm:max-w-3xl">
                 <DialogHeader>
                     <DialogTitle>Confirm Meeting</DialogTitle>
                     <DialogDescription>{subtitle}</DialogDescription>
                 </DialogHeader>
-                <div className="py-2">
+                <div className="py-2 min-w-0">
                     {formContent}
                 </div>
                 <DialogFooter>
