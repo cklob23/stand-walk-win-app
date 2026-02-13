@@ -359,13 +359,12 @@ export function LearnerDashboard({
                   {(() => {
                     const type = nextMeeting.meeting_type
                     const link = nextMeeting.meeting_link
-                    // Learner sees leader's phone for calls, leader's zoom for zoom
-                    const leaderPhone = partner?.phone
-                    const leaderZoom = partner?.zoom_link
+                    // Learner always sees leader's phone for calls (partner = leader)
+                    const partnerPhone = partner?.phone
+                    const partnerZoom = partner?.zoom_link
                     if (type === 'facetime' || type === 'phone') {
-                      const number = link?.match(/^(?:tel:|facetime:)(.+)$/)?.[1] || leaderPhone
-                      if (number) {
-                        const cleaned = number.replace(/[^0-9+]/g, '')
+                      if (partnerPhone) {
+                        const cleaned = partnerPhone.replace(/[^0-9+]/g, '')
                         const href = type === 'facetime' ? `facetime:${cleaned}` : `tel:${cleaned}`
                         return (
                           <a href={href} className="text-xs text-primary hover:underline flex items-center gap-1">
@@ -376,7 +375,7 @@ export function LearnerDashboard({
                       }
                     }
                     if (type === 'zoom') {
-                      const zoomUrl = link || leaderZoom
+                      const zoomUrl = link || partnerZoom
                       if (zoomUrl) {
                         return (
                           <a href={zoomUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
