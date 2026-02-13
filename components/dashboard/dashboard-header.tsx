@@ -21,7 +21,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { Bell, BookOpen, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check } from 'lucide-react'
+import { Bell, BookOpen, Calendar, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check } from 'lucide-react'
 import { AppLogo } from '@/components/app-logo'
 import type { Notification, Profile } from '@/lib/types'
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -40,6 +40,7 @@ interface DashboardHeaderProps {
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/messages', label: 'Messages', icon: MessageSquare },
+  { href: '/dashboard/schedule', label: 'Schedule', icon: Calendar },
   { href: '/dashboard/covenant', label: 'Covenant', icon: ScrollText },
 ]
 

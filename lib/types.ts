@@ -118,6 +118,32 @@ export interface WeekProgress {
   is_unlocked: boolean
 }
 
+export interface AvailabilitySlot {
+  id: string
+  user_id: string
+  pairing_id: string
+  day_of_week: number // 0=Sunday ... 6=Saturday
+  start_time: string  // "HH:MM" format
+  end_time: string    // "HH:MM" format
+  created_at: string
+}
+
+export interface ScheduledMeeting {
+  id: string
+  pairing_id: string
+  scheduled_by: string
+  meeting_date: string // "YYYY-MM-DD"
+  start_time: string
+  end_time: string
+  meeting_type: 'facetime' | 'zoom' | 'phone' | 'in_person'
+  meeting_link: string | null
+  notes: string | null
+  status: 'scheduled' | 'completed' | 'cancelled'
+  created_at: string
+  updated_at: string
+  scheduled_by_profile?: Profile
+}
+
 export interface DashboardData {
   profile: Profile
   pairing: Pairing | null

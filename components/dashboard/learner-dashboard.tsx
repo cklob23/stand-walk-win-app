@@ -6,16 +6,17 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
-import { 
-  MessageSquare, 
-  BookOpen, 
-  CheckCircle2, 
+import {
+  MessageSquare,
+  BookOpen,
+  CheckCircle2,
   Circle,
   ArrowRight,
   Calendar,
   Sparkles
 } from 'lucide-react'
-import type { Profile, Pairing, WeeklyContent, Assignment, Message, Notification } from '@/lib/types'
+import type { Profile, Pairing, WeeklyContent, Assignment, Message, Notification, ScheduledMeeting } from '@/lib/types'
+import { Video, Phone, MapPin, Monitor } from 'lucide-react'
 import { WeeklyTimeline } from './weekly-timeline'
 import { QuickChat } from './quick-chat'
 import { AssignmentCard } from './assignment-card'
@@ -30,6 +31,7 @@ interface LearnerDashboardProps {
   recentMessages: Message[]
   notifications: Notification[]
   currentWeek: number
+  nextMeeting: ScheduledMeeting | null
 }
 
 export function LearnerDashboard({
@@ -41,9 +43,10 @@ export function LearnerDashboard({
   assignmentProgress,
   recentMessages,
   currentWeek,
+  nextMeeting,
 }: LearnerDashboardProps) {
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
-  
+
   // Get current week assignments with progress
   const currentWeekAssignments = assignments
     .filter(a => a.week_number === currentWeek)
@@ -55,9 +58,9 @@ export function LearnerDashboard({
   // Calculate overall progress - only count assignments from unlocked weeks
   const unlockedAssignments = assignments.filter(a => a.week_number <= currentWeek)
   const unlockedAssignmentIds = new Set(unlockedAssignments.map(a => a.id))
-  
+
   const totalAssignments = unlockedAssignments.length
-  const completedAssignments = assignmentProgress.filter(p => 
+  const completedAssignments = assignmentProgress.filter(p =>
     unlockedAssignmentIds.has(p.assignment_id) && p.status === 'completed'
   ).length
   const progressPercentage = totalAssignments > 0 ? Math.round((completedAssignments / totalAssignments) * 100) : 0
@@ -69,7 +72,7 @@ export function LearnerDashboard({
     .toUpperCase() || '?'
 
   // Get next incomplete assignment
-  const nextAssignment = currentWeekAssignments.find(a => 
+  const nextAssignment = currentWeekAssignments.find(a =>
     !a.progress || a.progress.status !== 'completed'
   )
 
@@ -111,7 +114,7 @@ export function LearnerDashboard({
                     </p>
                   </div>
                 )}
-                
+
                 {/* Progress for this week */}
                 <div>
                   <div className="flex items-center justify-between mb-2 gap-2">
@@ -121,13 +124,13 @@ export function LearnerDashboard({
                       {currentWeekAssignments.length}
                     </span>
                   </div>
-                  <Progress 
+                  <Progress
                     value={
                       currentWeekAssignments.length > 0
                         ? (currentWeekAssignments.filter(a => a.progress?.status === 'completed').length / currentWeekAssignments.length) * 100
                         : 0
-                    } 
-                    className="h-2" 
+                    }
+                    className="h-2"
                   />
                 </div>
 
@@ -190,7 +193,7 @@ export function LearnerDashboard({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <WeeklyTimeline 
+              <WeeklyTimeline
                 weeklyContent={weeklyContent}
                 currentWeek={currentWeek}
                 assignments={assignments}
@@ -304,6 +307,59 @@ export function LearnerDashboard({
             </CardContent>
           </Card>
 
+          {/* Next Meeting */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-primary" />
+                Next Meeting
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {nextMeeting ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">
+                    {new Date(nextMeeting.meeting_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {(() => {
+                      const [h, m] = nextMeeting.start_time.slice(0, 5).split(':').map(Number)
+                      const ampm = h >= 12 ? 'PM' : 'AM'
+                      return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${ampm}`
+                    })()}
+                    {' - '}
+                    {(() => {
+                      const [h, m] = nextMeeting.end_time.slice(0, 5).split(':').map(Number)
+                      const ampm = h >= 12 ? 'PM' : 'AM'
+                      return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${ampm}`
+                    })()}
+                  </p>
+                  <Badge variant="secondary" className="text-xs">
+                    {nextMeeting.meeting_type === 'facetime' && <><Video className="h-3 w-3 mr-1" />FaceTime</>}
+                    {nextMeeting.meeting_type === 'zoom' && <><Monitor className="h-3 w-3 mr-1" />Zoom</>}
+                    {nextMeeting.meeting_type === 'phone' && <><Phone className="h-3 w-3 mr-1" />Phone</>}
+                    {nextMeeting.meeting_type === 'in_person' && <><MapPin className="h-3 w-3 mr-1" />In Person</>}
+                  </Badge>
+                  {nextMeeting.meeting_link && (
+                    <a href={nextMeeting.meeting_link} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline block">
+                      Join Meeting
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-2">
+                  <p className="text-sm text-muted-foreground mb-2">No upcoming meetings</p>
+                  <Button variant="outline" size="sm" asChild className="bg-transparent">
+                    <Link href="/dashboard/schedule">
+                      <Calendar className="mr-2 h-3 w-3" />
+                      Schedule a Meeting
+                    </Link>
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Quick Chat */}
           <Card>
             <CardHeader className="pb-3">
@@ -313,7 +369,7 @@ export function LearnerDashboard({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <QuickChat 
+              <QuickChat
                 pairingId={pairing.id}
                 odUserId={profile.id}
                 odUserName={profile.full_name || 'You'}
