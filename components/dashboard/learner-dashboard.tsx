@@ -13,7 +13,8 @@ import {
   Circle,
   ArrowRight,
   Calendar,
-  Sparkles
+  Sparkles,
+  AlertTriangle
 } from 'lucide-react'
 import type { Profile, Pairing, WeeklyContent, Assignment, Message, Notification, ScheduledMeeting } from '@/lib/types'
 import { Video, Phone, MapPin, Monitor } from 'lucide-react'
@@ -32,6 +33,7 @@ interface LearnerDashboardProps {
   notifications: Notification[]
   currentWeek: number
   nextMeeting: ScheduledMeeting | null
+  hasWeeklyMeeting: boolean
 }
 
 export function LearnerDashboard({
@@ -44,6 +46,7 @@ export function LearnerDashboard({
   recentMessages,
   currentWeek,
   nextMeeting,
+  hasWeeklyMeeting,
 }: LearnerDashboardProps) {
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
 
@@ -308,12 +311,24 @@ export function LearnerDashboard({
           </Card>
 
           {/* Next Meeting */}
-          <Card>
+          <Card className={!hasWeeklyMeeting ? 'border-amber-500/40' : ''}>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-primary" />
-                Next Meeting
+                Weekly Meeting
               </CardTitle>
+              {!hasWeeklyMeeting && (
+                <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span className="text-xs font-medium">Required: Schedule a meeting this week</span>
+                </div>
+              )}
+              {hasWeeklyMeeting && (
+                <div className="flex items-center gap-1.5 text-primary">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  <span className="text-xs font-medium">Meeting scheduled this week</span>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               {nextMeeting ? (
@@ -383,7 +398,7 @@ export function LearnerDashboard({
               ) : (
                 <div className="text-center py-2">
                   <p className="text-sm text-muted-foreground mb-2">No upcoming meetings</p>
-                  <Button variant="outline" size="sm" asChild className="bg-transparent">
+                  <Button variant={hasWeeklyMeeting ? 'outline' : 'default'} size="sm" asChild className={hasWeeklyMeeting ? 'bg-transparent' : ''}>
                     <Link href="/dashboard/schedule">
                       <Calendar className="mr-2 h-3 w-3" />
                       Schedule a Meeting

@@ -24,6 +24,15 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog'
 import {
+    Drawer,
+    DrawerContent,
+    DrawerDescription,
+    DrawerFooter,
+    DrawerHeader,
+    DrawerTitle,
+} from '@/components/ui/drawer'
+import { useIsMobile } from '@/hooks/use-mobile'
+import {
     Calendar,
     Clock,
     Plus,
@@ -611,8 +620,6 @@ function BookingView({
         endTime: string
     } | null>(null)
     const [meetingType, setMeetingType] = useState<'facetime' | 'zoom' | 'phone' | 'in_person'>('zoom')
-    const [meetingLink, setMeetingLink] = useState(leaderZoomLink || '')
-    const [phoneNumber, setPhoneNumber] = useState(leaderPhone || '')
     const [notes, setNotes] = useState('')
     const [isBooking, setIsBooking] = useState(false)
 
@@ -634,8 +641,6 @@ function BookingView({
     const handleSelectSlot = (date: string, dayOfWeek: number, startTime: string, endTime: string) => {
         setSelectedSlot({ date, dayOfWeek, startTime, endTime })
         setMeetingType('zoom')
-        setMeetingLink(leaderZoomLink || '')
-        setPhoneNumber(leaderPhone || '')
         setNotes('')
         setBookingDialog(true)
     }
@@ -644,13 +649,14 @@ function BookingView({
         if (!selectedSlot) return
         setIsBooking(true)
 
-        // Build the meeting link: for phone/facetime, store as tel:/facetime: URI
-        let resolvedLink: string | undefined = meetingLink || undefined
+        // Build the meeting link: for phone/facetime, use leader's phone from profile
+        let resolvedLink: string | undefined = undefined
         if (meetingType === 'phone' || meetingType === 'facetime') {
-            const number = phoneNumber.trim()
-            if (number) {
-                resolvedLink = buildCallLink(number, meetingType)
+            if (leaderPhone) {
+                resolvedLink = buildCallLink(leaderPhone, meetingType)
             }
+        } else if (meetingType === 'zoom') {
+            resolvedLink = leaderZoomLink || undefined
         }
 
         const result = await bookMeeting({
@@ -749,146 +755,203 @@ function BookingView({
                 </CardContent>
             </Card>
 
-            {/* Booking confirmation dialog */}
-            <Dialog open={bookingDialog} onOpenChange={setBookingDialog}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Confirm Meeting</DialogTitle>
-                        <DialogDescription>
-                            {selectedSlot && (
-                                <>
-                                    {DAY_NAMES[selectedSlot.dayOfWeek]}, {formatDate(selectedSlot.date)} at{' '}
-                                    {formatTime(selectedSlot.startTime)} - {formatTime(selectedSlot.endTime)}
-                                </>
-                            )}
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-4 py-2">
-                        <div className="space-y-2">
-                            <Label>Meeting Type</Label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {(Object.entries(MEETING_TYPE_CONFIG) as [string, typeof MEETING_TYPE_CONFIG.facetime][]).map(
-                                    ([key, config]) => {
-                                        const Icon = config.icon
-                                        const isSelected = meetingType === key
-                                        return (
-                                            <Button
-                                                key={key}
-                                                variant={isSelected ? 'default' : 'outline'}
-                                                size="sm"
-                                                onClick={() => setMeetingType(key as typeof meetingType)}
-                                                className="justify-start gap-2"
-                                            >
-                                                <Icon className="h-4 w-4" />
-                                                {config.label}
-                                            </Button>
-                                        )
-                                    }
-                                )}
-                            </div>
-                        </div>
-
-                        {(meetingType === 'facetime' || meetingType === 'phone') && (
-                            <div className="space-y-2">
-                                <Label>Phone Number</Label>
-                                {leaderPhone ? (
-                                    <div className="space-y-1.5">
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground rounded-md border px-3 py-2 bg-muted/30">
-                                            <Phone className="h-3.5 w-3.5 shrink-0" />
-                                            <span>{formatPhone(leaderPhone)}</span>
-                                            <Badge variant="secondary" className="text-xs ml-auto">{leaderName}</Badge>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">
-                                            Using {leaderName}'s number on file. You can change it below.
-                                        </p>
-                                        <Input
-                                            value={phoneNumber}
-                                            onChange={(e) => setPhoneNumber(e.target.value)}
-                                            placeholder="Enter a different number..."
-                                            className="text-sm"
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="space-y-1.5">
-                                        <Input
-                                            value={phoneNumber}
-                                            onChange={(e) => setPhoneNumber(e.target.value)}
-                                            placeholder="Enter phone number..."
-                                            className="text-sm"
-                                        />
-                                        <p className="text-xs text-muted-foreground">
-                                            {leaderName} hasn't added a phone number to their profile yet.
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {meetingType === 'zoom' && (
-                            <div className="space-y-2">
-                                <Label>Zoom Meeting Link</Label>
-                                {leaderZoomLink ? (
-                                    <div className="space-y-1.5">
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground rounded-md border px-3 py-2 bg-muted/30">
-                                            <Monitor className="h-3.5 w-3.5 shrink-0" />
-                                            <span className="truncate">{leaderZoomLink}</span>
-                                            <Badge variant="secondary" className="text-xs ml-auto shrink-0">{leaderName}</Badge>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">
-                                            {"Using"} {leaderName}{"'s"} Zoom link. You can change it below.
-                                        </p>
-                                        <Input
-                                            value={meetingLink}
-                                            onChange={(e) => setMeetingLink(e.target.value)}
-                                            placeholder="Enter a different Zoom link..."
-                                            className="text-sm"
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="space-y-1.5">
-                                        <Input
-                                            value={meetingLink}
-                                            onChange={(e) => setMeetingLink(e.target.value)}
-                                            placeholder="https://zoom.us/j/..."
-                                            className="text-sm"
-                                        />
-                                        <p className="text-xs text-muted-foreground">
-                                            {leaderName} {"hasn't"} added a Zoom link to their profile yet. You can enter one or leave blank.
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="space-y-2">
-                            <Label>Notes (optional)</Label>
-                            <Textarea
-                                value={notes}
-                                onChange={(e) => setNotes(e.target.value)}
-                                placeholder="Any topics or agenda items..."
-                                rows={2}
-                            />
-                        </div>
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setBookingDialog(false)} disabled={isBooking}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleBook} disabled={isBooking}>
-                            {isBooking ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                            Book Meeting
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {/* Booking confirmation - Drawer on mobile, Dialog on desktop */}
+            <BookingConfirmation
+                open={bookingDialog}
+                onOpenChange={setBookingDialog}
+                selectedSlot={selectedSlot}
+                meetingType={meetingType}
+                setMeetingType={setMeetingType}
+                notes={notes}
+                setNotes={setNotes}
+                leaderPhone={leaderPhone}
+                leaderZoomLink={leaderZoomLink}
+                leaderName={leaderName}
+                isBooking={isBooking}
+                onBook={handleBook}
+            />
         </>
     )
 }
 
 // ========================
 // Upcoming Meetings sidebar
+// ========================
+// ========================
+// Responsive Booking Confirmation (Drawer on mobile, Dialog on desktop)
+// ========================
+function BookingConfirmation({
+    open,
+    onOpenChange,
+    selectedSlot,
+    meetingType,
+    setMeetingType,
+    notes,
+    setNotes,
+    leaderPhone,
+    leaderZoomLink,
+    leaderName,
+    isBooking,
+    onBook,
+}: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    selectedSlot: { date: string; dayOfWeek: number; startTime: string; endTime: string } | null
+    meetingType: 'facetime' | 'zoom' | 'phone' | 'in_person'
+    setMeetingType: (type: 'facetime' | 'zoom' | 'phone' | 'in_person') => void
+    notes: string
+    setNotes: (notes: string) => void
+    leaderPhone: string | null
+    leaderZoomLink: string | null
+    leaderName: string
+    isBooking: boolean
+    onBook: () => void
+}) {
+    const isMobile = useIsMobile()
+
+    const subtitle = selectedSlot
+        ? `${DAY_NAMES[selectedSlot.dayOfWeek]}, ${formatDate(selectedSlot.date)} at ${formatTime(selectedSlot.startTime)} - ${formatTime(selectedSlot.endTime)}`
+        : ''
+
+    const formContent = (
+        <div className="space-y-4">
+            <div className="space-y-2">
+                <Label>Meeting Type</Label>
+                <div className="grid grid-cols-2 gap-2">
+                    {(Object.entries(MEETING_TYPE_CONFIG) as [string, typeof MEETING_TYPE_CONFIG.facetime][]).map(
+                        ([key, config]) => {
+                            const Icon = config.icon
+                            const isSelected = meetingType === key
+                            return (
+                                <Button
+                                    key={key}
+                                    variant={isSelected ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setMeetingType(key as typeof meetingType)}
+                                    className={`justify-center gap-2 ${isSelected ? '' : 'bg-transparent'}`}
+                                >
+                                    <Icon className="h-4 w-4 shrink-0" />
+                                    <span>{config.label}</span>
+                                </Button>
+                            )
+                        }
+                    )}
+                </div>
+            </div>
+
+            {(meetingType === 'facetime' || meetingType === 'phone') && (
+                <div className="space-y-2">
+                    <Label>{meetingType === 'facetime' ? 'FaceTime' : 'Phone Call'}</Label>
+                    {leaderPhone ? (
+                        <div className="flex items-center gap-2 text-sm rounded-md border px-3 py-2 bg-muted/30">
+                            <Phone className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span>{formatPhone(leaderPhone)}</span>
+                            <Badge variant="secondary" className="text-xs ml-auto shrink-0">{leaderName}</Badge>
+                        </div>
+                    ) : (
+                        <div className="rounded-md border border-dashed px-3 py-3 text-center">
+                            <p className="text-sm text-muted-foreground">
+                                {leaderName} {"hasn't"} added a phone number yet.
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Ask your leader to add their number on the Schedule page.
+                            </p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {meetingType === 'zoom' && (
+                <div className="space-y-2">
+                    <Label>Zoom Meeting</Label>
+                    {leaderZoomLink ? (
+                        <div className="flex items-center gap-2 text-sm rounded-md border px-3 py-2 bg-muted/30 overflow-hidden">
+                            <Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span className="truncate">{leaderZoomLink}</span>
+                            <Badge variant="secondary" className="text-xs ml-auto shrink-0">{leaderName}</Badge>
+                        </div>
+                    ) : (
+                        <div className="rounded-md border border-dashed px-3 py-3 text-center">
+                            <p className="text-sm text-muted-foreground">
+                                {leaderName} {"hasn't"} added a Zoom link yet.
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Ask your leader to add their Zoom link on the Schedule page.
+                            </p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <div className="space-y-2">
+                <Label>Notes (optional)</Label>
+                <Textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Any topics or agenda items..."
+                    rows={2}
+                />
+            </div>
+        </div>
+    )
+
+    const footerButtons = (
+        <>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isBooking} className="w-full sm:w-auto">
+                Cancel
+            </Button>
+            <Button onClick={onBook} disabled={isBooking} className="w-full sm:w-auto">
+                {isBooking ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                Book Meeting
+            </Button>
+        </>
+    )
+
+    if (isMobile) {
+        return (
+            <Drawer open={open} onOpenChange={onOpenChange}>
+                <DrawerContent>
+                    <DrawerHeader className="text-left">
+                        <DrawerTitle>Confirm Meeting</DrawerTitle>
+                        <DrawerDescription>{subtitle}</DrawerDescription>
+                    </DrawerHeader>
+                    <div className="px-4 pb-2 overflow-y-auto">
+                        {formContent}
+                    </div>
+                    <DrawerFooter>
+                        <Button onClick={onBook} disabled={isBooking} className="w-full">
+                            {isBooking ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                            Book Meeting
+                        </Button>
+                        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isBooking} className="w-full">
+                            Cancel
+                        </Button>
+                    </DrawerFooter>
+                </DrawerContent>
+            </Drawer>
+        )
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>Confirm Meeting</DialogTitle>
+                    <DialogDescription>{subtitle}</DialogDescription>
+                </DialogHeader>
+                <div className="py-2">
+                    {formContent}
+                </div>
+                <DialogFooter>
+                    {footerButtons}
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+// ========================
+// Upcoming Meetings Sidebar
 // ========================
 function UpcomingMeetings({
     meetings,
