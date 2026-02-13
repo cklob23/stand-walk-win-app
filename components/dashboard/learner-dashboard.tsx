@@ -340,11 +340,31 @@ export function LearnerDashboard({
                     {nextMeeting.meeting_type === 'phone' && <><Phone className="h-3 w-3 mr-1" />Phone</>}
                     {nextMeeting.meeting_type === 'in_person' && <><MapPin className="h-3 w-3 mr-1" />In Person</>}
                   </Badge>
-                  {nextMeeting.meeting_link && (
-                    <a href={nextMeeting.meeting_link} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline block">
-                      Join Meeting
-                    </a>
-                  )}
+                  {(() => {
+                    const type = nextMeeting.meeting_type
+                    const link = nextMeeting.meeting_link
+                    const leaderPhone = partner?.phone
+                    if (type === 'facetime' || type === 'phone') {
+                      const number = link?.match(/^(?:tel:|facetime:)(.+)$/)?.[1] || leaderPhone
+                      if (number) {
+                        const href = type === 'facetime' ? `facetime:${number.replace(/[^0-9+]/g, '')}` : `tel:${number.replace(/[^0-9+]/g, '')}`
+                        return (
+                          <a href={href} className="text-xs text-primary hover:underline flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {type === 'facetime' ? 'FaceTime' : 'Call'}
+                          </a>
+                        )
+                      }
+                    }
+                    if (link) {
+                      return (
+                        <a href={link} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline block">
+                          Join Meeting
+                        </a>
+                      )
+                    }
+                    return null
+                  })()}
                 </div>
               ) : (
                 <div className="text-center py-2">

@@ -40,7 +40,7 @@ import {
     ArrowLeft,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { saveAvailability, bookMeeting, cancelMeeting, completeMeeting, updateMeetingLink } from '@/lib/schedule-actions'
+import { saveAvailability, bookMeeting, cancelMeeting, completeMeeting, updateMeetingLink } from '@/lib/scheduling-actions'
 import type { Profile, Pairing, AvailabilitySlot, ScheduledMeeting } from '@/lib/types'
 import Link from 'next/link'
 
@@ -825,7 +825,7 @@ function UpcomingMeetings({
                                     )}
 
                                     <div className="flex gap-1.5 flex-wrap">
-                                        {!meeting.meeting_link && meeting.meeting_type !== 'phone' && meeting.meeting_type !== 'facetime' && linkEditId !== meeting.id && (
+                                        {!meeting.meeting_link && linkEditId !== meeting.id && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
