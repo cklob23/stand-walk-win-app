@@ -109,7 +109,7 @@ export function AssignmentCard({
   const isCompleted = status === 'completed'
   const Icon = typeIcons[assignment.assignment_type] || Circle
 
-  // Auto-complete meeting assignment in DB when a meeting is scheduled this week
+  // Auto-complete meeting assignment in DB when a meeting is marked done this week
   useEffect(() => {
     if (!isMeetingType || !meetingAutoCompleted || isLeader) return
     if (displayProgress?.status === 'completed') return // already marked
@@ -120,7 +120,7 @@ export function AssignmentCard({
         assignment_id: assignment.id,
         user_id: userId,
         status: 'completed',
-        notes: 'Meeting scheduled',
+        notes: 'Meeting completed',
         completed_at: new Date().toISOString(),
       }
       await supabase
@@ -265,12 +265,12 @@ export function AssignmentCard({
                 {isCompleted ? (
                   <div className="flex items-center gap-2 text-sm text-success rounded-lg border border-success/20 bg-success/5 px-3 py-2.5">
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    <span className="font-medium">Meeting scheduled this week</span>
+                    <span className="font-medium">Meeting completed this week</span>
                   </div>
                 ) : (
                   <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2.5">
                     <p className="text-sm text-foreground font-medium">
-                      You need to schedule a meeting with your leader this week.
+                      Schedule and complete a meeting with your leader to finish this assignment. Your leader must mark the meeting as done.
                     </p>
                     <Button size="sm" asChild>
                       <Link href="/dashboard/schedule">
@@ -288,12 +288,12 @@ export function AssignmentCard({
                 {hasWeeklyMeeting ? (
                   <div className="flex items-center gap-2 text-sm text-success rounded-lg border border-success/20 bg-success/5 px-3 py-2.5">
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    <span className="font-medium">{learnerName || 'Learner'} has a meeting scheduled this week</span>
+                    <span className="font-medium">Meeting completed with {learnerName || 'Learner'} this week</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground rounded-lg border px-3 py-2.5">
                     <Clock className="h-4 w-4 shrink-0" />
-                    <span>{learnerName || 'Learner'} has not scheduled a meeting this week yet</span>
+                    <span>Waiting for a meeting with {learnerName || 'Learner'} to be completed. Mark your meeting as done after it happens.</span>
                   </div>
                 )}
               </div>

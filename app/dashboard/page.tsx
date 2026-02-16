@@ -44,7 +44,7 @@ export default async function DashboardPage() {
       .order('created_at', { ascending: false })
       .limit(1)
       .single()
-    
+
     if (data) {
       pairing = data
       partner = data.learner
@@ -60,7 +60,7 @@ export default async function DashboardPage() {
       .order('created_at', { ascending: false })
       .limit(1)
       .single()
-    
+
     if (data) {
       pairing = data
       partner = data.leader
@@ -88,7 +88,7 @@ export default async function DashboardPage() {
       .from('assignment_progress')
       .select('*')
       .eq('pairing_id', pairing.id)
-    
+
     assignmentProgress = data || []
   }
 
@@ -97,23 +97,23 @@ export default async function DashboardPage() {
   if (pairing && assignments && assignments.length > 0) {
     // Get assignments for the current week
     const currentWeekAssignments = (assignments || []).filter(a => a.week_number === currentWeek)
-    
+
     // Only count progress for assignments in the current week
     const currentWeekAssignmentIds = new Set(currentWeekAssignments.map(a => a.id))
-    const currentWeekCompletedCount = assignmentProgress.filter(p => 
+    const currentWeekCompletedCount = assignmentProgress.filter(p =>
       currentWeekAssignmentIds.has(p.assignment_id) && p.status === 'completed'
     ).length
-    
+
     // If all assignments for current week are complete, advance to next week
     if (currentWeekAssignments.length > 0 && currentWeekCompletedCount >= currentWeekAssignments.length && currentWeek < 6) {
       const nextWeek = currentWeek + 1
-      
+
       // Update the pairing's current week in the database
       await supabase
         .from('pairings')
         .update({ current_week: nextWeek })
         .eq('id', pairing.id)
-      
+
       // Update the local value
       effectiveCurrentWeek = nextWeek
       pairing.current_week = nextWeek
@@ -132,7 +132,7 @@ export default async function DashboardPage() {
       .eq('pairing_id', pairing.id)
       .order('created_at', { ascending: false })
       .limit(10)
-    
+
     recentMessages = (data || []) as Message[]
   }
 
@@ -166,8 +166,8 @@ export default async function DashboardPage() {
   // If no active pairing, show the no pairing state
   if (!pairing || (pairing.status === 'pending' && !pairing.learner_id)) {
     return (
-      <NoPairingState 
-        profile={profile} 
+      <NoPairingState
+        profile={profile}
         pairingCode={pairing?.invite_code || null}
         pairingId={pairing?.id || null}
       />
@@ -176,7 +176,7 @@ export default async function DashboardPage() {
 
   // Check if both parties have signed the covenant
   const covenantComplete = pairing.covenant_accepted_leader && pairing.covenant_accepted_learner
-  
+
   // If covenant not complete, show covenant required screen
   if (!covenantComplete && pairing.learner_id) {
     return (
@@ -188,28 +188,19 @@ export default async function DashboardPage() {
     )
   }
 
-  // Check if there's a meeting scheduled for the current week (Mon-Sun)
+  // Check if there's a COMPLETED meeting for the current journey week.
+  // Only meetings marked "Done" count — merely scheduled meetings do not.
+  // For week N, the learner needs at least N completed meetings total.
+  // This ensures each week requires a new completed meeting before advancing.
   let hasWeeklyMeeting = false
   if (pairing) {
-    const now = new Date()
-    const dayOfWeek = now.getDay()
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-    const weekStart = new Date(now)
-    weekStart.setDate(now.getDate() + mondayOffset)
-    weekStart.setHours(0, 0, 0, 0)
-    const weekEnd = new Date(weekStart)
-    weekEnd.setDate(weekStart.getDate() + 6)
-    weekEnd.setHours(23, 59, 59, 999)
-
     const { count } = await supabase
       .from('scheduled_meetings')
       .select('*', { count: 'exact', head: true })
       .eq('pairing_id', pairing.id)
-      .in('status', ['scheduled', 'completed'])
-      .gte('meeting_date', weekStart.toISOString().split('T')[0])
-      .lte('meeting_date', weekEnd.toISOString().split('T')[0])
+      .eq('status', 'completed')
 
-    hasWeeklyMeeting = (count ?? 0) > 0
+    hasWeeklyMeeting = (count ?? 0) >= effectiveCurrentWeek
   }
 
   const dashboardProps = {

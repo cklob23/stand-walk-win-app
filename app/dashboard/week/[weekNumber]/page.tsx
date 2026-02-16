@@ -128,28 +128,18 @@ export default async function WeekPage({ params }: WeekPageProps) {
     .eq('week_number', weekNum)
     .order('created_at', { ascending: false })
 
-  // Check if meeting is scheduled for the current week (Mon-Sun)
+  // Check if meeting is completed for this journey week.
+  // Only meetings marked "Done" count — merely scheduled meetings do not.
+  // For week N, the learner needs at least N completed meetings total.
   let hasWeeklyMeeting = false
   if (weekNum === pairing.current_week) {
-    const now = new Date()
-    const dayOfWeek = now.getDay()
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-    const weekStart = new Date(now)
-    weekStart.setDate(now.getDate() + mondayOffset)
-    weekStart.setHours(0, 0, 0, 0)
-    const weekEnd = new Date(weekStart)
-    weekEnd.setDate(weekStart.getDate() + 6)
-    weekEnd.setHours(23, 59, 59, 999)
-
     const { count } = await supabase
       .from('scheduled_meetings')
       .select('*', { count: 'exact', head: true })
       .eq('pairing_id', pairing.id)
-      .in('status', ['scheduled', 'completed'])
-      .gte('meeting_date', weekStart.toISOString().split('T')[0])
-      .lte('meeting_date', weekEnd.toISOString().split('T')[0])
+      .eq('status', 'completed')
 
-    hasWeeklyMeeting = (count ?? 0) > 0
+    hasWeeklyMeeting = (count ?? 0) >= weekNum
   }
 
   return (

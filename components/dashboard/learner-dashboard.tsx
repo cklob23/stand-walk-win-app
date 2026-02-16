@@ -321,13 +321,13 @@ export function LearnerDashboard({
               {!hasWeeklyMeeting && (
                 <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
                   <AlertTriangle className="h-3.5 w-3.5" />
-                  <span className="text-xs font-medium">Required: Schedule a meeting this week</span>
+                  <span className="text-xs font-medium">Required: Complete a meeting this week</span>
                 </div>
               )}
               {hasWeeklyMeeting && (
                 <div className="flex items-center gap-1.5 text-primary">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  <span className="text-xs font-medium">Meeting scheduled this week</span>
+                  <span className="text-xs font-medium">Meeting completed this week</span>
                 </div>
               )}
             </CardHeader>
