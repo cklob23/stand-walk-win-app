@@ -193,6 +193,96 @@ export async function completeMeeting(meetingId: string) {
     }
 }
 
+export async function updateMeeting(
+    meetingId: string,
+    data: {
+        meetingType?: 'facetime' | 'zoom' | 'phone' | 'in_person'
+        meetingDate?: string
+        startTime?: string
+        endTime?: string
+        meetingLink?: string | null
+        notes?: string | null
+    }
+) {
+    try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { error: 'Not authenticated' }
+
+        const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+        if (data.meetingType !== undefined) updates.meeting_type = data.meetingType
+        if (data.meetingDate !== undefined) updates.meeting_date = data.meetingDate
+        if (data.startTime !== undefined) updates.start_time = data.startTime
+        if (data.endTime !== undefined) updates.end_time = data.endTime
+        if (data.meetingLink !== undefined) updates.meeting_link = data.meetingLink
+        if (data.notes !== undefined) updates.notes = data.notes
+
+        // If rescheduling, check for conflicts
+        if (data.meetingDate && data.startTime) {
+            const { data: existing } = await supabase
+                .from('scheduled_meetings')
+                .select('id')
+                .eq('meeting_date', data.meetingDate)
+                .eq('start_time', data.startTime)
+                .eq('status', 'scheduled')
+                .neq('id', meetingId)
+                .limit(1)
+
+            if (existing && existing.length > 0) {
+                return { error: 'That time slot is already booked.' }
+            }
+        }
+
+        const { error } = await supabase
+            .from('scheduled_meetings')
+            .update(updates)
+            .eq('id', meetingId)
+
+        if (error) return { error: error.message }
+
+        // Notify partner
+        const { data: meeting } = await supabase
+            .from('scheduled_meetings')
+            .select('pairing_id')
+            .eq('id', meetingId)
+            .single()
+
+        if (meeting) {
+            const { data: pairing } = await supabase
+                .from('pairings')
+                .select('leader_id, learner_id')
+                .eq('id', meeting.pairing_id)
+                .single()
+
+            if (pairing) {
+                const partnerId = pairing.leader_id === user.id ? pairing.learner_id : pairing.leader_id
+                if (partnerId) {
+                    const { data: editor } = await supabase
+                        .from('profiles')
+                        .select('full_name')
+                        .eq('id', user.id)
+                        .single()
+
+                    await supabase.from('notifications').insert({
+                        user_id: partnerId,
+                        pairing_id: meeting.pairing_id,
+                        type: 'pairing',
+                        title: 'Meeting Updated',
+                        message: `${editor?.full_name || 'Your partner'} updated an upcoming meeting.`,
+                        read: false,
+                    })
+                }
+            }
+        }
+
+        revalidatePath('/dashboard/schedule')
+        revalidatePath('/dashboard')
+        return { success: true }
+    } catch {
+        return { error: 'Unable to update meeting.' }
+    }
+}
+
 export async function updateMeetingLink(meetingId: string, link: string) {
     try {
         const supabase = await createClient()

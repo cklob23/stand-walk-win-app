@@ -18,6 +18,7 @@ import {
 import type { Profile, Pairing, WeeklyContent, Assignment, Message, Notification, ScheduledMeeting } from '@/lib/types'
 import { Video, Phone, MapPin, Monitor } from 'lucide-react'
 import { WeeklyTimeline } from './weekly-timeline'
+import { AddToCalendarButton } from '@/components/app-to-calendar-button'
 import { QuickChat } from './quick-chat'
 
 interface LeaderDashboardProps {
@@ -287,6 +288,7 @@ export function LeaderDashboard({
                     }
                     return null
                   })()}
+                  <AddToCalendarButton meeting={nextMeeting} partnerName={partner?.full_name || 'Learner'} partnerPhone={partner?.phone} />
                 </div>
               ) : (
                 <div className="text-center py-2">

@@ -32,6 +32,7 @@ import {
     DrawerTitle,
 } from '@/components/ui/drawer'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { AddToCalendarButton } from '@/components/app-to-calendar-button'
 import {
     Calendar,
     Clock,
@@ -47,9 +48,10 @@ import {
     XCircle,
     Link as LinkIcon,
     ArrowLeft,
+    Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { saveAvailability, bookMeeting, cancelMeeting, completeMeeting, updateMeetingLink, updateContactInfo } from '@/lib/scheduling-actions'
+import { saveAvailability, bookMeeting, cancelMeeting, completeMeeting, updateMeeting, updateMeetingLink, updateContactInfo } from '@/lib/scheduling-actions'
 import type { Profile, Pairing, AvailabilitySlot, ScheduledMeeting } from '@/lib/types'
 import Link from 'next/link'
 
@@ -104,6 +106,24 @@ function getUpcomingDatesForDay(dayOfWeek: number, weeksAhead: number = 2): stri
 }
 
 const TIME_OPTIONS = generateTimeOptions()
+
+// Break an availability slot into 1-hour sub-slots
+function getHourSlots(startTime: string, endTime: string): { start: string; end: string }[] {
+    const slots: { start: string; end: string }[] = []
+    const [startH, startM] = startTime.split(':').map(Number)
+    const [endH, endM] = endTime.split(':').map(Number)
+    const startMins = startH * 60 + startM
+    const endMins = endH * 60 + endM
+
+    for (let m = startMins; m + 60 <= endMins; m += 60) {
+        const sH = Math.floor(m / 60).toString().padStart(2, '0')
+        const sM = (m % 60).toString().padStart(2, '0')
+        const eH = Math.floor((m + 60) / 60).toString().padStart(2, '0')
+        const eM = ((m + 60) % 60).toString().padStart(2, '0')
+        slots.push({ start: `${sH}:${sM}`, end: `${eH}:${eM}` })
+    }
+    return slots
+}
 
 interface ScheduleViewProps {
     profile: Profile
@@ -238,6 +258,7 @@ export function ScheduleView({
                         partnerName={partner?.full_name || 'Partner'}
                         partnerPhone={partner?.phone || null}
                         partnerZoomLink={partner?.zoom_link || null}
+                        availabilitySlots={initialSlots}
                     />
                     <PastMeetings
                         meetings={pastMeetings}
@@ -621,10 +642,21 @@ function BookingView({
         {} as Record<number, AvailabilitySlot[]>
     )
 
-    // Build a set of already booked date+time strings for quick lookup
-    const bookedSet = new Set(
-        upcomingMeetings.map((m) => `${m.meeting_date}_${m.start_time.slice(0, 5)}`)
-    )
+    // Build a set of booked hour ranges for quick overlap lookup
+    // Each booked meeting marks all its 1-hour sub-slots as taken
+    const bookedHourSet = new Set<string>()
+    for (const m of upcomingMeetings) {
+        const mStart = m.start_time.slice(0, 5)
+        const mEnd = m.end_time.slice(0, 5)
+        const subSlots = getHourSlots(mStart, mEnd)
+        // If the meeting is exactly 1 hour or less, just add it directly
+        if (subSlots.length === 0) {
+            bookedHourSet.add(`${m.meeting_date}_${mStart}`)
+        }
+        for (const s of subSlots) {
+            bookedHourSet.add(`${m.meeting_date}_${s.start}`)
+        }
+    }
 
     const handleSelectSlot = (date: string, dayOfWeek: number, startTime: string, endTime: string) => {
         setSelectedSlot({ date, dayOfWeek, startTime, endTime })
@@ -695,7 +727,7 @@ function BookingView({
                         Book a Meeting
                     </CardTitle>
                     <CardDescription>
-                        Select an available time slot from {leaderName}'s schedule for the next 2 weeks.
+                        Select a 1-hour time slot from {leaderName}'s availability for the next 2 weeks.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -709,33 +741,46 @@ function BookingView({
                         return (
                             <div key={dayIdx} className="space-y-2">
                                 <h3 className="text-sm font-semibold text-foreground">{dayName}</h3>
-                                {upcomingDates.map((date) => (
-                                    <div key={date} className="space-y-1.5">
-                                        <p className="text-xs text-muted-foreground ml-1">{formatDate(date)}</p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {daySlots.map((slot) => {
-                                                const startTime = slot.start_time.slice(0, 5)
-                                                const endTime = slot.end_time.slice(0, 5)
-                                                const isBooked = bookedSet.has(`${date}_${startTime}`)
+                                {upcomingDates.map((date) => {
+                                    // Collect all 1-hour sub-slots across all availability windows for this date
+                                    const allHourSlots: { start: string; end: string; slotId: string }[] = []
+                                    for (const slot of daySlots) {
+                                        const startTime = slot.start_time.slice(0, 5)
+                                        const endTime = slot.end_time.slice(0, 5)
+                                        const hours = getHourSlots(startTime, endTime)
+                                        for (const h of hours) {
+                                            allHourSlots.push({ start: h.start, end: h.end, slotId: slot.id })
+                                        }
+                                    }
 
-                                                return (
-                                                    <Button
-                                                        key={slot.id + date}
-                                                        variant={isBooked ? 'secondary' : 'outline'}
-                                                        size="sm"
-                                                        disabled={isBooked}
-                                                        onClick={() => handleSelectSlot(date, dayIdx, startTime, endTime)}
-                                                        className={isBooked ? 'opacity-50 line-through' : 'hover:bg-primary/10 hover:text-primary hover:border-primary/30'}
-                                                    >
-                                                        <Clock className="h-3 w-3 mr-1.5" />
-                                                        {formatTime(startTime)} - {formatTime(endTime)}
-                                                        {isBooked && <span className="ml-1 text-xs">(Booked)</span>}
-                                                    </Button>
-                                                )
-                                            })}
+                                    if (allHourSlots.length === 0) return null
+
+                                    return (
+                                        <div key={date} className="space-y-1.5">
+                                            <p className="text-xs text-muted-foreground ml-1">{formatDate(date)}</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {allHourSlots.map((hourSlot) => {
+                                                    const isBooked = bookedHourSet.has(`${date}_${hourSlot.start}`)
+
+                                                    return (
+                                                        <Button
+                                                            key={`${hourSlot.slotId}_${date}_${hourSlot.start}`}
+                                                            variant={isBooked ? 'secondary' : 'outline'}
+                                                            size="sm"
+                                                            disabled={isBooked}
+                                                            onClick={() => handleSelectSlot(date, dayIdx, hourSlot.start, hourSlot.end)}
+                                                            className={isBooked ? 'opacity-50 line-through' : 'hover:bg-primary/10 hover:text-primary hover:border-primary/30'}
+                                                        >
+                                                            <Clock className="h-3 w-3 mr-1.5" />
+                                                            {formatTime(hourSlot.start)} - {formatTime(hourSlot.end)}
+                                                            {isBooked && <span className="ml-1 text-xs">(Booked)</span>}
+                                                        </Button>
+                                                    )
+                                                })}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         )
                     })}
@@ -946,17 +991,91 @@ function UpcomingMeetings({
     partnerName,
     partnerPhone,
     partnerZoomLink,
+    availabilitySlots,
 }: {
     meetings: ScheduledMeeting[]
     profile: Profile
     partnerName: string
     partnerPhone: string | null
     partnerZoomLink: string | null
+    availabilitySlots: AvailabilitySlot[]
 }) {
     const router = useRouter()
+    const isMobile = useIsMobile()
     const [loadingId, setLoadingId] = useState<string | null>(null)
     const [linkEditId, setLinkEditId] = useState<string | null>(null)
     const [linkValue, setLinkValue] = useState('')
+
+    // Edit meeting state
+    const [editMeeting, setEditMeeting] = useState<ScheduledMeeting | null>(null)
+    const [editType, setEditType] = useState<'facetime' | 'zoom' | 'phone' | 'in_person'>('zoom')
+    const [editSlot, setEditSlot] = useState<{ date: string; start: string; end: string } | null>(null)
+    const [editNotes, setEditNotes] = useState('')
+    const [isSaving, setIsSaving] = useState(false)
+
+    const openEdit = (meeting: ScheduledMeeting) => {
+        setEditMeeting(meeting)
+        setEditType(meeting.meeting_type as typeof editType)
+        setEditSlot({
+            date: meeting.meeting_date,
+            start: meeting.start_time.slice(0, 5),
+            end: meeting.end_time.slice(0, 5),
+        })
+        setEditNotes(meeting.notes || '')
+    }
+
+    const handleSaveEdit = async () => {
+        if (!editMeeting || !editSlot) return
+        setIsSaving(true)
+
+        // Build meeting link for zoom
+        let meetingLink: string | null = null
+        if (editType === 'zoom') {
+            meetingLink = partnerZoomLink || editMeeting.meeting_link || null
+        }
+
+        const result = await updateMeeting(editMeeting.id, {
+            meetingType: editType,
+            meetingDate: editSlot.date,
+            startTime: editSlot.start,
+            endTime: editSlot.end,
+            meetingLink,
+            notes: editNotes || null,
+        })
+
+        if (result.error) toast.error(result.error)
+        else {
+            toast.success('Meeting updated!')
+            setEditMeeting(null)
+            router.refresh()
+        }
+        setIsSaving(false)
+    }
+
+    // Build available hour slots from availability for the edit dialog
+    const slotsByDay = availabilitySlots.reduce(
+        (acc, slot) => {
+            if (!acc[slot.day_of_week]) acc[slot.day_of_week] = []
+            acc[slot.day_of_week].push(slot)
+            return acc
+        },
+        {} as Record<number, AvailabilitySlot[]>
+    )
+
+    const bookedHourSet = new Set<string>()
+    for (const m of meetings) {
+        // Skip the meeting being edited so its own slot shows as available
+        if (editMeeting && m.id === editMeeting.id) continue
+        const mStart = m.start_time.slice(0, 5)
+        const mEnd = m.end_time.slice(0, 5)
+        const subSlots = getHourSlots(mStart, mEnd)
+        if (subSlots.length === 0) {
+            bookedHourSet.add(`${m.meeting_date}_${mStart}`)
+        }
+        for (const s of subSlots) {
+            bookedHourSet.add(`${m.meeting_date}_${s.start}`)
+        }
+    }
 
     const handleCancel = async (id: string) => {
         setLoadingId(id)
@@ -992,127 +1111,294 @@ function UpcomingMeetings({
         setLoadingId(null)
     }
 
-    return (
-        <Card>
-            <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-primary" />
-                    Upcoming Meetings
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {meetings.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">No upcoming meetings.</p>
-                ) : (
-                    <div className="space-y-3">
-                        {meetings.map((meeting) => {
-                            const config = MEETING_TYPE_CONFIG[meeting.meeting_type as keyof typeof MEETING_TYPE_CONFIG]
-                            const Icon = config?.icon || Video
-                            const isLoading = loadingId === meeting.id
-
+    // Edit form content shared between Dialog and Drawer
+    const editFormContent = editMeeting && (
+        <div className="space-y-4">
+            {/* Meeting Type */}
+            <div className="space-y-2">
+                <Label>Meeting Type</Label>
+                <div className="grid grid-cols-2 gap-2">
+                    {(Object.entries(MEETING_TYPE_CONFIG) as [string, typeof MEETING_TYPE_CONFIG.facetime][]).map(
+                        ([key, config]) => {
+                            const TypeIcon = config.icon
+                            const isSelected = editType === key
                             return (
-                                <div key={meeting.id} className="border rounded-lg p-3 space-y-2">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div>
-                                            <p className="text-sm font-medium text-foreground">{formatDate(meeting.meeting_date)}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {formatTime(meeting.start_time.slice(0, 5))} - {formatTime(meeting.end_time.slice(0, 5))}
-                                            </p>
-                                        </div>
-                                        <Badge variant="secondary" className={`text-xs ${config?.color || ''}`}>
-                                            <Icon className="h-3 w-3 mr-1" />
-                                            {config?.label || meeting.meeting_type}
-                                        </Badge>
-                                    </div>
+                                <Button
+                                    key={key}
+                                    variant={isSelected ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setEditType(key as typeof editType)}
+                                    className={`justify-center gap-2 ${isSelected ? '' : 'bg-transparent'}`}
+                                >
+                                    <TypeIcon className="h-4 w-4 shrink-0" />
+                                    <span>{config.label}</span>
+                                </Button>
+                            )
+                        }
+                    )}
+                </div>
+            </div>
 
-                                    <p className="text-xs text-muted-foreground">with {partnerName}</p>
+            {/* Time Slot Picker */}
+            <div className="space-y-2">
+                <Label>Time Slot</Label>
+                <div className="max-h-48 overflow-y-auto space-y-3 rounded-md border p-2">
+                    {DAY_NAMES.map((dayName, dayIdx) => {
+                        const daySlots = slotsByDay[dayIdx]
+                        if (!daySlots) return null
 
-                                    {(() => {
-                                        const action = getMeetingAction(meeting, partnerPhone, partnerZoomLink)
-                                        if (!action) return null
-                                        const isCallLink = action.href.startsWith('tel:') || action.href.startsWith('facetime:')
-                                        return (
-                                            <div className="flex items-center gap-2">
-                                                <a
-                                                    href={action.href}
-                                                    {...(isCallLink ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
-                                                    className="text-xs text-primary hover:underline flex items-center gap-1"
-                                                >
-                                                    {isCallLink ? <Phone className="h-3 w-3" /> : <LinkIcon className="h-3 w-3" />}
-                                                    {action.label}
-                                                </a>
-                                                {isCallLink && action.phoneDisplay && (
-                                                    <span className="text-xs text-muted-foreground">{formatPhone(action.phoneDisplay)}</span>
-                                                )}
+                        const upcomingDates = getUpcomingDatesForDay(dayIdx)
+                        if (upcomingDates.length === 0) return null
+
+                        const hasAnySlots = upcomingDates.some((date) =>
+                            daySlots.some((slot) => {
+                                const hours = getHourSlots(slot.start_time.slice(0, 5), slot.end_time.slice(0, 5))
+                                return hours.some((h) => !bookedHourSet.has(`${date}_${h.start}`))
+                            })
+                        )
+                        if (!hasAnySlots) return null
+
+                        return (
+                            <div key={dayIdx} className="space-y-1">
+                                <p className="text-xs font-semibold text-foreground">{dayName}</p>
+                                {upcomingDates.map((date) => {
+                                    const allHourSlots: { start: string; end: string }[] = []
+                                    for (const slot of daySlots) {
+                                        const hours = getHourSlots(slot.start_time.slice(0, 5), slot.end_time.slice(0, 5))
+                                        for (const h of hours) allHourSlots.push(h)
+                                    }
+                                    const available = allHourSlots.filter((h) => !bookedHourSet.has(`${date}_${h.start}`))
+                                    if (available.length === 0) return null
+
+                                    return (
+                                        <div key={date} className="space-y-1">
+                                            <p className="text-xs text-muted-foreground ml-1">{formatDate(date)}</p>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {available.map((hourSlot) => {
+                                                    const isCurrentSlot = editSlot?.date === date && editSlot?.start === hourSlot.start
+                                                    return (
+                                                        <Button
+                                                            key={`${date}_${hourSlot.start}`}
+                                                            variant={isCurrentSlot ? 'default' : 'outline'}
+                                                            size="sm"
+                                                            className={`h-7 text-xs ${isCurrentSlot ? '' : 'bg-transparent'}`}
+                                                            onClick={() => setEditSlot({ date, start: hourSlot.start, end: hourSlot.end })}
+                                                        >
+                                                            <Clock className="h-3 w-3 mr-1" />
+                                                            {formatTime(hourSlot.start)} - {formatTime(hourSlot.end)}
+                                                        </Button>
+                                                    )
+                                                })}
                                             </div>
-                                        )
-                                    })()}
-
-                                    {meeting.notes && (
-                                        <p className="text-xs text-muted-foreground italic">{meeting.notes}</p>
-                                    )}
-
-                                    {/* Link editor */}
-                                    {linkEditId === meeting.id && (
-                                        <div className="flex gap-1.5">
-                                            <Input
-                                                value={linkValue}
-                                                onChange={(e) => setLinkValue(e.target.value)}
-                                                placeholder="Paste meeting link..."
-                                                className="text-xs h-7"
-                                            />
-                                            <Button size="sm" className="h-7 px-2" onClick={() => handleSaveLink(meeting.id)} disabled={isLoading}>
-                                                Save
-                                            </Button>
-                                            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setLinkEditId(null)}>
-                                                <X className="h-3 w-3" />
-                                            </Button>
                                         </div>
-                                    )}
+                                    )
+                                })}
+                            </div>
+                        )
+                    })}
+                </div>
+                {editSlot && (
+                    <p className="text-xs text-muted-foreground">
+                        Selected: {formatDate(editSlot.date)} at {formatTime(editSlot.start)} - {formatTime(editSlot.end)}
+                    </p>
+                )}
+            </div>
 
-                                    <div className="flex gap-1.5 flex-wrap">
-                                        {!meeting.meeting_link && meeting.meeting_type !== 'phone' && meeting.meeting_type !== 'facetime' && linkEditId !== meeting.id && (
+            {/* Notes */}
+            <div className="space-y-2">
+                <Label>Notes (optional)</Label>
+                <Textarea
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    placeholder="Any topics or agenda items..."
+                    rows={2}
+                />
+            </div>
+        </div>
+    )
+
+    return (
+        <>
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-primary" />
+                        Upcoming Meetings
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {meetings.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">No upcoming meetings.</p>
+                    ) : (
+                        <div className="space-y-3">
+                            {meetings.map((meeting) => {
+                                const config = MEETING_TYPE_CONFIG[meeting.meeting_type as keyof typeof MEETING_TYPE_CONFIG]
+                                const Icon = config?.icon || Video
+                                const isLoading = loadingId === meeting.id
+
+                                return (
+                                    <div key={meeting.id} className="border rounded-lg p-3 space-y-2">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                                <p className="text-sm font-medium text-foreground">{formatDate(meeting.meeting_date)}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {formatTime(meeting.start_time.slice(0, 5))} - {formatTime(meeting.end_time.slice(0, 5))}
+                                                </p>
+                                            </div>
+                                            <Badge variant="secondary" className={`text-xs ${config?.color || ''}`}>
+                                                <Icon className="h-3 w-3 mr-1" />
+                                                {config?.label || meeting.meeting_type}
+                                            </Badge>
+                                        </div>
+
+                                        <p className="text-xs text-muted-foreground">with {partnerName}</p>
+
+                                        {(() => {
+                                            const action = getMeetingAction(meeting, partnerPhone, partnerZoomLink)
+                                            if (!action) return null
+                                            const isCallLink = action.href.startsWith('tel:') || action.href.startsWith('facetime:')
+                                            return (
+                                                <div className="flex items-center gap-2">
+                                                    <a
+                                                        href={action.href}
+                                                        {...(isCallLink ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
+                                                        className="text-xs text-primary hover:underline flex items-center gap-1"
+                                                    >
+                                                        {isCallLink ? <Phone className="h-3 w-3" /> : <LinkIcon className="h-3 w-3" />}
+                                                        {action.label}
+                                                    </a>
+                                                    {isCallLink && action.phoneDisplay && (
+                                                        <span className="text-xs text-muted-foreground">{formatPhone(action.phoneDisplay)}</span>
+                                                    )}
+                                                </div>
+                                            )
+                                        })()}
+
+                                        {meeting.notes && (
+                                            <p className="text-xs text-muted-foreground italic">{meeting.notes}</p>
+                                        )}
+
+                                        {/* Link editor */}
+                                        {linkEditId === meeting.id && (
+                                            <div className="flex gap-1.5">
+                                                <Input
+                                                    value={linkValue}
+                                                    onChange={(e) => setLinkValue(e.target.value)}
+                                                    placeholder="Paste meeting link..."
+                                                    className="text-xs h-7"
+                                                />
+                                                <Button size="sm" className="h-7 px-2" onClick={() => handleSaveLink(meeting.id)} disabled={isLoading}>
+                                                    Save
+                                                </Button>
+                                                <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setLinkEditId(null)}>
+                                                    <X className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-1.5 flex-wrap">
+                                            {!meeting.meeting_link && meeting.meeting_type !== 'phone' && meeting.meeting_type !== 'facetime' && linkEditId !== meeting.id && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-7 text-xs"
+                                                    onClick={() => {
+                                                        setLinkEditId(meeting.id)
+                                                        setLinkValue('')
+                                                    }}
+                                                >
+                                                    <LinkIcon className="h-3 w-3 mr-1" />
+                                                    Add Link
+                                                </Button>
+                                            )}
                                             <Button
                                                 variant="outline"
                                                 size="sm"
                                                 className="h-7 text-xs"
-                                                onClick={() => {
-                                                    setLinkEditId(meeting.id)
-                                                    setLinkValue('')
-                                                }}
+                                                onClick={() => openEdit(meeting)}
                                             >
-                                                <LinkIcon className="h-3 w-3 mr-1" />
-                                                Add Link
+                                                <Pencil className="h-3 w-3 mr-1" />
+                                                Edit
                                             </Button>
-                                        )}
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-7 text-xs"
-                                            onClick={() => handleComplete(meeting.id)}
-                                            disabled={isLoading}
-                                        >
-                                            {isLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}
-                                            Done
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-7 text-xs text-muted-foreground hover:text-destructive"
-                                            onClick={() => handleCancel(meeting.id)}
-                                            disabled={isLoading}
-                                        >
-                                            <XCircle className="h-3 w-3 mr-1" />
-                                            Cancel
-                                        </Button>
+                                            <AddToCalendarButton meeting={meeting} partnerName={partnerName} partnerPhone={partnerPhone} />
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-7 text-xs"
+                                                onClick={() => handleComplete(meeting.id)}
+                                                disabled={isLoading}
+                                            >
+                                                {isLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}
+                                                Done
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                                                onClick={() => handleCancel(meeting.id)}
+                                                disabled={isLoading}
+                                            >
+                                                <XCircle className="h-3 w-3 mr-1" />
+                                                Cancel
+                                            </Button>
+                                        </div>
                                     </div>
-                                </div>
-                            )
-                        })}
-                    </div>
-                )}
-            </CardContent>
-        </Card>
+                                )
+                            })}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Edit Meeting Dialog/Drawer */}
+            {isMobile ? (
+                <Drawer open={!!editMeeting} onOpenChange={(open) => { if (!open) setEditMeeting(null) }}>
+                    <DrawerContent>
+                        <DrawerHeader className="text-left">
+                            <DrawerTitle>Edit Meeting</DrawerTitle>
+                            <DrawerDescription>
+                                Change the meeting type, time, or notes.
+                            </DrawerDescription>
+                        </DrawerHeader>
+                        <div className="px-4 pb-2 overflow-y-auto">
+                            {editFormContent}
+                        </div>
+                        <DrawerFooter>
+                            <Button onClick={handleSaveEdit} disabled={isSaving || !editSlot} className="w-full">
+                                {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                                Save Changes
+                            </Button>
+                            <Button variant="outline" onClick={() => setEditMeeting(null)} disabled={isSaving} className="w-full">
+                                Cancel
+                            </Button>
+                        </DrawerFooter>
+                    </DrawerContent>
+                </Drawer>
+            ) : (
+                <Dialog open={!!editMeeting} onOpenChange={(open) => { if (!open) setEditMeeting(null) }}>
+                    <DialogContent className="sm:max-w-xl">
+                        <DialogHeader>
+                            <DialogTitle>Edit Meeting</DialogTitle>
+                            <DialogDescription>
+                                Change the meeting type, time, or notes.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="py-2 min-w-0">
+                            {editFormContent}
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setEditMeeting(null)} disabled={isSaving}>
+                                Cancel
+                            </Button>
+                            <Button onClick={handleSaveEdit} disabled={isSaving || !editSlot}>
+                                {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                                Save Changes
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
+        </>
     )
 }
 
