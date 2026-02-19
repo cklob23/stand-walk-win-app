@@ -15,11 +15,14 @@ interface AddToCalendarButtonProps {
     meeting: ScheduledMeeting
     partnerName: string
     partnerPhone?: string | null
+    weekTopic?: string | null
+    weekNumber?: number | null
     size?: 'sm' | 'default'
 }
 
-export function AddToCalendarButton({ meeting, partnerName, partnerPhone, size = 'sm' }: AddToCalendarButtonProps) {
+export function AddToCalendarButton({ meeting, partnerName, partnerPhone, weekTopic, weekNumber, size = 'sm' }: AddToCalendarButtonProps) {
     const isSmall = size === 'sm'
+    const options = { partnerPhone, weekTopic, weekNumber }
 
     return (
         <DropdownMenu>
@@ -36,7 +39,7 @@ export function AddToCalendarButton({ meeting, partnerName, partnerPhone, size =
             <DropdownMenuContent align="start">
                 <DropdownMenuItem asChild>
                     <a
-                        href={getGoogleCalendarUrl(meeting, partnerName, partnerPhone)}
+                        href={getGoogleCalendarUrl(meeting, partnerName, options)}
                         target="_blank"
                         rel="noopener noreferrer"
                     >
@@ -44,7 +47,7 @@ export function AddToCalendarButton({ meeting, partnerName, partnerPhone, size =
                     </a>
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                    onClick={() => downloadICSFile(meeting, partnerName, partnerPhone)}
+                    onClick={() => downloadICSFile(meeting, partnerName, options)}
                 >
                     Apple Calendar / Outlook (.ics)
                 </DropdownMenuItem>

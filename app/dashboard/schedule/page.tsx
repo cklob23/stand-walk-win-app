@@ -64,6 +64,14 @@ export default async function SchedulePage() {
         redirect('/dashboard')
     }
 
+    // Get current week topic
+    const currentWeek = pairing.current_week || 1
+    const { data: weekContent } = await supabase
+        .from('weekly_content')
+        .select('title')
+        .eq('week_number', currentWeek)
+        .single()
+
     // Get leader's availability slots
     const { data: availabilitySlots } = await supabase
         .from('availability_slots')
@@ -100,6 +108,8 @@ export default async function SchedulePage() {
             availabilitySlots={availabilitySlots || []}
             upcomingMeetings={upcomingMeetings || []}
             pastMeetings={pastMeetings || []}
+            weekTopic={weekContent?.title || null}
+            weekNumber={currentWeek}
         />
     )
 }

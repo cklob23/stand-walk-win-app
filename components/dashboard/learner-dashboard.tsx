@@ -21,7 +21,7 @@ import { Video, Phone, MapPin, Monitor } from 'lucide-react'
 import { WeeklyTimeline } from './weekly-timeline'
 import { QuickChat } from './quick-chat'
 import { AssignmentCard } from './assignment-card'
-import { AddToCalendarButton } from '@/components/app-to-calendar-button'
+import { AddToCalendarButton } from '@/components/add-to-calendar-button'
 
 interface LearnerDashboardProps {
   profile: Profile
@@ -395,7 +395,7 @@ export function LearnerDashboard({
                     }
                     return null
                   })()}
-                  <AddToCalendarButton meeting={nextMeeting} partnerName={partner?.full_name || 'Leader'} partnerPhone={partner?.phone} />
+                  <AddToCalendarButton meeting={nextMeeting} partnerName={partner?.full_name || 'Leader'} partnerPhone={partner?.phone} weekTopic={currentWeekContent?.title} weekNumber={currentWeek} />
                 </div>
               ) : (
                 <div className="text-center py-2">

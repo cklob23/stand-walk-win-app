@@ -32,7 +32,7 @@ import {
     DrawerTitle,
 } from '@/components/ui/drawer'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { AddToCalendarButton } from '@/components/app-to-calendar-button'
+import { AddToCalendarButton } from '@/components/add-to-calendar-button'
 import {
     Calendar,
     Clock,
@@ -132,6 +132,8 @@ interface ScheduleViewProps {
     availabilitySlots: AvailabilitySlot[]
     upcomingMeetings: ScheduledMeeting[]
     pastMeetings: ScheduledMeeting[]
+    weekTopic?: string | null
+    weekNumber?: number | null
 }
 
 // Helper to build a callable link from a phone number and meeting type
@@ -200,6 +202,8 @@ export function ScheduleView({
     availabilitySlots: initialSlots,
     upcomingMeetings,
     pastMeetings,
+    weekTopic,
+    weekNumber,
 }: ScheduleViewProps) {
     const router = useRouter()
     const isLeader = profile.role === 'leader'
@@ -259,6 +263,8 @@ export function ScheduleView({
                         partnerPhone={partner?.phone || null}
                         partnerZoomLink={partner?.zoom_link || null}
                         availabilitySlots={initialSlots}
+                        weekTopic={weekTopic}
+                        weekNumber={weekNumber}
                     />
                     <PastMeetings
                         meetings={pastMeetings}
@@ -992,6 +998,8 @@ function UpcomingMeetings({
     partnerPhone,
     partnerZoomLink,
     availabilitySlots,
+    weekTopic,
+    weekNumber
 }: {
     meetings: ScheduledMeeting[]
     profile: Profile
@@ -999,6 +1007,8 @@ function UpcomingMeetings({
     partnerPhone: string | null
     partnerZoomLink: string | null
     availabilitySlots: AvailabilitySlot[]
+    weekTopic?: string | null
+    weekNumber?: number | null
 }) {
     const router = useRouter()
     const isMobile = useIsMobile()
@@ -1028,10 +1038,10 @@ function UpcomingMeetings({
         if (!editMeeting || !editSlot) return
         setIsSaving(true)
 
-        // Build meeting link for zoom
+        // Build meeting link: use any available zoom link from partner, self, or existing meeting
         let meetingLink: string | null = null
         if (editType === 'zoom') {
-            meetingLink = partnerZoomLink || editMeeting.meeting_link || null
+            meetingLink = partnerZoomLink || profile.zoom_link || editMeeting.meeting_link || null
         }
 
         const result = await updateMeeting(editMeeting.id, {
@@ -1320,7 +1330,7 @@ function UpcomingMeetings({
                                                 <Pencil className="h-3 w-3 mr-1" />
                                                 Edit
                                             </Button>
-                                            <AddToCalendarButton meeting={meeting} partnerName={partnerName} partnerPhone={partnerPhone} />
+                                            <AddToCalendarButton meeting={meeting} partnerName={partnerName} partnerPhone={partnerPhone} weekTopic={weekTopic} weekNumber={weekNumber} />
                                             <Button
                                                 variant="outline"
                                                 size="sm"
