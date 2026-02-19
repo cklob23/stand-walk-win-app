@@ -62,7 +62,7 @@ function getAppUrl(): string {
     if (typeof window !== 'undefined') return window.location.origin
     const vercelUrl = process.env.NEXT_PUBLIC_SITE_URL
     if (vercelUrl) return vercelUrl
-    return 'https://stand-walk-win-app-juoc.onrender.com'
+    return 'https://stand-walk-run.onrender.com'
 }
 
 function buildScheduleLink(): string {
