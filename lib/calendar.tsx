@@ -94,11 +94,13 @@ function buildGoogleDescription(meeting: ScheduledMeeting, partnerName: string, 
     if (meeting.meeting_type === 'facetime') {
         lines.push(`Join FaceTime from your iPhone or from the meeting entry in the app.`)
         lines.push(`<a href="${scheduleLink}">Open Stand Walk Run</a>`)
+        lines.push(`${partnerName}'s Cell: ${options?.partnerPhone}`)
     }
 
     if (meeting.meeting_type === 'phone') {
         lines.push(`Join the call from the meeting entry in the app or your mobile device.`)
         lines.push(`<a href="${scheduleLink}">Open Stand Walk Run</a>`)
+        lines.push(`${partnerName}'s Cell: ${options?.partnerPhone}`)
     }
 
     if (meeting.meeting_type === 'in_person') {
@@ -123,7 +125,7 @@ function buildICSDescription(meeting: ScheduledMeeting, partnerName: string, opt
     const scheduleLink = buildScheduleLink()
     const lines: string[] = []
 
-    lines.push(`${typeLabel} with ${partnerName}`)
+    lines.push(`${typeLabel} Meeting with ${partnerName}`)
 
     if (options?.weekNumber && options?.weekTopic) {
         lines.push(`Week ${options.weekNumber}: ${options.weekTopic}`)
@@ -143,11 +145,13 @@ function buildICSDescription(meeting: ScheduledMeeting, partnerName: string, opt
     if (meeting.meeting_type === 'facetime') {
         lines.push(`Join FaceTime from your iPhone or from the meeting entry in the app.`)
         lines.push(`Open Stand Walk Run: ${scheduleLink}`)
+        lines.push(`${partnerName}'s Cell: ${options?.partnerPhone}`)
     }
 
     if (meeting.meeting_type === 'phone') {
         lines.push(`Join the call from the meeting entry in the app or your mobile device.`)
         lines.push(`Open Stand Walk Run: ${scheduleLink}`)
+        lines.push(`${partnerName}'s Cell: ${options?.partnerPhone}`)
     }
 
     if (meeting.meeting_type === 'in_person') {
