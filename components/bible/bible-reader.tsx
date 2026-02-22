@@ -34,6 +34,7 @@ import {
     shareMultipleVersesWithPartner,
 } from '@/lib/bible-highlight-actions'
 import { ScriptureText } from '@/components/bible/scripture-text'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
 
 interface BibleBook {
@@ -183,12 +184,36 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [isPaused, setIsPaused] = useState(false)
     const [currentReadingVerse, setCurrentReadingVerse] = useState<number | null>(null)
     const [pausedAtVerse, setPausedAtVerse] = useState<number | null>(null)
+    const isMobile = useIsMobile()
+
+    // Desktop: browser speechSynthesis
     const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
     const speechSupportedRef = useRef(typeof window !== 'undefined' && 'speechSynthesis' in window)
     const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
     const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(savedVoiceURI || '')
+
+    // Mobile: cloud TTS
+    const audioRef = useRef<HTMLAudioElement | null>(null)
+    const abortControllerRef = useRef<AbortController | null>(null)
+    const [selectedCloudVoice, setSelectedCloudVoice] = useState<string>(savedVoiceURI || 'en-US-Wavenet-D')
+    const [audioLoading, setAudioLoading] = useState(false)
+
+    const CLOUD_TTS_VOICES = [
+        { id: 'en-US-Wavenet-D', name: 'David', description: 'Warm male' },
+        { id: 'en-US-Wavenet-C', name: 'Clara', description: 'Clear female' },
+        { id: 'en-US-Wavenet-A', name: 'Adam', description: 'Deep male' },
+        { id: 'en-US-Wavenet-E', name: 'Emily', description: 'Gentle female' },
+        { id: 'en-US-Wavenet-B', name: 'Brian', description: 'Calm male' },
+        { id: 'en-US-Wavenet-F', name: 'Fiona', description: 'Bright female' },
+        { id: 'en-GB-Wavenet-B', name: 'James', description: 'British male' },
+        { id: 'en-GB-Wavenet-A', name: 'Charlotte', description: 'British female' },
+        { id: 'en-AU-Wavenet-B', name: 'Liam', description: 'Australian male' },
+        { id: 'en-AU-Wavenet-C', name: 'Sophie', description: 'Australian female' },
+    ]
+
     const [skipVerseNumbers, setSkipVerseNumbers] = useState(savedSkipVerseNumbers)
     const skipVerseNumbersRef = useRef(savedSkipVerseNumbers)
+
 
     // Data fetching
     const { data: booksData, isLoading: booksLoading } = useSWR(
@@ -212,53 +237,41 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const chapters: BibleChapter[] = chaptersData?.chapters || []
     const verses: BibleVerse[] = versesData?.verses || []
 
-    // Load available voices
+    // Load browser voices for desktop
     useEffect(() => {
-        if (!speechSupportedRef.current) return
+        if (isMobile || !speechSupportedRef.current) return
+
+        const noveltyVoices = new Set([
+            'albert', 'bad news', 'bahh', 'bells', 'boing', 'bubbles',
+            'cellos', 'good news', 'jester', 'junior', 'kathy', 'organ',
+            'ralph', 'superstar', 'trinoids', 'whisper', 'wobble', 'zarvox',
+            'princess', 'bruce', 'fred', 'hysterical', 'deranged', 'pipe organ',
+        ])
 
         const loadVoices = () => {
             const voices = window.speechSynthesis.getVoices()
-
-            // Novelty/robotic macOS voices to exclude
-            const noveltyVoices = new Set([
-                'albert', 'bad news', 'bahh', 'bells', 'boing', 'bubbles',
-                'cellos', 'good news', 'jester', 'junior', 'kathy', 'organ',
-                'ralph', 'superstar', 'trinoids', 'whisper', 'wobble', 'zarvox',
-                'princess', 'bruce', 'fred', 'hysterical', 'deranged', 'pipe organ',
-            ])
-
-            // Filter to English voices, exclude novelty voices, sort premium first
             const englishVoices = voices
                 .filter(v => {
                     if (!v.lang.startsWith('en')) return false
                     const nameLower = v.name.toLowerCase()
-                    // Exclude known novelty/robotic voices
                     return !noveltyVoices.has(nameLower) && !noveltyVoices.has(nameLower.replace(/^apple /, ''))
                 })
                 .sort((a, b) => {
                     const nameA = a.name.toLowerCase()
                     const nameB = b.name.toLowerCase()
-                    // Tier 1: Natural/Premium/Enhanced voices
                     const aNatural = nameA.includes('natural') || nameA.includes('premium') || nameA.includes('enhanced')
                     const bNatural = nameB.includes('natural') || nameB.includes('premium') || nameB.includes('enhanced')
                     if (aNatural !== bNatural) return aNatural ? -1 : 1
-                    // Tier 2: Cloud voices (usually higher quality)
                     if (a.localService !== b.localService) return a.localService ? 1 : -1
-                    // Tier 3: Google/Microsoft voices before generic system voices
                     const aGoogle = nameA.includes('google') || nameA.includes('microsoft')
                     const bGoogle = nameB.includes('google') || nameB.includes('microsoft')
                     if (aGoogle !== bGoogle) return aGoogle ? -1 : 1
-                    // Alphabetical within same tier
                     return a.name.localeCompare(b.name)
                 })
             setAvailableVoices(englishVoices)
-            // Use saved voice if available, otherwise auto-select best voice
             if (selectedVoiceURI) {
-                // Verify saved voice still exists in available voices
                 const savedExists = englishVoices.some(v => v.voiceURI === selectedVoiceURI)
-                if (!savedExists && englishVoices.length > 0) {
-                    setSelectedVoiceURI(englishVoices[0].voiceURI)
-                }
+                if (!savedExists && englishVoices.length > 0) setSelectedVoiceURI(englishVoices[0].voiceURI)
             } else if (englishVoices.length > 0) {
                 setSelectedVoiceURI(englishVoices[0].voiceURI)
             }
@@ -267,7 +280,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         loadVoices()
         window.speechSynthesis.onvoiceschanged = loadVoices
         return () => { window.speechSynthesis.onvoiceschanged = null }
-    }, [selectedVoiceURI])
+    }, [isMobile, selectedVoiceURI])
 
     // Keep ref in sync so mid-playback reads the latest value
     useEffect(() => {
@@ -294,11 +307,21 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         }
     }, [selectedBook, selectedChapter, view])
 
-    // Cleanup speech on unmount or chapter change
+    // Cleanup audio on unmount or chapter change
     useEffect(() => {
         return () => {
+            // Stop desktop speech
             if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
                 window.speechSynthesis.cancel()
+            }
+            // Stop mobile cloud audio
+            if (audioRef.current) {
+                audioRef.current.pause()
+                audioRef.current = null
+            }
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort()
+                abortControllerRef.current = null
             }
         }
     }, [selectedBook, selectedChapter])
@@ -686,13 +709,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setSharingMultiVerse(false)
     }
 
-    // Audio Bible - Web Speech API
-    const handlePlayChapter = (initialStartVerse?: number) => {
+    // ---- DESKTOP: Browser speechSynthesis ----
+    const handlePlayDesktop = (initialStartVerse?: number) => {
         if (!speechSupportedRef.current || verses.length === 0) return
         let startFromVerse = initialStartVerse
 
         if (isPaused && !startFromVerse) {
-            // If voice was changed while paused, restart from the paused verse with new voice
             if (pausedAtVerse !== null) {
                 window.speechSynthesis.cancel()
                 setIsPaused(false)
@@ -706,12 +728,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             }
         }
 
-        // Stop any current speech
         window.speechSynthesis.cancel()
 
         const bookName = books.find(b => b.id === selectedBook)?.name || ''
-
-        // Find starting index
         let verseIndex = 0
         if (startFromVerse) {
             const idx = verses.findIndex(v => v.verse === startFromVerse)
@@ -727,42 +746,25 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 setCurrentReadingVerse(null)
                 return
             }
-
             const v = verses[verseIndex]
             const verseText = v.text.replace(/\n/g, ' ').trim()
             let text: string
             if (skipVerseNumbersRef.current) {
-                text = verseIndex === 0
-                    ? `${bookName} chapter ${selectedChapter}. ${verseText}`
-                    : verseText
+                text = verseIndex === 0 ? `${bookName} chapter ${selectedChapter}. ${verseText}` : verseText
             } else {
-                text = verseIndex === 0
-                    ? `${bookName} chapter ${selectedChapter}. Verse ${v.verse}. ${verseText}`
-                    : `Verse ${v.verse}. ${verseText}`
+                text = verseIndex === 0 ? `${bookName} chapter ${selectedChapter}. Verse ${v.verse}. ${verseText}` : `Verse ${v.verse}. ${verseText}`
             }
-
             const utt = new SpeechSynthesisUtterance(text)
             utt.rate = 0.9
             utt.pitch = 1
-            // Apply selected voice
             if (selectedVoiceURI) {
-                const voice = availableVoices.find(v => v.voiceURI === selectedVoiceURI)
+                const voice = availableVoices.find(av => av.voiceURI === selectedVoiceURI)
                 if (voice) utt.voice = voice
             }
             utteranceRef.current = utt
-
             setCurrentReadingVerse(v.verse)
-
-            utt.onend = () => {
-                verseIndex++
-                readNextVerse()
-            }
-
-            utt.onerror = () => {
-                setIsPlaying(false)
-                setCurrentReadingVerse(null)
-            }
-
+            utt.onend = () => { verseIndex++; readNextVerse() }
+            utt.onerror = () => { setIsPlaying(false); setCurrentReadingVerse(null) }
             window.speechSynthesis.speak(utt)
         }
 
@@ -771,7 +773,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         readNextVerse()
     }
 
-    const handlePauseAudio = () => {
+    const handlePauseDesktop = () => {
         if (!speechSupportedRef.current) return
         window.speechSynthesis.pause()
         setIsPaused(true)
@@ -779,13 +781,146 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setPausedAtVerse(currentReadingVerse)
     }
 
-    const handleStopAudio = () => {
+    const handleStopDesktop = () => {
         if (!speechSupportedRef.current) return
         window.speechSynthesis.cancel()
         setIsPlaying(false)
         setIsPaused(false)
         setCurrentReadingVerse(null)
         setPausedAtVerse(null)
+    }
+
+    // ---- MOBILE: Cloud TTS ----
+    const handlePlayMobile = async (initialStartVerse?: number) => {
+        if (verses.length === 0) return
+        let startFromVerse = initialStartVerse
+
+        if (isPaused && !startFromVerse && audioRef.current) {
+            if (pausedAtVerse !== null) {
+                handleStopMobile()
+                startFromVerse = pausedAtVerse
+            } else {
+                audioRef.current.play()
+                setIsPaused(false)
+                setIsPlaying(true)
+                return
+            }
+        }
+
+        handleStopMobile()
+
+        const bookName = books.find(b => b.id === selectedBook)?.name || ''
+        let verseIndex = 0
+        if (startFromVerse) {
+            const idx = verses.findIndex(v => v.verse === startFromVerse)
+            if (idx >= 0) verseIndex = idx
+        } else if (audioStartVerse) {
+            const idx = verses.findIndex(v => v.verse === audioStartVerse)
+            if (idx >= 0) verseIndex = idx
+        }
+
+        const textParts: string[] = []
+        const verseMap: { charStart: number; verseNum: number }[] = []
+        let charOffset = 0
+        for (let i = verseIndex; i < verses.length; i++) {
+            const v = verses[i]
+            const verseText = v.text.replace(/\n/g, ' ').trim()
+            let line: string
+            if (skipVerseNumbersRef.current) {
+                line = i === verseIndex ? `${bookName} chapter ${selectedChapter}. ${verseText}` : verseText
+            } else {
+                line = i === verseIndex ? `${bookName} chapter ${selectedChapter}. Verse ${v.verse}. ${verseText}` : `Verse ${v.verse}. ${verseText}`
+            }
+            verseMap.push({ charStart: charOffset, verseNum: v.verse })
+            charOffset += line.length + 1
+            textParts.push(line)
+        }
+
+        const fullText = textParts.join('\n')
+        setAudioLoading(true)
+        setIsPlaying(true)
+        setIsPaused(false)
+
+        const controller = new AbortController()
+        abortControllerRef.current = controller
+
+        try {
+            const response = await fetch('/api/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: fullText, voice: selectedCloudVoice }),
+                signal: controller.signal,
+            })
+            if (!response.ok) throw new Error('TTS generation failed')
+
+            const blob = await response.blob()
+            const url = URL.createObjectURL(blob)
+            const audio = new Audio(url)
+            audioRef.current = audio
+
+            const totalDuration = await new Promise<number>((resolve) => {
+                audio.addEventListener('loadedmetadata', () => resolve(audio.duration), { once: true })
+                setTimeout(() => resolve(0), 5000)
+            })
+
+            if (totalDuration > 0 && verseMap.length > 0) {
+                const totalChars = charOffset
+                audio.ontimeupdate = () => {
+                    const progress = audio.currentTime / totalDuration
+                    const charPos = Math.floor(progress * totalChars)
+                    let cv = verseMap[0].verseNum
+                    for (let i = verseMap.length - 1; i >= 0; i--) {
+                        if (charPos >= verseMap[i].charStart) { cv = verseMap[i].verseNum; break }
+                    }
+                    setCurrentReadingVerse(cv)
+                }
+            } else {
+                setCurrentReadingVerse(verses[verseIndex].verse)
+            }
+
+            audio.onended = () => { setIsPlaying(false); setCurrentReadingVerse(null); URL.revokeObjectURL(url) }
+            audio.onerror = () => { setIsPlaying(false); setCurrentReadingVerse(null); setAudioLoading(false); URL.revokeObjectURL(url); toast.error('Audio playback failed.') }
+
+            setAudioLoading(false)
+            audio.play()
+        } catch (err: unknown) {
+            if (err instanceof Error && err.name === 'AbortError') return
+            setIsPlaying(false); setCurrentReadingVerse(null); setAudioLoading(false)
+            toast.error('Could not generate audio. Please try again.')
+        }
+    }
+
+    const handlePauseMobile = () => {
+        if (!audioRef.current) return
+        audioRef.current.pause()
+        setIsPaused(true)
+        setIsPlaying(false)
+        setPausedAtVerse(currentReadingVerse)
+    }
+
+    const handleStopMobile = () => {
+        if (abortControllerRef.current) { abortControllerRef.current.abort(); abortControllerRef.current = null }
+        if (audioRef.current) {
+            audioRef.current.pause()
+            audioRef.current.ontimeupdate = null
+            audioRef.current.onended = null
+            audioRef.current.onerror = null
+            const src = audioRef.current.src
+            audioRef.current = null
+            if (src.startsWith('blob:')) URL.revokeObjectURL(src)
+        }
+        setIsPlaying(false); setIsPaused(false); setCurrentReadingVerse(null); setPausedAtVerse(null); setAudioLoading(false)
+    }
+
+    // ---- Unified handlers that delegate based on device ----
+    const handlePlayChapter = (initialStartVerse?: number) => {
+        if (isMobile) { handlePlayMobile(initialStartVerse) } else { handlePlayDesktop(initialStartVerse) }
+    }
+    const handlePauseAudio = () => {
+        if (isMobile) { handlePauseMobile() } else { handlePauseDesktop() }
+    }
+    const handleStopAudio = () => {
+        if (isMobile) { handleStopMobile() } else { handleStopDesktop() }
     }
 
     // Update URL params when selections change
@@ -815,13 +950,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const handleTranslationChange = (v: string) => {
         setTranslation(v)
         updateURL(selectedBook, selectedChapter, v)
-        savePrefs(v, textSize, skipVerseNumbers, selectedVoiceURI)
+        savePrefs(v, textSize, skipVerseNumbers, isMobile ? selectedCloudVoice : selectedVoiceURI)
         handleStopAudio()
     }
 
     const handleTextSizeChange = (size: string) => {
         setTextSize(size)
-        savePrefs(translation, size, skipVerseNumbers, selectedVoiceURI)
+        savePrefs(translation, size, skipVerseNumbers, isMobile ? selectedCloudVoice : selectedVoiceURI)
     }
 
     const handleBack = () => {
@@ -1001,23 +1136,53 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             </Select>
                         </div>
 
-                        {speechSupportedRef.current && (
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                                        <Volume2 className="h-4 w-4" />
-                                        Reading Voice
-                                    </label>
-                                    <p className="text-xs text-muted-foreground">
-                                        Choose a voice for the audio Bible. Natural and premium voices sound more human.
-                                    </p>
-                                    {availableVoices.length > 0 ? (
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                                    <Volume2 className="h-4 w-4" />
+                                    Reading Voice
+                                </label>
+                                <p className="text-xs text-muted-foreground">
+                                    {isMobile
+                                        ? 'Choose a cloud voice for the audio Bible.'
+                                        : 'Choose a voice for the audio Bible. Natural and premium voices sound more human.'}
+                                </p>
+
+                                {isMobile ? (
+                                    /* Mobile: Google Cloud TTS voices */
+                                    <Select value={selectedCloudVoice} onValueChange={(v) => {
+                                        const wasPlaying = isPlaying || isPaused
+                                        const resumeVerse = currentReadingVerse
+                                        if (wasPlaying) {
+                                            handleStopAudio()
+                                            setIsPaused(true)
+                                            setPausedAtVerse(resumeVerse)
+                                        }
+                                        setSelectedCloudVoice(v)
+                                        savePrefs(translation, textSize, skipVerseNumbers, v)
+                                    }}>
+                                        <SelectTrigger className="w-full h-9 text-sm bg-card">
+                                            <SelectValue placeholder="Select a voice..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[300px]">
+                                            {CLOUD_TTS_VOICES.map((voice) => (
+                                                <SelectItem key={voice.id} value={voice.id}>
+                                                    <span className="flex items-center gap-1.5">
+                                                        {voice.name}
+                                                        <span className="text-muted-foreground text-xs">{voice.description}</span>
+                                                    </span>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    /* Desktop: Browser speechSynthesis voices */
+                                    availableVoices.length > 0 ? (
                                         <Select value={selectedVoiceURI} onValueChange={(v) => {
                                             const wasPlaying = isPlaying || isPaused
                                             const resumeVerse = currentReadingVerse
                                             if (wasPlaying) {
-                                                window.speechSynthesis.cancel()
-                                                setIsPlaying(false)
+                                                handleStopAudio()
                                                 setIsPaused(true)
                                                 setPausedAtVerse(resumeVerse)
                                             }
@@ -1031,33 +1196,15 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                 {availableVoices.map((voice) => {
                                                     const nameLower = voice.name.toLowerCase()
                                                     const isNatural = nameLower.includes('natural') || nameLower.includes('premium') || nameLower.includes('enhanced')
-                                                    const isGoogle = nameLower.includes('google')
-                                                    const isMicrosoft = nameLower.includes('microsoft')
-                                                    // Clean up display name
-                                                    let displayName = voice.name
-                                                        .replace(/Microsoft /i, '')
-                                                        .replace(/Google /i, '')
-                                                        .replace(/Apple /i, '')
-                                                        .replace(/ \(Natural\)/i, '')
-                                                    // Add language variant if available
+                                                    let displayName = voice.name.replace(/Microsoft |Google |Apple /i, '').replace(/ \(Natural\)/i, '')
                                                     const langMap: Record<string, string> = { 'en-US': 'US', 'en-GB': 'UK', 'en-AU': 'AU', 'en-IN': 'IN', 'en-IE': 'IE', 'en-ZA': 'ZA' }
                                                     const langLabel = langMap[voice.lang] || ''
                                                     return (
                                                         <SelectItem key={voice.voiceURI} value={voice.voiceURI}>
                                                             <span className="flex items-center gap-1.5">
                                                                 {displayName}
-                                                                {langLabel && (
-                                                                    <Badge variant="outline" className="text-[10px] h-4 px-1">{langLabel}</Badge>
-                                                                )}
-                                                                {isNatural && (
-                                                                    <Badge variant="secondary" className="text-[10px] h-4 px-1">Natural</Badge>
-                                                                )}
-                                                                {(isGoogle || isMicrosoft) && (
-                                                                    <Badge variant="outline" className="text-[10px] h-4 px-1">{isGoogle ? 'Google' : 'MS'}</Badge>
-                                                                )}
-                                                                {!voice.localService && !isGoogle && !isMicrosoft && (
-                                                                    <Badge variant="outline" className="text-[10px] h-4 px-1">Cloud</Badge>
-                                                                )}
+                                                                {langLabel && <Badge variant="outline" className="text-[10px] h-4 px-1">{langLabel}</Badge>}
+                                                                {isNatural && <Badge variant="secondary" className="text-[10px] h-4 px-1">Natural</Badge>}
                                                             </span>
                                                         </SelectItem>
                                                     )
@@ -1065,83 +1212,104 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             </SelectContent>
                                         </Select>
                                     ) : (
-                                        <p className="text-xs text-muted-foreground italic">
-                                            Loading voices... If none appear, your browser may not support voice selection.
-                                        </p>
-                                    )}
-                                </div>
-
-                                {view === 'reading' && verses.length > 0 && (
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium text-foreground">Audio Start Verse</label>
-                                        <p className="text-xs text-muted-foreground">
-                                            Choose which verse the audio should begin reading from.
-                                        </p>
-                                        <Select
-                                            value={audioStartVerse ? String(audioStartVerse) : 'start'}
-                                            onValueChange={(val) => setAudioStartVerse(val === 'start' ? null : Number(val))}
-                                        >
-                                            <SelectTrigger className="w-[200px] h-9 text-sm bg-card">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="start">From beginning</SelectItem>
-                                                {verses.map((vItem) => (
-                                                    <SelectItem key={vItem.verse} value={String(vItem.verse)}>
-                                                        Verse {vItem.verse}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                        <p className="text-xs text-muted-foreground italic">Loading voices...</p>
+                                    )
                                 )}
+                            </div>
 
-                                {/* Skip verse numbers toggle */}
-                                <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-card">
-                                    <div className="space-y-0.5">
-                                        <label htmlFor="skip-verse-numbers" className="text-sm font-medium text-foreground cursor-pointer">
-                                            Skip verse numbers
-                                        </label>
-                                        <p className="text-xs text-muted-foreground">
-                                            Read continuously without announcing each verse number
-                                        </p>
-                                    </div>
-                                    <button
-                                        id="skip-verse-numbers"
-                                        role="switch"
-                                        aria-checked={skipVerseNumbers}
-                                        onClick={() => { const next = !skipVerseNumbers; setSkipVerseNumbers(next); savePrefs(translation, textSize, next, selectedVoiceURI) }}
-                                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors ${skipVerseNumbers ? 'bg-primary' : 'bg-muted'
-                                            }`}
+                            {view === 'reading' && verses.length > 0 && (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-foreground">Audio Start Verse</label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Choose which verse the audio should begin reading from.
+                                    </p>
+                                    <Select
+                                        value={audioStartVerse ? String(audioStartVerse) : 'start'}
+                                        onValueChange={(val) => setAudioStartVerse(val === 'start' ? null : Number(val))}
                                     >
-                                        <span
-                                            className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-sm ring-0 transition-transform ${skipVerseNumbers ? 'translate-x-4' : 'translate-x-0'
-                                                }`}
-                                        />
-                                    </button>
+                                        <SelectTrigger className="w-[200px] h-9 text-sm bg-card">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="start">From beginning</SelectItem>
+                                            {verses.map((vItem) => (
+                                                <SelectItem key={vItem.verse} value={String(vItem.verse)}>
+                                                    Verse {vItem.verse}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
+                            )}
 
-                                {/* Voice preview */}
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 text-xs gap-1.5 bg-card"
-                                    onClick={() => {
+                            {/* Skip verse numbers toggle */}
+                            <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-card">
+                                <div className="space-y-0.5">
+                                    <label htmlFor="skip-verse-numbers" className="text-sm font-medium text-foreground cursor-pointer">
+                                        Skip verse numbers
+                                    </label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Read continuously without announcing each verse number
+                                    </p>
+                                </div>
+                                <button
+                                    id="skip-verse-numbers"
+                                    role="switch"
+                                    aria-checked={skipVerseNumbers}
+                                    onClick={() => { const next = !skipVerseNumbers; setSkipVerseNumbers(next); savePrefs(translation, textSize, next, isMobile ? selectedCloudVoice : selectedVoiceURI) }}
+                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors ${skipVerseNumbers ? 'bg-primary' : 'bg-muted'
+                                        }`}
+                                >
+                                    <span
+                                        className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-sm ring-0 transition-transform ${skipVerseNumbers ? 'translate-x-4' : 'translate-x-0'
+                                            }`}
+                                    />
+                                </button>
+                            </div>
+
+                            {/* Voice preview */}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-xs gap-1.5 bg-card"
+                                disabled={audioLoading}
+                                onClick={async () => {
+                                    const previewText = 'For God so loved the world, that he gave his only begotten Son.'
+                                    if (isMobile) {
+                                        handleStopAudio()
+                                        setAudioLoading(true)
+                                        try {
+                                            const res = await fetch('/api/tts', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ text: previewText, voice: selectedCloudVoice }),
+                                            })
+                                            if (!res.ok) throw new Error('Preview failed')
+                                            const blob = await res.blob()
+                                            const url = URL.createObjectURL(blob)
+                                            const audio = new Audio(url)
+                                            audio.onended = () => URL.revokeObjectURL(url)
+                                            audio.play()
+                                        } catch {
+                                            toast.error('Could not preview voice.')
+                                        }
+                                        setAudioLoading(false)
+                                    } else {
                                         window.speechSynthesis.cancel()
-                                        const utt = new SpeechSynthesisUtterance('For God so loved the world, that he gave his only begotten Son.')
+                                        const utt = new SpeechSynthesisUtterance(previewText)
                                         utt.rate = 0.9
                                         if (selectedVoiceURI) {
                                             const voice = availableVoices.find(v => v.voiceURI === selectedVoiceURI)
                                             if (voice) utt.voice = voice
                                         }
                                         window.speechSynthesis.speak(utt)
-                                    }}
-                                >
-                                    <Play className="h-3 w-3" />
-                                    Preview Voice
-                                </Button>
-                            </div>
-                        )}
+                                    }
+                                }}
+                            >
+                                <Play className="h-3 w-3" />
+                                {audioLoading ? 'Loading...' : 'Preview Voice'}
+                            </Button>
+                        </div>
                     </CardContent>
                 </Card>
             )}
@@ -1304,7 +1472,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             )}
 
                             {/* Audio controls */}
-                            {speechSupportedRef.current && !highlightMode && (
+                            {!highlightMode && (
                                 <div className="flex items-center gap-1 ml-auto">
                                     {isPlaying ? (
                                         <>
@@ -1352,10 +1520,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             size="sm"
                                             className="h-8 gap-1.5 text-xs bg-card"
                                             onClick={() => handlePlayChapter()}
-                                            disabled={versesLoading || verses.length === 0}
+                                            disabled={versesLoading || verses.length === 0 || audioLoading}
                                         >
                                             <Volume2 className="h-3.5 w-3.5" />
-                                            Listen
+                                            {audioLoading ? 'Loading...' : 'Listen'}
                                         </Button>
                                     )}
                                 </div>
@@ -1798,7 +1966,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                                 )}
 
                                                                                 {/* Listen from here -- available for ALL verses */}
-                                                                                {speechSupportedRef.current && (
+                                                                                {(
                                                                                     <Button
                                                                                         variant="outline"
                                                                                         size="sm"
