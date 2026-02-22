@@ -14,7 +14,8 @@ import {
   ArrowRight,
   Calendar,
   Sparkles,
-  AlertTriangle
+  AlertTriangle,
+  BookMarked
 } from 'lucide-react'
 import type { Profile, Pairing, WeeklyContent, Assignment, Message, Notification, ScheduledMeeting } from '@/lib/types'
 import { Video, Phone, MapPin, Monitor } from 'lucide-react'
@@ -22,6 +23,9 @@ import { WeeklyTimeline } from './weekly-timeline'
 import { QuickChat } from './quick-chat'
 import { AssignmentCard } from './assignment-card'
 import { AddToCalendarButton } from '@/components/add-to-calendar-button'
+import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
+import { scriptureToUrl } from '@/lib/bible-utils'
+import { ScriptureText } from '@/components/bible/scripture-text'
 
 interface LearnerDashboardProps {
   profile: Profile
@@ -35,6 +39,7 @@ interface LearnerDashboardProps {
   currentWeek: number
   nextMeeting: ScheduledMeeting | null
   hasWeeklyMeeting: boolean
+  hasJournalEntryToday: boolean
 }
 
 export function LearnerDashboard({
@@ -48,6 +53,7 @@ export function LearnerDashboard({
   currentWeek,
   nextMeeting,
   hasWeeklyMeeting,
+  hasJournalEntryToday,
 }: LearnerDashboardProps) {
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
 
@@ -112,9 +118,23 @@ export function LearnerDashboard({
               <div className="space-y-4 w-full">
                 {currentWeekContent?.scripture_reference && (
                   <div className="p-3 rounded-lg bg-card border w-full">
-                    <p className="text-sm font-medium text-primary mb-1">Scripture Focus</p>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className="text-sm font-medium text-primary">Scripture Focus</p>
+                      {scriptureToUrl(currentWeekContent.scripture_reference) && (
+                        <Link
+                          href={scriptureToUrl(currentWeekContent.scripture_reference)!}
+                          className="flex items-center gap-1 text-xs text-primary hover:underline font-medium shrink-0"
+                        >
+                          <BookMarked className="h-3 w-3" />
+                          Read
+                        </Link>
+                      )}
+                    </div>
                     <p className="text-xs sm:text-sm text-muted-foreground font-serif italic line-clamp-4">
-                      {currentWeekContent.scripture_reference}
+                      <ScriptureText
+                        reference={currentWeekContent.scripture_reference}
+                        translation={profile.bible_translation_preference || 'KJV'}
+                      />
                     </p>
                   </div>
                 )}
@@ -434,6 +454,13 @@ export function LearnerDashboard({
           </Card>
         </div>
       </div>
+
+      {/* Daily Journal Popup */}
+      <DailyJournalPopup
+        pairingId={pairing.id}
+        hasEntryToday={hasJournalEntryToday}
+        leaderName={partner?.full_name || 'your leader'}
+      />
     </div>
   )
 }

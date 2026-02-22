@@ -13,6 +13,12 @@ export interface Profile {
   email_notifications?: boolean
   message_notifications?: boolean
   progress_notifications?: boolean
+  bible_translation_preference?: string | null
+  bible_text_size?: string | null
+  bible_last_book?: string | null
+  bible_last_chapter?: number | null
+  bible_skip_verse_numbers?: boolean | null
+  bible_voice_uri?: string | null
   created_at: string
   updated_at: string
 }
@@ -91,7 +97,7 @@ export interface Notification {
   id: string
   user_id: string
   pairing_id: string | null
-  type: 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing'
+  type: 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing' | "journal_shared"
   title: string
   message: string
   read: boolean

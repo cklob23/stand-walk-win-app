@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { createNotification } from '@/lib/notifications'
 
 export async function updateContactInfo(data: {
     phone?: string
@@ -132,13 +133,16 @@ export async function bookMeeting(data: {
                 const meetingDateObj = new Date(data.meetingDate + 'T12:00:00')
                 const dayName = dayNames[meetingDateObj.getDay()]
 
-                await supabase.from('notifications').insert({
-                    user_id: partnerId,
-                    pairing_id: data.pairingId,
+                const notifMessage = data.notes
+                    ? `${booker?.full_name || 'Your partner'} scheduled a ${data.meetingType.replace('_', ' ')} call on ${dayName}, ${data.meetingDate} at ${data.startTime}.\n\nNote: ${data.notes}`
+                    : `${booker?.full_name || 'Your partner'} scheduled a ${data.meetingType.replace('_', ' ')} call on ${dayName}, ${data.meetingDate} at ${data.startTime}.`
+
+                await createNotification({
+                    userId: partnerId,
+                    pairingId: data.pairingId,
                     type: 'pairing',
-                    title: 'Meeting Scheduled',
-                    message: `${booker?.full_name || 'Your partner'} scheduled a ${data.meetingType.replace('_', ' ')} call on ${dayName}, ${data.meetingDate} at ${data.startTime}.`,
-                    read: false,
+                    title: data.notes?.toLowerCase().includes('journal') ? 'Meeting Scheduled: Journal Discussion' : 'Meeting Scheduled',
+                    message: notifMessage,
                 })
             }
         }
@@ -263,13 +267,12 @@ export async function updateMeeting(
                         .eq('id', user.id)
                         .single()
 
-                    await supabase.from('notifications').insert({
-                        user_id: partnerId,
-                        pairing_id: meeting.pairing_id,
+                    await createNotification({
+                        userId: partnerId,
+                        pairingId: meeting.pairing_id,
                         type: 'pairing',
                         title: 'Meeting Updated',
                         message: `${editor?.full_name || 'Your partner'} updated an upcoming meeting.`,
-                        read: false,
                     })
                 }
             }

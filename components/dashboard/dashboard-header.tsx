@@ -21,7 +21,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { Bell, BookOpen, Calendar, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check } from 'lucide-react'
+import { Bell, BookOpen, Calendar, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check, BookMarked, PenLine } from 'lucide-react'
 import { AppLogo } from '@/components/app-logo'
 import type { Notification, Profile } from '@/lib/types'
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -39,6 +39,8 @@ interface DashboardHeaderProps {
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/dashboard/bible', label: 'Bible', icon: BookMarked },
+  { href: '/dashboard/journal', label: 'Journal', icon: PenLine },
   { href: '/dashboard/messages', label: 'Messages', icon: MessageSquare },
   { href: '/dashboard/schedule', label: 'Schedule', icon: Calendar },
   { href: '/dashboard/covenant', label: 'Covenant', icon: ScrollText },
@@ -49,19 +51,32 @@ const notificationIcons: Record<string, typeof Bell> = {
   assignment: BookOpen,
   week_complete: CheckCircle2,
   encouragement: Bell,
+  journal_shared: BookOpen,
   covenant: BookOpen,
   pairing: Users,
 }
 
 function getNotificationHref(notification: Notification): string {
+  // Route by title for specific notification types
+  const title = notification.title?.toLowerCase() || ''
+  if (title.includes('bible note shared') || title.includes('shared a verse') || title.includes('journal entry shared')) {
+    return '/dashboard/journal?section=shared'
+  }
+  if (title.includes('meeting requested') || title.includes('meeting scheduled')) {
+    return '/dashboard/schedule'
+  }
+
   switch (notification.type) {
     case 'message':
       return '/dashboard/messages'
     case 'covenant':
       return '/dashboard/covenant'
+    case 'journal_shared':
+      return '/dashboard/journal?section=shared'
+    case 'pairing':
+      return '/dashboard/schedule'
     case 'assignment':
     case 'week_complete':
-    case 'pairing':
     case 'encouragement':
     default:
       return '/dashboard'

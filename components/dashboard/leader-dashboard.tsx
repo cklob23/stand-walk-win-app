@@ -13,13 +13,19 @@ import {
   Clock,
   ArrowRight,
   Calendar,
-  TrendingUp
+  TrendingUp,
+  BookHeart,
+  BookMarked,
+  CalendarPlus
 } from 'lucide-react'
 import type { Profile, Pairing, WeeklyContent, Assignment, Message, Notification, ScheduledMeeting } from '@/lib/types'
 import { Video, Phone, MapPin, Monitor } from 'lucide-react'
 import { WeeklyTimeline } from './weekly-timeline'
 import { AddToCalendarButton } from '@/components/add-to-calendar-button'
 import { QuickChat } from './quick-chat'
+import { format, parseISO } from 'date-fns'
+import { scriptureToUrl } from '@/lib/bible-utils'
+import { ScriptureText } from '@/components/bible/scripture-text'
 
 interface LeaderDashboardProps {
   profile: Profile
@@ -33,6 +39,7 @@ interface LeaderDashboardProps {
   currentWeek: number
   nextMeeting: ScheduledMeeting | null
   hasWeeklyMeeting: boolean
+  sharedJournalEntries?: { id: string; entry_date: string; prayer_items: string; god_saying: string }[]
 }
 
 export function LeaderDashboard({
@@ -45,6 +52,7 @@ export function LeaderDashboard({
   recentMessages,
   currentWeek,
   nextMeeting,
+  sharedJournalEntries = [],
 }: LeaderDashboardProps) {
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
 
@@ -108,9 +116,23 @@ export function LeaderDashboard({
               <div className="space-y-4">
                 {currentWeekContent?.scripture_reference && (
                   <div className="p-3 sm:p-4 rounded-lg bg-primary/5 border border-primary/10">
-                    <p className="text-sm font-medium text-primary mb-1">Scripture Focus</p>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className="text-sm font-medium text-primary">Scripture Focus</p>
+                      {scriptureToUrl(currentWeekContent.scripture_reference) && (
+                        <Link
+                          href={scriptureToUrl(currentWeekContent.scripture_reference)!}
+                          className="flex items-center gap-1 text-xs text-primary hover:underline font-medium shrink-0"
+                        >
+                          <BookMarked className="h-3 w-3" />
+                          Read
+                        </Link>
+                      )}
+                    </div>
                     <p className="text-sm text-muted-foreground font-serif italic break-words">
-                      {currentWeekContent.scripture_reference}
+                      <ScriptureText
+                        reference={currentWeekContent.scripture_reference}
+                        translation={profile.bible_translation_preference || 'KJV'}
+                      />
                     </p>
                   </div>
                 )}
@@ -335,6 +357,46 @@ export function LeaderDashboard({
               </div>
             </CardContent>
           </Card>
+
+          {/* Shared Journal Entries */}
+          {sharedJournalEntries.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <BookHeart className="h-4 w-4 text-primary" />
+                    Shared Journal
+                  </CardTitle>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" asChild>
+                    <Link href="/dashboard/journal">View All</Link>
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {sharedJournalEntries.slice(0, 3).map((entry) => (
+                  <div key={entry.id} className="rounded-lg border p-3 space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {format(parseISO(entry.entry_date), 'MMM d, yyyy')}
+                    </p>
+                    {entry.prayer_items && (
+                      <p className="text-sm text-foreground line-clamp-2">{entry.prayer_items}</p>
+                    )}
+                    {entry.god_saying && (
+                      <p className="text-sm text-foreground italic font-serif line-clamp-2">{entry.god_saying}</p>
+                    )}
+                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1 bg-transparent" asChild>
+                      <Link
+                        href={`/dashboard/schedule?notes=${encodeURIComponent(`Discuss journal entry from ${format(parseISO(entry.entry_date), 'MMM d')}: ${entry.prayer_items?.slice(0, 80) || entry.god_saying?.slice(0, 80) || 'Prayer journal'}`)}`}
+                      >
+                        <CalendarPlus className="h-3 w-3" />
+                        Schedule Meeting
+                      </Link>
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Covenant Status */}
           <Card>

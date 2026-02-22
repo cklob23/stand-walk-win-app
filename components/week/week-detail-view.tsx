@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  BookMarked,
   CheckCircle2,
   PenLine,
   Loader2,
@@ -23,6 +24,8 @@ import { toast } from 'sonner'
 import type { Profile, Pairing, WeeklyContent, Assignment, Reflection } from '@/lib/types'
 import { AssignmentCard } from '@/components/dashboard/assignment-card'
 import { formatDistanceToNow } from 'date-fns'
+import { scriptureToUrl } from '@/lib/bible-utils'
+import { ScriptureText } from '@/components/bible/scripture-text'
 
 interface WeekDetailViewProps {
   profile: Profile
@@ -34,6 +37,7 @@ interface WeekDetailViewProps {
   learnerProgress: { id: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; user_id?: string }[]
   reflections: (Reflection & { user: { id: string; full_name: string | null; avatar_url: string | null } | null })[]
   hasWeeklyMeeting?: boolean
+  bibleTranslation?: string
 }
 
 export function WeekDetailView({
@@ -46,6 +50,7 @@ export function WeekDetailView({
   learnerProgress,
   reflections,
   hasWeeklyMeeting = false,
+  bibleTranslation = 'KJV',
 }: WeekDetailViewProps) {
   const router = useRouter()
   const [reflectionText, setReflectionText] = useState('')
@@ -156,10 +161,21 @@ export function WeekDetailView({
                   Scripture Focus
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <p className="font-serif italic text-lg text-foreground">
-                  {weekContent.scripture_reference}
+                  <ScriptureText
+                    reference={weekContent.scripture_reference!}
+                    translation={bibleTranslation}
+                  />
                 </p>
+                {scriptureToUrl(weekContent.scripture_reference!) && (
+                  <Button variant="outline" size="sm" className="gap-2 bg-transparent" asChild>
+                    <Link href={scriptureToUrl(weekContent.scripture_reference!)!}>
+                      <BookMarked className="h-4 w-4" />
+                      Read in Bible
+                    </Link>
+                  </Button>
+                )}
               </CardContent>
             </Card>
           )}

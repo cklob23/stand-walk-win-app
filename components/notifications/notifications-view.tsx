@@ -33,19 +33,32 @@ const notificationIcons: Record<string, typeof Bell> = {
   assignment: BookOpen,
   week_complete: CheckCircle2,
   encouragement: Bell,
+  journal_shared: BookOpen,
   covenant: BookOpen,
   pairing: Users,
 }
 
 function getNotificationHref(notification: Notification): string {
+  // Route by title for specific notification types
+  const title = notification.title?.toLowerCase() || ''
+  if (title.includes('bible note shared') || title.includes('shared a verse') || title.includes('journal entry shared')) {
+    return '/dashboard/journal?section=shared'
+  }
+  if (title.includes('meeting requested') || title.includes('meeting scheduled')) {
+    return '/dashboard/schedule'
+  }
+
   switch (notification.type) {
     case 'message':
       return '/dashboard/messages'
     case 'covenant':
       return '/dashboard/covenant'
+    case 'journal_shared':
+      return '/dashboard/journal?section=shared'
+    case 'pairing':
+      return '/dashboard/schedule'
     case 'assignment':
     case 'week_complete':
-    case 'pairing':
     case 'encouragement':
     default:
       return '/dashboard'

@@ -29,7 +29,7 @@ export default async function NotificationsPage() {
     .limit(50)
 
   return (
-    <NotificationsView 
+    <NotificationsView
       userId={user.id}
       notifications={notifications || []}
     />

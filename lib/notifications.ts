@@ -1,18 +1,22 @@
 'use server'
 
 import { createAdminClient as createClient } from '@/lib/supabase/server'
-import webpush from 'web-push'
+import * as webpush from 'web-push'
 
 // Configure VAPID for Web Push
-if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(
-    'mailto:support@standwalkrun.com',
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  )
+try {
+  if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(
+      'mailto:support@standwalkrun.com',
+      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    )
+  }
+} catch {
+  // VAPID setup may fail in edge/browser environments — ignore
 }
 
-type NotificationType = 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing'
+type NotificationType = 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing' | 'journal_shared'
 
 interface CreateNotificationParams {
   userId: string
@@ -24,6 +28,9 @@ interface CreateNotificationParams {
 
 function getNotificationUrl(type: NotificationType, pairingId?: string): string {
   if (type === 'message' && pairingId) return `/dashboard/messages/${pairingId}`
+  if (type === 'journal_shared') return '/dashboard/journal?section=shared'
+  if (type === 'pairing') return '/dashboard/schedule'
+  if (type === 'covenant') return '/dashboard/covenant'
   return '/dashboard'
 }
 
@@ -217,6 +224,24 @@ export async function notifyWeekUnlocked(
   })
 }
 
+export async function notifySharedVerse(
+  recipientId: string,
+  senderName: string,
+  pairingId: string,
+  scriptureRef: string,
+  hasNote: boolean
+) {
+  return createNotification({
+    userId: recipientId,
+    pairingId,
+    type: 'journal_shared',
+    title: hasNote ? 'Bible Note Shared' : `${senderName} shared a verse with you`,
+    message: hasNote
+      ? `${senderName} shared ${scriptureRef} with a note.`
+      : `${senderName} shared ${scriptureRef} with you.`,
+  })
+}
+
 export async function advanceToNextWeek(
   pairingId: string,
   currentWeek: number,
@@ -225,30 +250,30 @@ export async function advanceToNextWeek(
   weeklyContent: { week_number: number; title: string }[]
 ) {
   const supabase = createClient()
-  
+
   const nextWeek = currentWeek + 1
   const nextWeekContent = weeklyContent.find(w => w.week_number === nextWeek)
-  
+
   // Only advance if there's a next week (max 6 weeks)
   if (nextWeek > 6 || !nextWeekContent) {
     // Journey complete!
     return { success: true, journeyComplete: true }
   }
-  
+
   // Update the pairing's current week
   const { error } = await supabase
     .from('pairings')
     .update({ current_week: nextWeek })
     .eq('id', pairingId)
-  
+
   if (error) {
     console.error('Failed to advance week:', error)
     return { error: error.message }
   }
-  
+
   // Notify both parties
   await notifyWeekUnlocked(leaderId, pairingId, nextWeek, nextWeekContent.title)
   await notifyWeekUnlocked(leaderId, pairingId, nextWeek, nextWeekContent.title)
-  
+
   return { success: true, newWeek: nextWeek }
 }

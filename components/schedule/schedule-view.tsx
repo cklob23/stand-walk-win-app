@@ -134,6 +134,7 @@ interface ScheduleViewProps {
     pastMeetings: ScheduledMeeting[]
     weekTopic?: string | null
     weekNumber?: number | null
+    initialNotes?: string | null
 }
 
 // Helper to build a callable link from a phone number and meeting type
@@ -204,6 +205,7 @@ export function ScheduleView({
     pastMeetings,
     weekTopic,
     weekNumber,
+    initialNotes,
 }: ScheduleViewProps) {
     const router = useRouter()
     const isLeader = profile.role === 'leader'
@@ -250,6 +252,7 @@ export function ScheduleView({
                             leaderName={partner?.full_name || 'Leader'}
                             leaderPhone={partner?.phone || null}
                             leaderZoomLink={partner?.zoom_link || null}
+                            initialNotes={initialNotes}
                         />
                     )}
                 </div>
@@ -618,6 +621,7 @@ function BookingView({
     leaderName,
     leaderPhone,
     leaderZoomLink,
+    initialNotes,
 }: {
     pairingId: string
     availabilitySlots: AvailabilitySlot[]
@@ -625,6 +629,7 @@ function BookingView({
     leaderName: string
     leaderPhone: string | null
     leaderZoomLink: string | null
+    initialNotes?: string | null
 }) {
     const router = useRouter()
     const [bookingDialog, setBookingDialog] = useState(false)
@@ -635,7 +640,7 @@ function BookingView({
         endTime: string
     } | null>(null)
     const [meetingType, setMeetingType] = useState<'facetime' | 'zoom' | 'phone' | 'in_person'>('zoom')
-    const [notes, setNotes] = useState('')
+    const [notes, setNotes] = useState(initialNotes || '')
     const [isBooking, setIsBooking] = useState(false)
 
     // Group availability by day
@@ -667,7 +672,7 @@ function BookingView({
     const handleSelectSlot = (date: string, dayOfWeek: number, startTime: string, endTime: string) => {
         setSelectedSlot({ date, dayOfWeek, startTime, endTime })
         setMeetingType('zoom')
-        setNotes('')
+        setNotes(initialNotes || '')
         setBookingDialog(true)
     }
 

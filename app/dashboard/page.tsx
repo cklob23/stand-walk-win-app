@@ -203,6 +203,35 @@ export default async function DashboardPage() {
     hasWeeklyMeeting = (count ?? 0) >= effectiveCurrentWeek
   }
 
+  // Check if learner has journal entry for today
+  let hasJournalEntryToday = false
+  if (profile.role === 'learner' && pairing) {
+    const today = new Date().toISOString().split('T')[0]
+    const { data: journalEntry } = await supabase
+      .from('prayer_journal')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('entry_date', today)
+      .limit(1)
+
+    hasJournalEntryToday = (journalEntry?.length ?? 0) > 0
+  }
+
+  // Get shared journal entries for leader view
+  let sharedJournalEntries: { id: string; entry_date: string; prayer_items: string; god_saying: string }[] = []
+  if (profile.role === 'leader' && pairing && pairing.learner_id) {
+    const { data } = await supabase
+      .from('prayer_journal')
+      .select('id, entry_date, prayer_items, god_saying')
+      .eq('pairing_id', pairing.id)
+      .eq('user_id', pairing.learner_id)
+      .eq('shared_with_leader', true)
+      .order('entry_date', { ascending: false })
+      .limit(3)
+
+    sharedJournalEntries = data || []
+  }
+
   const dashboardProps = {
     profile,
     pairing,
@@ -218,8 +247,8 @@ export default async function DashboardPage() {
   }
 
   if (profile.role === 'leader') {
-    return <LeaderDashboard {...dashboardProps} />
+    return <LeaderDashboard {...dashboardProps} sharedJournalEntries={sharedJournalEntries} />
   }
 
-  return <LearnerDashboard {...dashboardProps} />
+  return <LearnerDashboard {...dashboardProps} hasJournalEntryToday={hasJournalEntryToday} />
 }

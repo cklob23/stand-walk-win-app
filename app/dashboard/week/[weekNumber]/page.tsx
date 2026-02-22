@@ -153,6 +153,7 @@ export default async function WeekPage({ params }: WeekPageProps) {
       learnerProgress={learnerProgress || []}
       reflections={reflections || []}
       hasWeeklyMeeting={hasWeeklyMeeting}
+      bibleTranslation={profile.bible_translation_preference || 'KJV'}
     />
   )
 }
