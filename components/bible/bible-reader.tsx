@@ -218,14 +218,38 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
         const loadVoices = () => {
             const voices = window.speechSynthesis.getVoices()
-            // Filter to English voices and sort so natural/premium ones come first
+
+            // Novelty/robotic macOS voices to exclude
+            const noveltyVoices = new Set([
+                'albert', 'bad news', 'bahh', 'bells', 'boing', 'bubbles',
+                'cellos', 'good news', 'jester', 'junior', 'kathy', 'organ',
+                'ralph', 'superstar', 'trinoids', 'whisper', 'wobble', 'zarvox',
+                'princess', 'bruce', 'fred', 'hysterical', 'deranged', 'pipe organ',
+            ])
+
+            // Filter to English voices, exclude novelty voices, sort premium first
             const englishVoices = voices
-                .filter(v => v.lang.startsWith('en'))
+                .filter(v => {
+                    if (!v.lang.startsWith('en')) return false
+                    const nameLower = v.name.toLowerCase()
+                    // Exclude known novelty/robotic voices
+                    return !noveltyVoices.has(nameLower) && !noveltyVoices.has(nameLower.replace(/^apple /, ''))
+                })
                 .sort((a, b) => {
-                    // Prioritize voices that aren't marked as "default" generic ones
-                    const aScore = (a.name.toLowerCase().includes('natural') || a.name.toLowerCase().includes('premium') || a.name.toLowerCase().includes('enhanced') || a.localService === false) ? 0 : 1
-                    const bScore = (b.name.toLowerCase().includes('natural') || b.name.toLowerCase().includes('premium') || b.name.toLowerCase().includes('enhanced') || b.localService === false) ? 0 : 1
-                    return aScore - bScore
+                    const nameA = a.name.toLowerCase()
+                    const nameB = b.name.toLowerCase()
+                    // Tier 1: Natural/Premium/Enhanced voices
+                    const aNatural = nameA.includes('natural') || nameA.includes('premium') || nameA.includes('enhanced')
+                    const bNatural = nameB.includes('natural') || nameB.includes('premium') || nameB.includes('enhanced')
+                    if (aNatural !== bNatural) return aNatural ? -1 : 1
+                    // Tier 2: Cloud voices (usually higher quality)
+                    if (a.localService !== b.localService) return a.localService ? 1 : -1
+                    // Tier 3: Google/Microsoft voices before generic system voices
+                    const aGoogle = nameA.includes('google') || nameA.includes('microsoft')
+                    const bGoogle = nameB.includes('google') || nameB.includes('microsoft')
+                    if (aGoogle !== bGoogle) return aGoogle ? -1 : 1
+                    // Alphabetical within same tier
+                    return a.name.localeCompare(b.name)
                 })
             setAvailableVoices(englishVoices)
             // Use saved voice if available, otherwise auto-select best voice
@@ -1005,15 +1029,33 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             </SelectTrigger>
                                             <SelectContent className="max-h-[300px]">
                                                 {availableVoices.map((voice) => {
-                                                    const isNatural = voice.name.toLowerCase().includes('natural') || voice.name.toLowerCase().includes('premium') || voice.name.toLowerCase().includes('enhanced')
+                                                    const nameLower = voice.name.toLowerCase()
+                                                    const isNatural = nameLower.includes('natural') || nameLower.includes('premium') || nameLower.includes('enhanced')
+                                                    const isGoogle = nameLower.includes('google')
+                                                    const isMicrosoft = nameLower.includes('microsoft')
+                                                    // Clean up display name
+                                                    let displayName = voice.name
+                                                        .replace(/Microsoft /i, '')
+                                                        .replace(/Google /i, '')
+                                                        .replace(/Apple /i, '')
+                                                        .replace(/ \(Natural\)/i, '')
+                                                    // Add language variant if available
+                                                    const langMap: Record<string, string> = { 'en-US': 'US', 'en-GB': 'UK', 'en-AU': 'AU', 'en-IN': 'IN', 'en-IE': 'IE', 'en-ZA': 'ZA' }
+                                                    const langLabel = langMap[voice.lang] || ''
                                                     return (
                                                         <SelectItem key={voice.voiceURI} value={voice.voiceURI}>
                                                             <span className="flex items-center gap-1.5">
-                                                                {voice.name.replace(/Microsoft |Google |Apple /, '')}
+                                                                {displayName}
+                                                                {langLabel && (
+                                                                    <Badge variant="outline" className="text-[10px] h-4 px-1">{langLabel}</Badge>
+                                                                )}
                                                                 {isNatural && (
                                                                     <Badge variant="secondary" className="text-[10px] h-4 px-1">Natural</Badge>
                                                                 )}
-                                                                {!voice.localService && (
+                                                                {(isGoogle || isMicrosoft) && (
+                                                                    <Badge variant="outline" className="text-[10px] h-4 px-1">{isGoogle ? 'Google' : 'MS'}</Badge>
+                                                                )}
+                                                                {!voice.localService && !isGoogle && !isMicrosoft && (
                                                                     <Badge variant="outline" className="text-[10px] h-4 px-1">Cloud</Badge>
                                                                 )}
                                                             </span>
