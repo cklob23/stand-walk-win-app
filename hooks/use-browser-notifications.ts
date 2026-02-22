@@ -81,18 +81,27 @@ export function useBrowserNotifications() {
     if (!isSupported) return 'denied'
 
     try {
-      if (Notification.permission === 'granted') {
+      // Re-check current permission state (Edge can change it without notifying)
+      const currentPerm = Notification.permission as NotifPermission
+      if (currentPerm === 'granted') {
         setPermission('granted')
         subscribeToPush() // best-effort, fire-and-forget
         return 'granted'
       }
 
-      if (Notification.permission === 'denied') {
+      if (currentPerm === 'denied') {
         setPermission('denied')
         return 'denied'
       }
 
-      const result = await Notification.requestPermission()
+      // Wrap requestPermission with a timeout for browsers that hang (Edge)
+      const result = await Promise.race([
+        Notification.requestPermission(),
+        new Promise<NotificationPermission>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 15000)
+        ),
+      ])
+
       setPermission(result as NotifPermission)
 
       if (result === 'granted') {
@@ -101,10 +110,14 @@ export function useBrowserNotifications() {
 
       return result as NotifPermission
     } catch (err) {
-      console.error('[v0] Notification permission error:', err)
-      // Some environments (iframes, insecure contexts) block the Notification API
-      setPermission('denied')
-      return 'denied'
+      // Timeout or blocked — re-read actual permission state
+      const fallback = (typeof Notification !== 'undefined' ? Notification.permission : 'denied') as NotifPermission
+      setPermission(fallback)
+      if (fallback === 'granted') {
+        subscribeToPush()
+        return 'granted'
+      }
+      return fallback === 'denied' ? 'denied' : 'default'
     }
   }, [isSupported, subscribeToPush])
 
