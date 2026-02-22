@@ -1,19 +1,27 @@
 'use server'
 
 import { createAdminClient as createClient } from '@/lib/supabase/server'
-import * as webpush from 'web-push'
 
-// Configure VAPID for Web Push
-try {
-  if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-    webpush.setVapidDetails(
-      'mailto:support@standwalkrun.com',
-      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-      process.env.VAPID_PRIVATE_KEY
-    )
+// Lazy-initialize web-push to avoid build-time module evaluation errors
+let _webpush: typeof import('web-push') | null = null
+
+async function getWebPush() {
+  if (!_webpush) {
+    const mod = await import('web-push')
+    _webpush = mod.default || mod
+    try {
+      if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+        _webpush!.setVapidDetails(
+          'mailto:support@standwalkrun.com',
+          process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+          process.env.VAPID_PRIVATE_KEY
+        )
+      }
+    } catch {
+      // VAPID setup may fail in edge/browser environments — ignore
+    }
   }
-} catch {
-  // VAPID setup may fail in edge/browser environments — ignore
+  return _webpush!
 }
 
 type NotificationType = 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing' | 'journal_shared'
@@ -48,11 +56,12 @@ async function sendWebPush(userId: string, title: string, body: string, url: str
     if (!subscriptions?.length) return
 
     const payload = JSON.stringify({ title, body, url, tag })
+    const wp = await getWebPush()
 
     await Promise.allSettled(
       subscriptions.map(async (sub: { id: string; endpoint: string; p256dh: string; auth: string }) => {
         try {
-          await webpush.sendNotification(
+          await wp.sendNotification(
             {
               endpoint: sub.endpoint,
               keys: { p256dh: sub.p256dh, auth: sub.auth },

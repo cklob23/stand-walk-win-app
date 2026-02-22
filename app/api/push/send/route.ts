@@ -1,15 +1,25 @@
 import { createAdminClient } from '@/lib/supabase/server'
-import webpush from 'web-push'
 import { NextResponse } from 'next/server'
 
-webpush.setVapidDetails(
-  'mailto:support@gatekeeperio.com',
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-)
+let webpushInitialized = false
+
+async function getWebPush() {
+  const webpush = await import('web-push')
+  const wp = webpush.default || webpush
+  if (!webpushInitialized) {
+    wp.setVapidDetails(
+      'mailto:support@gatekeeperio.com',
+      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+      process.env.VAPID_PRIVATE_KEY!
+    )
+    webpushInitialized = true
+  }
+  return wp
+}
 
 export async function POST(request: Request) {
   try {
+    const webpush = await getWebPush()
     const { userId, title, body, url, tag } = await request.json()
 
     if (!userId || !title) {
