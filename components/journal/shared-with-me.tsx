@@ -103,10 +103,17 @@ export function SharedWithMe({ items, autoOpen = false }: SharedWithMeProps) {
                                 ) : null}
 
                                 {item.type === 'journal' ? (
-                                    <div className="text-sm text-foreground/80 italic whitespace-pre-line border-l-2 border-primary/30 pl-3">
-                                        {item.verse_text.length > 300
-                                            ? `${item.verse_text.slice(0, 300)}...`
-                                            : item.verse_text}
+                                    <div className="text-sm text-foreground/80 whitespace-pre-line border-l-2 border-primary/30 pl-3 space-y-1">
+                                        {item.verse_text.split('\n').map((line, i) => {
+                                            if (line.startsWith('Q: ')) return (
+                                                <p key={i} className="font-medium text-foreground/90 not-italic text-xs mt-1.5 first:mt-0">{line.slice(3)}</p>
+                                            )
+                                            if (line.startsWith('A: ')) return (
+                                                <p key={i} className="italic">{line.slice(3)}</p>
+                                            )
+                                            if (line.trim() === '') return <br key={i} />
+                                            return <p key={i} className="italic">{line}</p>
+                                        })}
                                     </div>
                                 ) : (
                                     <>

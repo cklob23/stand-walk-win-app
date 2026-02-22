@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { BookHeart } from 'lucide-react'
 import { JournalPageClient } from '@/components/journal/journal-page-client'
@@ -74,8 +74,10 @@ export default async function JournalPage({
         .eq('pairing_id', pairing.id)
         .order('journal_date', { ascending: false })
 
-    // Fetch partner's shared entries (bidirectional - both leader and learner can share)
-    const { data: partnerSharedData } = await supabase
+    // Fetch partner's shared entries using admin client to bypass RLS
+    // (RLS only allows leaders to SELECT shared entries, but we need bidirectional sharing)
+    const adminSupabase = createAdminClient()
+    const { data: partnerSharedData } = await adminSupabase
         .from('prayer_journal')
         .select('*')
         .eq('pairing_id', pairing.id)
@@ -104,50 +106,79 @@ export default async function JournalPage({
     }))
 
     // Convert partner's shared journal entries into SharedItem format
-    const journalSharedItems = (partnerSharedEntries || []).map((entry) => {
-        // Parse @@TITLE and @@TIME markers from god_speaking field
-        let title = ''
-        let scriptureRef = ''
-        const contentLines: string[] = []
+    const journalSharedItems: typeof verseSharedItems = []
+    for (const entry of (partnerSharedEntries || [])) {
+        const sections: Record<string, boolean> = (entry.shared_sections as Record<string, boolean>) || {}
+        const godSpeakingParts = (entry.god_speaking || '').split('\n\n---\n\n')
+        const freeText = (godSpeakingParts[0] || '').trim()
+        const verseParts = godSpeakingParts.slice(1).map((s: string) => s.trim()).filter(Boolean)
 
-        if (entry.god_speaking?.trim()) {
-            const lines = entry.god_speaking.trim().split('\n')
-            for (const line of lines) {
-                if (line.startsWith('@@TITLE: ')) {
-                    title = line.replace('@@TITLE: ', '')
-                } else if (line.startsWith('@@TIME: ')) {
-                    // Skip - we use created_at for the timestamp
-                } else if (line.trim() === '---') {
-                    // Skip separator
-                } else {
-                    // Extract scripture ref from lines like "[John 3:16-17] ..."
-                    const refMatch = line.match(/^\[([^\]]+)\]/)
-                    if (refMatch && !scriptureRef) {
-                        scriptureRef = refMatch[1]
-                    }
-                    contentLines.push(line)
-                }
+        // 1) Daily reflection section (shared_sections.daily = true)
+        if (sections.daily && (entry.prayer_items?.trim() || freeText)) {
+            const dailyLines: string[] = []
+            if (entry.prayer_items?.trim()) {
+                dailyLines.push(`Q: 3 things I'm praying about today`)
+                dailyLines.push(`A: ${entry.prayer_items.trim()}`)
+                dailyLines.push('')
             }
-        }
-
-        // Add custom entries
-        const customs = entry.custom_entries as { title: string; content: string }[] | null
-        if (customs) {
-            customs.forEach((c) => {
-                if (c.content?.trim()) contentLines.push(`${c.title}: ${c.content.trim()}`)
+            if (freeText) {
+                dailyLines.push(`Q: What is God saying to you today in prayer?`)
+                dailyLines.push(`A: ${freeText}`)
+            }
+            journalSharedItems.push({
+                id: `journal-daily-${entry.id}`,
+                type: 'journal' as const,
+                scripture_ref: '',
+                verse_text: dailyLines.join('\n'),
+                note: `${partnerName}'s Daily Reflections`,
+                sender_name: partnerName,
+                created_at: entry.created_at,
             })
         }
 
-        return {
-            id: `journal-${entry.id}`,
-            type: 'journal' as const,
-            scripture_ref: scriptureRef,
-            verse_text: contentLines.join('\n') || entry.prayer_items || '',
-            note: title || '',
-            sender_name: partnerName,
-            created_at: entry.created_at,
+        // 2) Verse sections (shared_sections.verse_0, verse_1, etc.)
+        verseParts.forEach((raw: any, idx: number) => {
+            if (!sections[`verse_${idx}`]) return
+            let title = ''
+            let scriptureRef = ''
+            const contentLines: string[] = []
+            for (const line of raw.split('\n')) {
+                if (line.startsWith('@@TITLE: ')) title = line.replace('@@TITLE: ', '')
+                else if (line.startsWith('@@TIME: ')) { /* skip */ }
+                else {
+                    const refMatch = line.match(/^\[([^\]]+)\]/)
+                    if (refMatch && !scriptureRef) scriptureRef = refMatch[1]
+                    contentLines.push(line)
+                }
+            }
+            journalSharedItems.push({
+                id: `journal-verse-${entry.id}-${idx}`,
+                type: 'journal' as const,
+                scripture_ref: scriptureRef,
+                verse_text: contentLines.join('\n'),
+                note: title || 'Shared Scripture',
+                sender_name: partnerName,
+                created_at: entry.created_at,
+            })
+        })
+
+        // 3) Custom entries (shared_sections.custom_0, custom_1, etc.)
+        const customs = entry.custom_entries as { title: string; content: string; created_at: string }[] | null
+        if (customs) {
+            customs.forEach((c, idx) => {
+                if (!sections[`custom_${idx}`]) return
+                journalSharedItems.push({
+                    id: `journal-custom-${entry.id}-${idx}`,
+                    type: 'journal' as const,
+                    scripture_ref: '',
+                    verse_text: c.content?.trim() || '',
+                    note: c.title || 'Custom Entry',
+                    sender_name: partnerName,
+                    created_at: entry.created_at,
+                })
+            })
         }
-    })
+    }
 
     // Merge and sort all shared items by date (newest first)
     const sharedItems = [...verseSharedItems, ...journalSharedItems]

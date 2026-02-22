@@ -92,6 +92,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const [unreadCount, setUnreadCount] = useState(notificationCount)
   const supabase = createClient()
   const { sendNotification, requestPermission, permission, isSubscribed, isSupported } = useBrowserNotifications()
+  const [enablingNotifications, setEnablingNotifications] = useState(false)
   const realtimeReady = useRealtimeAuth()
 
   // Track known notification IDs to detect new ones from polling
@@ -304,7 +305,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                     </button>
                   )}
                 </div>
-                {isSupported && permission !== 'granted' && (
+                {isSupported && permission !== 'granted' && !isSubscribed && (
                   <div className="px-4 py-2.5 border-b bg-muted/50 flex items-center justify-between gap-2">
                     <p className="text-xs text-muted-foreground">
                       {permission === 'denied' ? 'Notifications blocked in browser settings' : 'Enable notifications'}
@@ -314,18 +315,34 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                         variant="outline"
                         size="sm"
                         className="h-7 text-xs bg-transparent"
+                        disabled={enablingNotifications}
                         onClick={async () => {
-                          const result = await requestPermission()
-                          if (result === 'granted') {
-                            toast.success('Notifications enabled!')
-                          } else if (result === 'denied') {
-                            toast.error('Notifications were blocked. You can enable them in your browser settings.')
+                          setEnablingNotifications(true)
+                          try {
+                            const result = await requestPermission()
+                            if (result === 'granted') {
+                              toast.success('Notifications enabled!')
+                            } else if (result === 'denied') {
+                              toast.error('Notifications were blocked. You can enable them in your browser settings.')
+                            } else {
+                              toast.info('Please allow notifications when your browser prompts you.')
+                            }
+                          } catch {
+                            toast.error('Could not enable notifications. Try again.')
+                          } finally {
+                            setEnablingNotifications(false)
                           }
                         }}
                       >
-                        Enable
+                        {enablingNotifications ? 'Enabling...' : 'Enable'}
                       </Button>
                     )}
+                  </div>
+                )}
+                {isSupported && (permission === 'granted' || isSubscribed) && (
+                  <div className="px-4 py-2.5 border-b bg-muted/50 flex items-center gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <p className="text-xs text-muted-foreground">Notifications enabled</p>
                   </div>
                 )}
                 <div className="max-h-80 overflow-y-auto">

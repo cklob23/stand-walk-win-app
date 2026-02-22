@@ -175,6 +175,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [sharingMultiVerse, setSharingMultiVerse] = useState(false)
     const [showSendDialog, setShowSendDialog] = useState(false)
     const [sendNote, setSendNote] = useState('')
+    const [editingVerseRef, setEditingVerseRef] = useState(false)
+    const [verseRefInput, setVerseRefInput] = useState('')
 
     // Audio state
     const [isPlaying, setIsPlaying] = useState(false)
@@ -463,6 +465,41 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         const nums = Array.from(selectedVerses).sort((a, b) => a - b)
         const bookName = books.find(b => b.id === selectedBook)?.name || selectedBook || ''
         return `${bookName} ${selectedChapter}:${buildRangeStr(nums)}`
+    }
+
+    // Parse a verse reference string like "3:13-15, 18" or "John 3:13-15, 18" into a Set of verse numbers
+    const parseVerseRefInput = (input: string): Set<number> => {
+        // Extract the part after the colon (verse numbers)
+        const colonIdx = input.lastIndexOf(':')
+        const verseStr = colonIdx >= 0 ? input.slice(colonIdx + 1) : input
+        const nums = new Set<number>()
+        const parts = verseStr.split(',').map(s => s.trim()).filter(Boolean)
+        for (const part of parts) {
+            if (part.includes('-')) {
+                const [startStr, endStr] = part.split('-').map(s => s.trim())
+                const start = parseInt(startStr, 10)
+                const end = parseInt(endStr, 10)
+                if (!isNaN(start) && !isNaN(end)) {
+                    for (let i = start; i <= end; i++) nums.add(i)
+                }
+            } else {
+                const n = parseInt(part, 10)
+                if (!isNaN(n)) nums.add(n)
+            }
+        }
+        // Only keep valid verse numbers that exist in the current chapter
+        const validVerseNums = new Set(verses.map(v => v.verse))
+        return new Set([...nums].filter(n => validVerseNums.has(n)))
+    }
+
+    const handleVerseRefCommit = () => {
+        if (verseRefInput.trim()) {
+            const parsed = parseVerseRefInput(verseRefInput)
+            if (parsed.size > 0) {
+                setSelectedVerses(parsed)
+            }
+        }
+        setEditingVerseRef(false)
     }
 
     const getDefaultMultiTitle = (): string => {
@@ -867,8 +904,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             {view === 'reading' && `${selectedBookName} ${selectedChapter}`}
                         </h2>
                         <p className="text-xs text-muted-foreground">
-                            <span className="sm:hidden">{translation}</span>
-                            <span className="hidden sm:inline">{translationName}</span>
+                            {translationName} ({translation})
                         </p>
                     </div>
                 </div>
@@ -887,13 +923,14 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
                     {/* Version selector */}
                     <Select value={translation} onValueChange={handleTranslationChange}>
-                        <SelectTrigger className="w-auto max-w-[180px] h-9 text-sm bg-card">
-                            <span className="sm:hidden">{translation}</span>
-                            <span className="hidden sm:inline truncate">{translationName}</span>
+                        <SelectTrigger className="w-auto h-9 text-sm bg-card">
+                            <span>{translation}</span>
                         </SelectTrigger>
                         <SelectContent>
                             {ENGLISH_TRANSLATIONS.map((t) => (
-                                <SelectItem key={t.identifier} value={t.identifier}>{t.name}</SelectItem>
+                                <SelectItem key={t.identifier} value={t.identifier}>
+                                    {t.name} ({t.identifier})
+                                </SelectItem>
                             ))}
                         </SelectContent>
                     </Select>
@@ -933,7 +970,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                 <SelectContent>
                                     {ENGLISH_TRANSLATIONS.map((t) => (
                                         <SelectItem key={t.identifier} value={t.identifier}>
-                                            {t.name}
+                                            {t.name} ({t.identifier})
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -1294,14 +1331,36 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                         {selectedVerses.size > 0 && (
                             <div className="sticky top-0 z-10 bg-card border border-border rounded-lg p-3 mb-4 shadow-sm space-y-2">
                                 <div className="flex items-center justify-between gap-2">
-                                    <p className="text-sm font-medium font-sans text-foreground truncate">
-                                        {getSelectedRangeLabel()} ({selectedVerses.size} verse{selectedVerses.size > 1 ? 's' : ''})
-                                    </p>
+                                    {editingVerseRef ? (
+                                        <Input
+                                            autoFocus
+                                            value={verseRefInput}
+                                            onChange={(e) => setVerseRefInput(e.target.value)}
+                                            onBlur={handleVerseRefCommit}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleVerseRefCommit()
+                                                if (e.key === 'Escape') setEditingVerseRef(false)
+                                            }}
+                                            className="h-7 text-sm font-medium flex-1 min-w-0"
+                                        />
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            className="text-sm font-medium font-sans text-foreground truncate text-left hover:text-primary transition-colors underline decoration-dotted underline-offset-2 cursor-text"
+                                            onClick={() => {
+                                                setVerseRefInput(getSelectedRangeLabel())
+                                                setEditingVerseRef(true)
+                                            }}
+                                            title="Click to edit verse reference"
+                                        >
+                                            {getSelectedRangeLabel()} ({selectedVerses.size} verse{selectedVerses.size > 1 ? 's' : ''})
+                                        </button>
+                                    )}
                                     <Button
                                         variant="ghost"
                                         size="sm"
                                         className="h-7 text-xs shrink-0"
-                                        onClick={() => setSelectedVerses(new Set())}
+                                        onClick={() => { setSelectedVerses(new Set()); setEditingVerseRef(false) }}
                                     >
                                         <X className="h-3 w-3 mr-1" />
                                         Clear
@@ -1410,14 +1469,27 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                 }`}
                                                             onClick={() => {
                                                                 if (highlightMode) {
-                                                                    handleVerseClick(v.verse)
-                                                                    // Also track in selectedVerses for bulk actions
-                                                                    setSelectedVerses(prev => {
-                                                                        const next = new Set(prev)
-                                                                        if (next.has(v.verse)) next.delete(v.verse)
-                                                                        else next.add(v.verse)
-                                                                        return next
-                                                                    })
+                                                                    const existingHighlight = getVerseHighlight(v.verse)
+                                                                    if (existingHighlight) {
+                                                                        // Already highlighted: just toggle selection, don't remove highlight
+                                                                        setSelectedVerses(prev => {
+                                                                            const next = new Set(prev)
+                                                                            if (next.has(v.verse)) next.delete(v.verse)
+                                                                            else next.add(v.verse)
+                                                                            return next
+                                                                        })
+                                                                        setSelectedVerse(v.verse)
+                                                                        setJournalSaved(false)
+                                                                        setVerseSent(false)
+                                                                    } else {
+                                                                        // Not highlighted: highlight it and select it
+                                                                        handleVerseClick(v.verse)
+                                                                        setSelectedVerses(prev => {
+                                                                            const next = new Set(prev)
+                                                                            next.add(v.verse)
+                                                                            return next
+                                                                        })
+                                                                    }
                                                                 } else {
                                                                     setSelectedVerse(selectedVerse === v.verse ? null : v.verse)
                                                                     setJournalSaved(false)
@@ -1428,13 +1500,23 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                 if (e.key === 'Enter' || e.key === ' ') {
                                                                     e.preventDefault()
                                                                     if (highlightMode) {
-                                                                        handleVerseClick(v.verse)
-                                                                        setSelectedVerses(prev => {
-                                                                            const next = new Set(prev)
-                                                                            if (next.has(v.verse)) next.delete(v.verse)
-                                                                            else next.add(v.verse)
-                                                                            return next
-                                                                        })
+                                                                        const existingHighlight = getVerseHighlight(v.verse)
+                                                                        if (existingHighlight) {
+                                                                            setSelectedVerses(prev => {
+                                                                                const next = new Set(prev)
+                                                                                if (next.has(v.verse)) next.delete(v.verse)
+                                                                                else next.add(v.verse)
+                                                                                return next
+                                                                            })
+                                                                            setSelectedVerse(v.verse)
+                                                                        } else {
+                                                                            handleVerseClick(v.verse)
+                                                                            setSelectedVerses(prev => {
+                                                                                const next = new Set(prev)
+                                                                                next.add(v.verse)
+                                                                                return next
+                                                                            })
+                                                                        }
                                                                     } else {
                                                                         setSelectedVerse(selectedVerse === v.verse ? null : v.verse)
                                                                         setJournalSaved(false)
