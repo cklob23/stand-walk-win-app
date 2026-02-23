@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -23,13 +23,18 @@ import {
   ChevronDown,
   Loader2,
   Calendar,
-  ArrowRight
+  ArrowRight,
+  BookMarked,
+  Play,
+  Pause,
+  RotateCcw
 } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import type { Assignment } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { notifyAssignmentCompleted, advanceToNextWeek } from '@/lib/notifications'
+import { extractScriptureReferences, extractBookReferences } from '@/lib/bible-utils'
 
 interface AssignmentCardProps {
   assignment: Assignment
@@ -76,6 +81,23 @@ const typeColors: Record<string, string> = {
   meeting: 'bg-primary/10 text-primary',
 }
 
+/**
+ * Extract a duration in seconds from text like "10 minutes", "5 min", "1 hour", "30 seconds".
+ * Returns null if no duration found.
+ */
+function extractDurationSeconds(text: string): number | null {
+  if (!text) return null
+  // Match patterns like "10 minutes", "5 min", "1 hour", "30 seconds"
+  const match = text.match(/(\d+)\s*(minutes?|mins?|hours?|hrs?|seconds?|secs?)/i)
+  if (!match) return null
+  const value = parseInt(match[1], 10)
+  const unit = match[2].toLowerCase()
+  if (unit.startsWith('hour') || unit.startsWith('hr')) return value * 3600
+  if (unit.startsWith('min')) return value * 60
+  if (unit.startsWith('sec')) return value
+  return null
+}
+
 export function AssignmentCard({
   assignment,
   progress,
@@ -96,6 +118,74 @@ export function AssignmentCard({
   const [isLoading, setIsLoading] = useState(false)
 
   const supabase = createClient()
+
+  const [isEditing, setIsEditing] = useState(false)
+
+  // Prayer timer state
+  const isPrayerType = assignment.assignment_type === 'prayer'
+  const prayerDuration = isPrayerType ? extractDurationSeconds(assignment.description || '') : null
+  const [timerRunning, setTimerRunning] = useState(false)
+  const [timerSecondsLeft, setTimerSecondsLeft] = useState(prayerDuration || 0)
+  const [timerStarted, setTimerStarted] = useState(false)
+  const [timerComplete, setTimerComplete] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+  }, [])
+
+  // Timer countdown effect
+  useEffect(() => {
+    if (timerRunning && timerSecondsLeft > 0) {
+      timerRef.current = setInterval(() => {
+        setTimerSecondsLeft(prev => {
+          if (prev <= 1) {
+            clearTimer()
+            setTimerRunning(false)
+            setTimerComplete(true)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    }
+    return () => clearTimer()
+  }, [timerRunning, clearTimer])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => clearTimer()
+  }, [clearTimer])
+
+  const startTimer = () => {
+    if (!timerStarted) {
+      setTimerSecondsLeft(prayerDuration || 0)
+      setTimerStarted(true)
+    }
+    setTimerRunning(true)
+  }
+
+  const pauseTimer = () => {
+    setTimerRunning(false)
+    clearTimer()
+  }
+
+  const resetTimer = () => {
+    clearTimer()
+    setTimerRunning(false)
+    setTimerStarted(false)
+    setTimerComplete(false)
+    setTimerSecondsLeft(prayerDuration || 0)
+  }
+
+  const formatTime = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60)
+    const secs = totalSeconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
 
   const isLeader = userRole === 'leader'
   const isMeetingType = assignment.assignment_type === 'meeting'
@@ -135,7 +225,16 @@ export function AssignmentCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meetingAutoCompleted, isMeetingType])
 
+  // Check if this assignment type requires a written response
+  const requiresResponse = assignment.assignment_type === 'reflection' || assignment.assignment_type === 'discussion'
+
   const handleSaveProgress = async (newStatus: 'in_progress' | 'completed') => {
+    // Validate that reflection/discussion assignments have a response before completing
+    if (newStatus === 'completed' && requiresResponse && !response.trim()) {
+      toast.error('Please write a response before marking as complete.')
+      return
+    }
+
     setIsLoading(true)
 
     const progressData = {
@@ -259,6 +358,176 @@ export function AssignmentCard({
               {assignment.description}
             </p>
 
+            {/* Scripture reference buttons - verse refs, book refs, or fallback for reading type */}
+            {(() => {
+              const desc = assignment.description || ''
+              const scriptureRefs = extractScriptureReferences(desc)
+              // Collect book IDs already matched by verse-level refs to avoid duplicates
+              const matchedBookIds = new Set<string>()
+              for (const ref of scriptureRefs) {
+                const bookIdMatch = ref.url.match(/book=(\d+)/)
+                if (bookIdMatch) matchedBookIds.add(bookIdMatch[1])
+              }
+              const bookRefs = extractBookReferences(desc, matchedBookIds)
+              const isReadingType = assignment.assignment_type === 'reading'
+              const hasAnyRefs = scriptureRefs.length > 0 || bookRefs.length > 0
+
+              if (!hasAnyRefs && !isReadingType) return null
+
+              return (
+                <div className="flex flex-wrap gap-2">
+                  {/* Verse-level references: "Read John 3:1-21" */}
+                  {scriptureRefs.map((ref) => (
+                    <Button
+                      key={ref.reference}
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
+                      asChild
+                    >
+                      <Link href={ref.url}>
+                        <BookMarked className="h-3.5 w-3.5" />
+                        Read {ref.reference}
+                      </Link>
+                    </Button>
+                  ))}
+                  {/* Book-only references: "Read John" (chapter 1) */}
+                  {bookRefs.map((ref) => (
+                    <Button
+                      key={ref.bookId}
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
+                      asChild
+                    >
+                      <Link href={ref.url}>
+                        <BookOpen className="h-3.5 w-3.5" />
+                        Read {ref.bookName}
+                      </Link>
+                    </Button>
+                  ))}
+                  {/* Fallback for reading assignments with no detected references */}
+                  {!hasAnyRefs && isReadingType && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
+                      asChild
+                    >
+                      <Link href="/dashboard/bible">
+                        <BookOpen className="h-3.5 w-3.5" />
+                        Open Bible
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Prayer Timer */}
+            {isPrayerType && prayerDuration && !isLeader && (
+              <div className="rounded-xl border bg-gradient-to-b from-pink-50/80 dark:from-pink-950/20 to-card p-4 sm:p-5 space-y-4">
+                {/* Timer Display */}
+                <div className="flex flex-col items-center gap-3">
+                  {/* Circular Progress Ring */}
+                  <div className="relative flex items-center justify-center">
+                    <svg className="h-32 w-32 -rotate-90" viewBox="0 0 120 120">
+                      {/* Background circle */}
+                      <circle
+                        cx="60"
+                        cy="60"
+                        r="52"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="6"
+                        className="text-muted/30"
+                      />
+                      {/* Progress circle */}
+                      <circle
+                        cx="60"
+                        cy="60"
+                        r="52"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="6"
+                        strokeLinecap="round"
+                        className={cn(
+                          "transition-all duration-1000 ease-linear",
+                          timerComplete ? "text-success" : "text-pink-500"
+                        )}
+                        strokeDasharray={`${2 * Math.PI * 52}`}
+                        strokeDashoffset={`${2 * Math.PI * 52 * (1 - (timerStarted ? (prayerDuration - timerSecondsLeft) / prayerDuration : 0))}`}
+                      />
+                    </svg>
+                    {/* Time text in center */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className={cn(
+                        "text-3xl font-semibold tabular-nums tracking-tight",
+                        timerComplete ? "text-success" : "text-foreground"
+                      )}>
+                        {formatTime(timerSecondsLeft)}
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
+                        {timerComplete ? 'Complete' : timerRunning ? 'Praying...' : timerStarted ? 'Paused' : 'Ready'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Controls */}
+                  <div className="flex items-center gap-2">
+                    {!timerComplete ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant={timerRunning ? 'outline' : 'default'}
+                          className={cn(
+                            "gap-2 h-9 px-4",
+                            !timerRunning && "bg-pink-600 hover:bg-pink-700 text-white"
+                          )}
+                          onClick={timerRunning ? pauseTimer : startTimer}
+                        >
+                          {timerRunning ? (
+                            <>
+                              <Pause className="h-4 w-4" />
+                              Pause
+                            </>
+                          ) : (
+                            <>
+                              <Play className="h-4 w-4" />
+                              {timerStarted ? 'Resume' : 'Start Prayer'}
+                            </>
+                          )}
+                        </Button>
+                        {timerStarted && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="gap-1.5 h-9 text-muted-foreground"
+                            onClick={resetTimer}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Reset
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1.5 h-9 text-muted-foreground"
+                          onClick={resetTimer}
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Pray Again
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Meeting type: special content */}
             {isMeetingType && !isLeader && (
               <div className="space-y-3">
@@ -354,25 +623,87 @@ export function AssignmentCard({
             {!isLeader && !isMeetingType && (assignment.assignment_type === 'reflection' ||
               assignment.assignment_type === 'discussion') && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Your Response
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-foreground">
+                      Your Response
+                    </label>
+                    {isCompleted && !isEditing && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                        onClick={() => setIsEditing(true)}
+                      >
+                        <PenLine className="h-3 w-3" />
+                        Edit Response
+                      </Button>
+                    )}
+                  </div>
                   <Textarea
                     value={response}
                     onChange={(e) => setResponse(e.target.value)}
                     placeholder="Write your thoughts here..."
                     rows={4}
-                    disabled={isCompleted}
-                    className={cn(isCompleted && "opacity-60")}
+                    disabled={isCompleted && !isEditing}
+                    className={cn(isCompleted && !isEditing && "opacity-60")}
                   />
+                  {isEditing && (
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="h-8 text-xs"
+                        disabled={isLoading}
+                        onClick={async () => {
+                          setIsLoading(true)
+                          const { error } = await supabase
+                            .from('assignment_progress')
+                            .upsert({
+                              pairing_id: pairingId,
+                              assignment_id: assignment.id,
+                              user_id: userId,
+                              status: 'completed',
+                              notes: response || null,
+                              completed_at: progress?.completed_at || new Date().toISOString(),
+                            }, {
+                              onConflict: 'pairing_id,assignment_id,user_id',
+                              ignoreDuplicates: false
+                            })
+                          setIsLoading(false)
+                          if (error) {
+                            toast.error('Failed to update response')
+                          } else {
+                            toast.success('Response updated!')
+                            setIsEditing(false)
+                            router.refresh()
+                          }
+                        }}
+                      >
+                        {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                        Save Changes
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 text-xs"
+                        onClick={() => {
+                          setResponse(progress?.notes || '')
+                          setIsEditing(false)
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
 
             {/* Action Buttons (only for learners, not meeting type) */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {!isLeader && !isCompleted && !isMeetingType && (
                 <>
-                  {status !== 'in_progress' && (
+                  {/* For prayer with timer: hide the generic Start button since the timer has its own Start */}
+                  {status !== 'in_progress' && !(isPrayerType && prayerDuration) && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -390,7 +721,7 @@ export function AssignmentCard({
                   <Button
                     size="sm"
                     onClick={() => handleSaveProgress('completed')}
-                    disabled={isLoading}
+                    disabled={isLoading || (requiresResponse && !response.trim())}
                   >
                     {isLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -399,6 +730,9 @@ export function AssignmentCard({
                     )}
                     Mark Complete
                   </Button>
+                  {requiresResponse && !response.trim() && (
+                    <p className="text-xs text-muted-foreground self-center">Write a response first</p>
+                  )}
                 </>
               )}
               {!isLeader && isCompleted && !isMeetingType && (

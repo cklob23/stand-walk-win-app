@@ -70,6 +70,135 @@ const BOOK_MAP: Record<string, string> = {
 }
 
 /**
+ * Extract all scripture references from a block of text.
+ * Matches patterns like "John 3:1-21", "Matthew 28:19-20", "Romans 6:3-4",
+ * "Psalm 23", "1 Corinthians 13", etc.
+ * Returns an array of { reference, url } objects.
+ */
+export function extractScriptureReferences(text: string): { reference: string; url: string }[] {
+    if (!text) return []
+
+    // Only use full book names (4+ chars) and numbered book names to avoid false positives
+    // from short abbreviations like "ex", "am", "act" matching random words
+    const bookNames = Object.keys(BOOK_MAP)
+        .filter(n => n.length >= 4 || /^\d/.test(n))
+        .sort((a, b) => b.length - a.length)
+    const bookPattern = bookNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+
+    // Match: (word boundary)BookName Chapter:VerseStart(-VerseEnd)?
+    // Requires a chapter number after the book name
+    const regex = new RegExp(
+        `\\b(?:${bookPattern})\\s+\\d+(?::\\d+(?:\\s*-\\s*\\d+)?)?`,
+        'gi'
+    )
+
+    const matches = text.match(regex)
+    if (!matches) return []
+
+    // Deduplicate and convert to URLs
+    const seen = new Set<string>()
+    const results: { reference: string; url: string }[] = []
+    for (const match of matches) {
+        const trimmed = match.trim()
+        const normalized = trimmed.toLowerCase()
+        if (seen.has(normalized)) continue
+        seen.add(normalized)
+        const url = scriptureToUrl(trimmed)
+        if (url) {
+            results.push({ reference: trimmed, url })
+        }
+    }
+    return results
+}
+
+// Reverse lookup: book ID -> display name
+const BOOK_ID_TO_NAME: Record<string, string> = {
+    '1': 'Genesis', '2': 'Exodus', '3': 'Leviticus', '4': 'Numbers', '5': 'Deuteronomy',
+    '6': 'Joshua', '7': 'Judges', '8': 'Ruth', '9': '1 Samuel', '10': '2 Samuel',
+    '11': '1 Kings', '12': '2 Kings', '13': '1 Chronicles', '14': '2 Chronicles',
+    '15': 'Ezra', '16': 'Nehemiah', '17': 'Esther', '18': 'Job', '19': 'Psalms',
+    '20': 'Proverbs', '21': 'Ecclesiastes', '22': 'Song of Solomon', '23': 'Isaiah',
+    '24': 'Jeremiah', '25': 'Lamentations', '26': 'Ezekiel', '27': 'Daniel',
+    '28': 'Hosea', '29': 'Joel', '30': 'Amos', '31': 'Obadiah', '32': 'Jonah',
+    '33': 'Micah', '34': 'Nahum', '35': 'Habakkuk', '36': 'Zephaniah', '37': 'Haggai',
+    '38': 'Zechariah', '39': 'Malachi', '40': 'Matthew', '41': 'Mark', '42': 'Luke',
+    '43': 'John', '44': 'Acts', '45': 'Romans', '46': '1 Corinthians', '47': '2 Corinthians',
+    '48': 'Galatians', '49': 'Ephesians', '50': 'Philippians', '51': 'Colossians',
+    '52': '1 Thessalonians', '53': '2 Thessalonians', '54': '1 Timothy', '55': '2 Timothy',
+    '56': 'Titus', '57': 'Philemon', '58': 'Hebrews', '59': 'James', '60': '1 Peter',
+    '61': '2 Peter', '62': '1 John', '63': '2 John', '64': '3 John', '65': 'Jude',
+    '66': 'Revelation',
+}
+
+/**
+ * Extract book-only references from text (no chapter/verse required).
+ * Matches patterns like "the Gospel of John", "the book of Romans",
+ * "Gospel of Mark", or just standalone full book names in reading contexts.
+ * Returns array of { bookName, bookId, url } objects.
+ * Excludes any books already matched by extractScriptureReferences to avoid duplicates.
+ */
+export function extractBookReferences(
+    text: string,
+    excludeBooks?: Set<string>
+): { bookName: string; bookId: string; url: string }[] {
+    if (!text) return []
+
+    const results: { bookName: string; bookId: string; url: string }[] = []
+    const seen = new Set<string>()
+
+    // Pattern 1: "the Gospel of X", "the book of X", "Gospel of X", "Book of X"
+    const gospelBookPattern = /(?:the\s+)?(?:gospel|book|epistle|letter)\s+(?:of|to)\s+(\w+)/gi
+    let match: RegExpExecArray | null
+    while ((match = gospelBookPattern.exec(text)) !== null) {
+        const bookNameRaw = match[1].toLowerCase()
+        const bookId = BOOK_MAP[bookNameRaw]
+        if (bookId && !seen.has(bookId) && !excludeBooks?.has(bookId)) {
+            seen.add(bookId)
+            const displayName = BOOK_ID_TO_NAME[bookId] || match[1]
+            results.push({
+                bookName: displayName,
+                bookId,
+                url: `/dashboard/bible?book=${bookId}&chapter=1`,
+            })
+        }
+    }
+
+    // Pattern 2: Full book names (5+ chars to avoid false positives) preceded by word boundary
+    // Only match if they appear near reading-related words
+    const readingContext = /read|study|reading|bible|scripture|chapter|memorize|meditat/i.test(text)
+    if (readingContext) {
+        const fullBookNames = Object.entries(BOOK_MAP)
+            .filter(([name]) => name.length >= 5 && !/^\d/.test(name))
+        // Sort by name length descending
+        fullBookNames.sort((a, b) => b[0].length - a[0].length)
+
+        for (const [name, id] of fullBookNames) {
+            if (seen.has(id) || excludeBooks?.has(id)) continue
+            // Check if this book name appears as a standalone word in text
+            const nameRegex = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+            if (nameRegex.test(text)) {
+                // Make sure it's not already part of a "Book Chapter:Verse" pattern (handled by extractScriptureReferences)
+                const fullRefRegex = new RegExp(
+                    `\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+\\d+`,
+                    'i'
+                )
+                if (!fullRefRegex.test(text)) {
+                    seen.add(id)
+                    const displayName = BOOK_ID_TO_NAME[id] || name
+                    results.push({
+                        bookName: displayName,
+                        bookId: id,
+                        url: `/dashboard/bible?book=${id}&chapter=1`,
+                    })
+                }
+            }
+        }
+    }
+
+    return results
+}
+
+/**
  * Parse a scripture reference like "John 3:16" or "1 Corinthians 13:1-13"
  * into a Bible reader URL path with query params including verse range.
  */

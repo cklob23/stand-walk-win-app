@@ -357,11 +357,11 @@ export async function saveMultipleVersesToJournal(
     const verseLines = groups.map(group => {
         if (group.length === 1) {
             const v = group[0]
-            const line = `[${bookName} ${chapter}:${v.verse}] "${v.text.trim()}"`
+            const line = `[${bookName} ${chapter}:${v.verse}${versionTag}] "${v.text.trim()}"`
             return v.note ? `${line}\nMy notes: ${v.note}` : line
         }
         // Consecutive range - combine text
-        const rangeLabel = `${bookName} ${chapter}:${group[0].verse}-${group[group.length - 1].verse}`
+        const rangeLabel = `${bookName} ${chapter}:${group[0].verse}-${group[group.length - 1].verse}${versionTag}`
         const combinedText = group.map(v => v.text.trim()).join(' ')
         const notesWithContent = group.filter(v => v.note)
         const line = `[${rangeLabel}] "${combinedText}"`
