@@ -22,17 +22,20 @@ function pruneCache() {
 
 export async function POST(request: NextRequest) {
     try {
-        const { text, voice = 'en-US-Wavenet-D' } = await request.json()
+        const { text, voice = 'en-US-Wavenet-D', speakingRate: rawRate } = await request.json()
 
         if (!text || typeof text !== 'string') {
             return NextResponse.json({ error: 'Text is required' }, { status: 400 })
         }
 
+        // Clamp speaking rate to Google Cloud TTS range (0.25 - 4.0)
+        const speakingRate = Math.min(4.0, Math.max(0.25, typeof rawRate === 'number' ? rawRate : 0.92))
+
         // Limit to single-verse size (~500 chars max, generous)
         const trimmedText = text.slice(0, 1000)
 
-        // Check cache
-        const cacheKey = `${voice}:${trimmedText}`
+        // Check cache (includes rate in key)
+        const cacheKey = `${voice}:${speakingRate}:${trimmedText}`
         const cached = audioCache.get(cacheKey)
         if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
             return new NextResponse(cached.buffer, {
@@ -65,7 +68,7 @@ export async function POST(request: NextRequest) {
                     },
                     audioConfig: {
                         audioEncoding: 'MP3',
-                        speakingRate: 0.92,
+                        speakingRate,
                         pitch: 0.0,
                         volumeGainDb: 0.0,
                     },

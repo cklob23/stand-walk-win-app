@@ -218,6 +218,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     const [skipVerseNumbers, setSkipVerseNumbers] = useState(savedSkipVerseNumbers)
     const skipVerseNumbersRef = useRef(savedSkipVerseNumbers)
+    const [speechRate, setSpeechRate] = useState(0.85)
+    const speechRateRef = useRef(0.85)
 
     // Data fetching
     const { data: booksData, isLoading: booksLoading } = useSWR(
@@ -307,6 +309,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     useEffect(() => {
         skipVerseNumbersRef.current = skipVerseNumbers
     }, [skipVerseNumbers])
+
+    useEffect(() => {
+        speechRateRef.current = speechRate
+    }, [speechRate])
 
     // Preference save debounce
     const prefTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -476,7 +482,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         try {
             const bookName = books.find(b => b.id === selectedBook)?.name || selectedBook || ''
             const updated = await shareHighlightWithPartner(
-                hl.id, !hl.shared_with_partner, pairingId, bookName, v.text
+                hl.id, !hl.shared_with_partner, pairingId, bookName, v.text, translation
             )
             if (updated) {
                 setHighlights(prev => prev.map(h => h.id === hl.id ? updated : h))
@@ -609,7 +615,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 })
             }
             const result = await saveMultipleVersesToJournal(
-                pairingId, bookName, selectedChapter!, verseEntries, journalTitle || undefined
+                pairingId, bookName, selectedChapter!, verseEntries, journalTitle || undefined, translation
             )
             if (result.success) {
                 toast.success('Saved to your prayer journal!')
@@ -644,7 +650,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     e.note = sendNote.trim()
                 })
             }
-            const result = await sendMultipleVersesToPartner(pairingId, bookName, selectedChapter!, verseEntries)
+            const result = await sendMultipleVersesToPartner(pairingId, bookName, selectedChapter!, verseEntries, translation)
             if (result.success) {
                 toast.success('Verses sent to your partner!')
                 setSelectedVerses(new Set())
@@ -663,7 +669,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setVerseSent(false)
         try {
             const bookName = books.find(b => b.id === selectedBook)?.name || selectedBook || ''
-            const result = await sendVerseToPartner(pairingId, bookName, v.chapter, v.verse, v.text, note || undefined)
+            const result = await sendVerseToPartner(pairingId, bookName, v.chapter, v.verse, v.text, note || undefined, translation)
             if (result.success) setVerseSent(true)
         } catch { /* silent */ }
         setSendingVerse(false)
@@ -692,7 +698,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             const bookName = books.find(b => b.id === selectedBook)?.name || selectedBook || ''
             const { hl, v } = singleJournalVerse
             const result = await saveNoteToJournal(
-                hl.id, pairingId, bookName, v.chapter, v.verse, v.text, false, singleJournalTitle || undefined
+                hl.id, pairingId, bookName, v.chapter, v.verse, v.text, false, singleJournalTitle || undefined, translation
             )
             if (result.success) {
                 setJournalSaved(true)
@@ -720,7 +726,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     const hl = getVerseHighlight(vn)
                     return { verse: vn, text: v?.text || '', note: hl?.note || null }
                 })
-            const result = await shareMultipleVersesWithPartner(pairingId, bookName, selectedChapter!, verseEntries)
+            const result = await shareMultipleVersesWithPartner(pairingId, bookName, selectedChapter!, verseEntries, translation)
             if (result.success) {
                 toast.success('Shared with your partner!')
                 setSelectedVerses(new Set())
@@ -777,7 +783,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 text = verseIndex === 0 ? `${bookName} chapter ${selectedChapter}. Verse ${v.verse}. ${verseText}` : `Verse ${v.verse}. ${verseText}`
             }
             const utt = new SpeechSynthesisUtterance(text)
-            utt.rate = 0.85
+            utt.rate = speechRateRef.current
             utt.pitch = 1.05
             if (selectedVoiceURI) {
                 const voice = availableVoices.find(av => av.voiceURI === selectedVoiceURI)
@@ -817,7 +823,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         const res = await fetch('/api/tts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, voice }),
+            body: JSON.stringify({ text, voice, speakingRate: speechRateRef.current }),
         })
         if (!res.ok) throw new Error('TTS failed')
         const blob = await res.blob()
@@ -1389,6 +1395,33 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                 </button>
                             </div>
 
+                            {/* Reading Speed */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-sm font-medium text-foreground">Reading Speed</label>
+                                    <span className="text-xs text-muted-foreground tabular-nums">
+                                        {speechRate === 1 ? '1.0x' : `${speechRate.toFixed(2)}x`}
+                                    </span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0.5"
+                                    max="1.5"
+                                    step="0.05"
+                                    value={speechRate}
+                                    onChange={(e) => {
+                                        const val = parseFloat(e.target.value)
+                                        setSpeechRate(val)
+                                    }}
+                                    className="w-full h-1.5 bg-muted rounded-full appearance-none cursor-pointer accent-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-sm"
+                                />
+                                <div className="flex justify-between text-[10px] text-muted-foreground">
+                                    <span>Slower</span>
+                                    <span>Normal</span>
+                                    <span>Faster</span>
+                                </div>
+                            </div>
+
                             {/* Voice preview */}
                             <Button
                                 variant="outline"
@@ -1401,7 +1434,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             const res = await fetch('/api/tts', {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ text: previewText, voice: selectedCloudVoice }),
+                                                body: JSON.stringify({ text: previewText, voice: selectedCloudVoice, speakingRate: speechRate }),
                                             })
                                             if (!res.ok) throw new Error('Preview failed')
                                             const blob = await res.blob()
@@ -1415,7 +1448,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     } else {
                                         window.speechSynthesis.cancel()
                                         const utt = new SpeechSynthesisUtterance(previewText)
-                                        utt.rate = 0.85
+                                        utt.rate = speechRate
                                         utt.pitch = 1.05
                                         if (selectedVoiceURI) {
                                             const voice = availableVoices.find(v => v.voiceURI === selectedVoiceURI)
@@ -2004,7 +2037,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                                                     const vhl = getVerseHighlight(vn)
                                                                                                     return { verse: vn, text: vData?.text || '', note: vhl?.note || null }
                                                                                                 })
-                                                                                                const result = await shareMultipleVersesWithPartner(pairingId, bookName, selectedChapter!, entries)
+                                                                                                const result = await shareMultipleVersesWithPartner(pairingId, bookName, selectedChapter!, entries, translation)
                                                                                                 if (result.success) {
                                                                                                     toast.success('Shared with your partner!')
                                                                                                     setSelectedVerse(null)

@@ -137,7 +137,8 @@ export async function shareHighlightWithPartner(
     shared: boolean,
     pairingId: string | null,
     bookName?: string,
-    verseText?: string
+    verseText?: string,
+    translationAbbr?: string
 ): Promise<BibleHighlight | null> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -180,9 +181,10 @@ export async function shareHighlightWithPartner(
                 .single()
 
             const senderName = profile?.full_name || 'Your partner'
+            const versionTag = translationAbbr ? ` (${translationAbbr})` : ''
             const scriptureRef = bookName
-                ? `${bookName} ${data.chapter}:${data.verse}`
-                : `${data.book_id} ${data.chapter}:${data.verse}`
+                ? `${bookName} ${data.chapter}:${data.verse}${versionTag}`
+                : `${data.book_id} ${data.chapter}:${data.verse}${versionTag}`
 
             // Insert into shared_items table
             const { error: sharedError } = await supabase.from('shared_items').insert({
@@ -211,7 +213,8 @@ export async function saveNoteToJournal(
     verse: number,
     verseText: string,
     shareWithLeader: boolean,
-    customTitle?: string
+    customTitle?: string,
+    translationAbbr?: string
 ): Promise<{ success: boolean; error?: string }> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -228,7 +231,8 @@ export async function saveNoteToJournal(
 
     const today = new Date().toISOString().split('T')[0]
     const now = new Date().toISOString()
-    const scriptureRef = `${bookName} ${chapter}:${verse}`
+    const versionTag = translationAbbr ? ` (${translationAbbr})` : ''
+    const scriptureRef = `${bookName} ${chapter}:${verse}${versionTag}`
     const hasNote = !!highlight.data.note
     const defaultTitle = hasNote
         ? `Scripture and notes from ${scriptureRef}`
@@ -312,7 +316,8 @@ export async function saveMultipleVersesToJournal(
     bookName: string,
     chapter: number,
     verseEntries: { verse: number; text: string; note?: string | null }[],
-    customTitle?: string
+    customTitle?: string,
+    translationAbbr?: string
 ): Promise<{ success: boolean; error?: string }> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -326,7 +331,8 @@ export async function saveMultipleVersesToJournal(
 
     const verseNums = sorted.map(v => v.verse)
     const rangeStr = buildVerseRangeStr(verseNums)
-    const scriptureRef = `${bookName} ${chapter}:${rangeStr}`
+    const versionTag = translationAbbr ? ` (${translationAbbr})` : ''
+    const scriptureRef = `${bookName} ${chapter}:${rangeStr}${versionTag}`
 
     const hasAnyNotes = sorted.some(v => v.note)
     const defaultTitle = hasAnyNotes
@@ -464,7 +470,8 @@ export async function sendVerseToPartner(
     chapter: number,
     verse: number,
     verseText: string,
-    note?: string
+    note?: string,
+    translationAbbr?: string
 ): Promise<{ success: boolean }> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -488,9 +495,10 @@ export async function sendVerseToPartner(
 
     const senderName = profile?.full_name || 'Your partner'
     const scriptureRef = `${bookName} ${chapter}:${verse}`
+    const versionTag = translationAbbr ? ` (${translationAbbr})` : ''
     const messageText = note
-        ? `${scriptureRef} - "${verseText.trim()}"\n\n${senderName}'s note: ${note}`
-        : `${scriptureRef} - "${verseText.trim()}"`
+        ? `${scriptureRef}${versionTag} - "${verseText.trim()}"\n\n${senderName}'s note: ${note}`
+        : `${scriptureRef}${versionTag} - "${verseText.trim()}"`
 
     // Send as a chat message only (Share button handles shared_items separately)
     await supabase.from('messages').insert({
@@ -516,7 +524,8 @@ export async function sendMultipleVersesToPartner(
     pairingId: string,
     bookName: string,
     chapter: number,
-    verseEntries: { verse: number; text: string; note?: string | null }[]
+    verseEntries: { verse: number; text: string; note?: string | null }[],
+    translationAbbr?: string
 ): Promise<{ success: boolean }> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -544,8 +553,9 @@ export async function sendMultipleVersesToPartner(
     const rangeStr = buildVerseRangeStr(verseNums)
     const scriptureRef = `${bookName} ${chapter}:${rangeStr}`
 
+    const versionTag = translationAbbr ? ` (${translationAbbr})` : ''
     const messageLines = sorted.map(v => {
-        const line = `${bookName} ${chapter}:${v.verse} - "${v.text.trim()}"`
+        const line = `${bookName} ${chapter}:${v.verse}${versionTag} - "${v.text.trim()}"`
         return v.note ? `${line}\n${senderName}'s note: ${v.note}` : line
     }).join('\n\n')
 
@@ -574,7 +584,8 @@ export async function shareMultipleVersesWithPartner(
     pairingId: string,
     bookName: string,
     chapter: number,
-    verseEntries: { verse: number; text: string; note?: string | null }[]
+    verseEntries: { verse: number; text: string; note?: string | null }[],
+    translationAbbr?: string
 ): Promise<{ success: boolean }> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -600,7 +611,8 @@ export async function shareMultipleVersesWithPartner(
     const sorted = [...verseEntries].sort((a, b) => a.verse - b.verse)
     const verseNums = sorted.map(v => v.verse)
     const rangeStr = buildVerseRangeStr(verseNums)
-    const scriptureRef = `${bookName} ${chapter}:${rangeStr}`
+    const versionTag = translationAbbr ? ` (${translationAbbr})` : ''
+    const scriptureRef = `${bookName} ${chapter}:${rangeStr}${versionTag}`
     const hasAnyNotes = sorted.some(v => v.note)
 
     // Insert into shared_items table only (no chat message)
