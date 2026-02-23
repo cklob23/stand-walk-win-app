@@ -213,15 +213,39 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const verses: BibleVerse[] = versesData?.verses || []
 
     // Load available voices (works on all devices)
+    // Prioritizes neural/enhanced voices: iOS Siri voices, Android Google Neural, desktop premium
     useEffect(() => {
         if (!speechSupportedRef.current) return
 
+        // macOS novelty/robotic voices to exclude
         const noveltyVoices = new Set([
             'albert', 'bad news', 'bahh', 'bells', 'boing', 'bubbles',
             'cellos', 'good news', 'jester', 'junior', 'kathy', 'organ',
             'ralph', 'superstar', 'trinoids', 'whisper', 'wobble', 'zarvox',
             'princess', 'bruce', 'fred', 'hysterical', 'deranged', 'pipe organ',
         ])
+
+        // Score a voice by quality tier (lower = better)
+        const getVoiceScore = (v: SpeechSynthesisVoice): number => {
+            const n = v.name.toLowerCase()
+            // Tier 0: iOS Siri enhanced/premium neural voices
+            if (n.includes('(enhanced)') || n.includes('(premium)')) return 0
+            // Tier 1: Explicit natural/neural markers (various platforms)
+            if (n.includes('natural') || n.includes('neural')) return 1
+            // Tier 2: Google TTS voices (high-quality on Android Chrome)
+            if (n.startsWith('google ')) return 2
+            // Tier 3: Microsoft Online (Neural) voices on Edge
+            if (n.includes('microsoft') && n.includes('online')) return 3
+            // Tier 4: Other Microsoft voices
+            if (n.includes('microsoft')) return 4
+            // Tier 5: Cloud/remote voices (usually higher quality than local)
+            if (!v.localService) return 5
+            // Tier 6: Known good iOS compact voices (Samantha, Daniel, Karen etc.)
+            const iosQualityVoices = ['samantha', 'daniel', 'karen', 'moira', 'rishi', 'tessa', 'aaron', 'nicky', 'allison', 'ava', 'susan', 'tom', 'kate', 'lee', 'oliver']
+            if (iosQualityVoices.some(name => n.includes(name))) return 6
+            // Tier 7: Everything else
+            return 7
+        }
 
         const loadVoices = () => {
             const voices = window.speechSynthesis.getVoices()
@@ -232,15 +256,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     return !noveltyVoices.has(nameLower) && !noveltyVoices.has(nameLower.replace(/^apple /, ''))
                 })
                 .sort((a, b) => {
-                    const nameA = a.name.toLowerCase()
-                    const nameB = b.name.toLowerCase()
-                    const aNatural = nameA.includes('natural') || nameA.includes('premium') || nameA.includes('enhanced')
-                    const bNatural = nameB.includes('natural') || nameB.includes('premium') || nameB.includes('enhanced')
-                    if (aNatural !== bNatural) return aNatural ? -1 : 1
-                    if (a.localService !== b.localService) return a.localService ? 1 : -1
-                    const aGoogle = nameA.includes('google') || nameA.includes('microsoft')
-                    const bGoogle = nameB.includes('google') || nameB.includes('microsoft')
-                    if (aGoogle !== bGoogle) return aGoogle ? -1 : 1
+                    const scoreA = getVoiceScore(a)
+                    const scoreB = getVoiceScore(b)
+                    if (scoreA !== scoreB) return scoreA - scoreB
                     return a.name.localeCompare(b.name)
                 })
             setAvailableVoices(englishVoices)
@@ -995,16 +1013,27 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         <SelectContent className="max-h-[300px]">
                                             {availableVoices.map((voice) => {
                                                 const nameLower = voice.name.toLowerCase()
-                                                const isNatural = nameLower.includes('natural') || nameLower.includes('premium') || nameLower.includes('enhanced')
-                                                const displayName = voice.name.replace(/Microsoft |Google |Apple /i, '').replace(/ \(Natural\)/i, '')
+                                                // Detect quality tier for badge
+                                                const isNeural = nameLower.includes('(enhanced)') || nameLower.includes('(premium)') || nameLower.includes('natural') || nameLower.includes('neural')
+                                                const isGoogle = nameLower.startsWith('google ')
+                                                // Clean display name
+                                                const displayName = voice.name
+                                                    .replace(/Microsoft |Google |Apple /i, '')
+                                                    .replace(/ \(Natural\)| \(Enhanced\)| \(Premium\)/i, '')
+                                                    .replace(/ Online$/i, '')
                                                 const langMap: Record<string, string> = { 'en-US': 'US', 'en-GB': 'UK', 'en-AU': 'AU', 'en-IN': 'IN', 'en-IE': 'IE', 'en-ZA': 'ZA' }
                                                 const langLabel = langMap[voice.lang] || ''
+                                                // Quality badge
+                                                let qualityLabel = ''
+                                                if (isNeural) qualityLabel = 'Neural'
+                                                else if (isGoogle) qualityLabel = 'Google'
+                                                else if (!voice.localService) qualityLabel = 'Cloud'
                                                 return (
                                                     <SelectItem key={voice.voiceURI} value={voice.voiceURI}>
                                                         <span className="flex items-center gap-1.5">
                                                             {displayName}
                                                             {langLabel && <Badge variant="outline" className="text-[10px] h-4 px-1">{langLabel}</Badge>}
-                                                            {isNatural && <Badge variant="secondary" className="text-[10px] h-4 px-1">Natural</Badge>}
+                                                            {qualityLabel && <Badge variant="secondary" className="text-[10px] h-4 px-1">{qualityLabel}</Badge>}
                                                         </span>
                                                     </SelectItem>
                                                 )
@@ -1237,8 +1266,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         <button
                                             key={c.color}
                                             className={`h-6 w-6 rounded-full ${c.bg} border-2 transition-all ${activeColor === c.color
-                                                ? `${c.ring} ring-2 ring-offset-1 border-transparent scale-110`
-                                                : 'border-border hover:scale-105'
+                                                    ? `${c.ring} ring-2 ring-offset-1 border-transparent scale-110`
+                                                    : 'border-border hover:scale-105'
                                                 }`}
                                             onClick={() => setActiveColor(c.color)}
                                             aria-label={`${c.label} highlight`}
@@ -1444,8 +1473,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                             role="button"
                                                             tabIndex={0}
                                                             className={`inline rounded-sm transition-all cursor-pointer ${isStudyVerse
-                                                                ? 'bg-primary/15 border-l-2 border-primary pl-1 -ml-1 rounded-l-none'
-                                                                : hl ? `${getHighlightBg(hl.color)} px-0.5 -mx-0.5` : ''
+                                                                    ? 'bg-primary/15 border-l-2 border-primary pl-1 -ml-1 rounded-l-none'
+                                                                    : hl ? `${getHighlightBg(hl.color)} px-0.5 -mx-0.5` : ''
                                                                 } ${selectedVerses.has(v.verse) && !hl
                                                                     ? 'bg-primary/15 ring-1 ring-primary/40 rounded px-0.5 -mx-0.5'
                                                                     : highlightMode
@@ -1548,8 +1577,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                                 <button
                                                                                     key={c.color}
                                                                                     className={`h-5 w-5 rounded-full ${c.bg} border transition-all ${hl?.color === c.color
-                                                                                        ? `${c.ring} ring-1 ring-offset-1 border-transparent`
-                                                                                        : 'border-border hover:scale-110'
+                                                                                            ? `${c.ring} ring-1 ring-offset-1 border-transparent`
+                                                                                            : 'border-border hover:scale-110'
                                                                                         }`}
                                                                                     onClick={async () => {
                                                                                         if (selectedBook && selectedChapter) {
