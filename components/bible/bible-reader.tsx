@@ -189,6 +189,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     // Desktop: browser speechSynthesis
     const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
     const speechSupportedRef = useRef(typeof window !== 'undefined' && 'speechSynthesis' in window)
+    const ttsSessionRef = useRef(0) // Incremented on each new play session to ignore stale callbacks
     const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
     const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(savedVoiceURI || '')
 
@@ -773,19 +774,38 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
         if (isPaused && !startFromVerse) {
             if (pausedAtVerse !== null) {
+                // Resuming from a paused-at-verse: restart speech from that verse
+                // Clear old utterance callbacks before cancelling to avoid stale resets
+                if (utteranceRef.current) {
+                    utteranceRef.current.onend = null
+                    utteranceRef.current.onerror = null
+                }
                 window.speechSynthesis.cancel()
                 setIsPaused(false)
                 startFromVerse = pausedAtVerse
                 setPausedAtVerse(null)
             } else {
+                // Simple resume (browser still has the utterance paused)
                 window.speechSynthesis.resume()
                 setIsPaused(false)
                 setIsPlaying(true)
+                // Restore the verse highlight that was showing when paused
+                if (pausedAtVerse !== null) {
+                    setCurrentReadingVerse(pausedAtVerse)
+                }
                 return
             }
         }
 
+        // Clear old utterance callbacks before cancelling to prevent stale onerror from resetting state
+        if (utteranceRef.current) {
+            utteranceRef.current.onend = null
+            utteranceRef.current.onerror = null
+        }
         window.speechSynthesis.cancel()
+
+        // Increment session so any lingering callbacks from prior sessions are ignored
+        const session = ++ttsSessionRef.current
 
         const bookName = books.find(b => b.id === selectedBook)?.name || ''
         let verseIndex = 0
@@ -797,7 +817,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             if (idx >= 0) verseIndex = idx
         }
 
+        // Set playing state BEFORE creating utterances
+        setIsPlaying(true)
+        setIsPaused(false)
+
         const readNextVerse = () => {
+            // Ignore if session has changed (user started a new play or stopped)
+            if (ttsSessionRef.current !== session) return
             if (verseIndex >= verses.length) {
                 setIsPlaying(false)
                 setCurrentReadingVerse(null)
@@ -819,14 +845,23 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 if (voice) utt.voice = voice
             }
             utteranceRef.current = utt
+            // Set verse highlight BEFORE speaking so it appears immediately
             setCurrentReadingVerse(v.verse)
-            utt.onend = () => { verseIndex++; readNextVerse() }
-            utt.onerror = () => { setIsPlaying(false); setCurrentReadingVerse(null) }
+            utt.onend = () => {
+                if (ttsSessionRef.current !== session) return
+                verseIndex++
+                readNextVerse()
+            }
+            utt.onerror = (e) => {
+                // Ignore 'interrupted' and 'canceled' errors (caused by cancel() calls)
+                if (ttsSessionRef.current !== session) return
+                if (e && (e as any).error === 'interrupted' || (e as any).error === 'canceled') return
+                setIsPlaying(false)
+                setCurrentReadingVerse(null)
+            }
             window.speechSynthesis.speak(utt)
         }
 
-        setIsPlaying(true)
-        setIsPaused(false)
         readNextVerse()
     }
 
@@ -835,9 +870,17 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setIsPaused(true)
         setIsPlaying(false)
         setPausedAtVerse(currentReadingVerse)
+        // Keep currentReadingVerse set so the verse stays highlighted while paused
     }
 
     const handleStopDesktop = () => {
+        // Increment session to invalidate any pending callbacks
+        ttsSessionRef.current++
+        // Clear callbacks before cancel to prevent stale onerror
+        if (utteranceRef.current) {
+            utteranceRef.current.onend = null
+            utteranceRef.current.onerror = null
+        }
         window.speechSynthesis.cancel()
         setIsPlaying(false)
         setIsPaused(false)
@@ -980,6 +1023,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             mobileAudioRef.current.play()
             setIsPaused(false)
             setIsPlaying(true)
+            // Restore the verse highlight that was showing when paused
+            if (pausedAtVerse !== null) {
+                setCurrentReadingVerse(pausedAtVerse)
+            }
             return
         }
 
@@ -1036,6 +1083,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             setIsPaused(true)
             setIsPlaying(false)
             setPausedAtVerse(currentReadingVerse)
+            // Keep currentReadingVerse set so the verse stays highlighted while paused
         }
     }
 
