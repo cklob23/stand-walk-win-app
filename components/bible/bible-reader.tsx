@@ -414,6 +414,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             const result = await toggleHighlight(selectedBook, selectedChapter, Number(verseNum), activeColor, translation)
             if (result.removed) {
                 setHighlights(prev => prev.filter(h => Number(h.verse) !== Number(verseNum)))
+                setSelectedVerses(prev => {
+                    const next = new Set(prev)
+                    next.delete(verseNum)
+                    return next
+                })
                 setSelectedVerse(null)
             } else if (result.highlight) {
                 setHighlights(prev => {
@@ -458,10 +463,34 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setNoteText('')
     }
 
-    const handleDeleteHighlight = async (highlightId: string, verseNum: number) => {
+    const handleDeleteHighlight = async (highlightId: string, verseNum: number, removeGroup = false) => {
         try {
-            await deleteHighlight(highlightId)
-            setHighlights(prev => prev.filter(h => h.id !== highlightId))
+            if (removeGroup) {
+                // Find all verses in the same highlight group (adjacent same-color highlights)
+                const group = getHighlightGroup(verseNum)
+                // Delete all highlights in the group
+                const groupHighlightIds = group
+                    .map(vn => getVerseHighlight(vn))
+                    .filter(Boolean)
+                    .map(h => h!.id)
+                await Promise.all(groupHighlightIds.map(id => deleteHighlight(id)))
+                setHighlights(prev => prev.filter(h => !groupHighlightIds.includes(h.id)))
+                // Remove all group verses from selectedVerses
+                setSelectedVerses(prev => {
+                    const next = new Set(prev)
+                    group.forEach(vn => next.delete(vn))
+                    return next
+                })
+            } else {
+                await deleteHighlight(highlightId)
+                setHighlights(prev => prev.filter(h => h.id !== highlightId))
+                // Also remove from multi-select set
+                setSelectedVerses(prev => {
+                    const next = new Set(prev)
+                    next.delete(verseNum)
+                    return next
+                })
+            }
             if (selectedVerse === verseNum) {
                 setSelectedVerse(null)
                 setEditingNote(null)
@@ -2153,10 +2182,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                                         variant="ghost"
                                                                                         size="sm"
                                                                                         className="h-7 text-xs gap-1 text-destructive hover:text-destructive font-sans"
-                                                                                        onClick={() => handleDeleteHighlight(hl.id, v.verse)}
+                                                                                        onClick={() => {
+                                                                                            handleDeleteHighlight(hl.id, v.verse, isGroup)
+                                                                                            setSelectedVerse(null)
+                                                                                        }}
                                                                                     >
                                                                                         <Trash2 className="h-3 w-3" />
-                                                                                        Remove
+                                                                                        {isGroup ? 'Remove All' : 'Remove'}
                                                                                     </Button>
                                                                                 )}
                                                                             </div>
