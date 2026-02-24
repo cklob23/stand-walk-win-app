@@ -66,6 +66,7 @@ export default async function BiblePage() {
                     savedChapter={profile.bible_last_chapter || null}
                     savedSkipVerseNumbers={profile.bible_skip_verse_numbers || false}
                     savedVoiceURI={profile.bible_voice_uri || null}
+                    userRole={profile.role || null}
                 />
             </Suspense>
         </div>

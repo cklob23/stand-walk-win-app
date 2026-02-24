@@ -270,7 +270,7 @@ export function JournalHistory({
                                 {freeText && (
                                     <div className="space-y-1">
                                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                                            God Speaking
+                                            Learning
                                         </p>
                                         <p className="text-sm text-foreground whitespace-pre-line leading-relaxed font-serif italic">
                                             {freeText}
@@ -292,7 +292,7 @@ export function JournalHistory({
                             return (
                                 <SectionCard
                                     key={editKey}
-                                    label={verse.title || 'God Speaking'}
+                                    label={verse.title || 'Learning'}
                                     timestamp={verse.time || undefined}
                                     isLeaderView={isLeaderView}
                                     shared={verseShared}

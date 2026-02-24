@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Send, Loader2, MessageSquare, Circle, Check, CheckCheck } from 'lucide-react'
+import { Send, Loader2, MessageSquare, Circle, Check, CheckCheck, Phone, Video } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Profile, Pairing, Message } from '@/lib/types'
 import { format, isToday, isYesterday } from 'date-fns'
@@ -344,7 +344,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                 <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />
               )}
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <CardTitle className="text-base">{partner.full_name}</CardTitle>
               <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                 {isPartnerTyping ? (
@@ -358,6 +358,35 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                   <span className="capitalize">{partner.role}</span>
                 )}
               </p>
+            </div>
+            {/* Call & FaceTime buttons */}
+            <div className="flex items-center gap-1">
+              {partner.phone && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-11 w-11 text-muted-foreground hover:text-primary"
+                  asChild
+                >
+                  <a href={`tel:${partner.phone}`} title={`Call ${partner.full_name}`}>
+                    <Phone className="h-8 w-8" />
+                    <span className="sr-only">Call {partner.full_name}</span>
+                  </a>
+                </Button>
+              )}
+              {partner.phone && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-11 w-11 text-muted-foreground hover:text-primary"
+                  asChild
+                >
+                  <a href={`facetime:${partner.phone}`} title={`FaceTime ${partner.full_name}`}>
+                    <Video className="h-8 w-8" />
+                    <span className="sr-only">FaceTime {partner.full_name}</span>
+                  </a>
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -408,8 +437,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                           <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${isOwn ? 'text-right' : 'text-left'}`}>
                             <div
                               className={`inline-block rounded-2xl px-4 py-2 ${isOwn
-                                  ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                                  : 'bg-muted text-foreground rounded-tl-sm'
+                                ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                                : 'bg-muted text-foreground rounded-tl-sm'
                                 }`}
                             >
                               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -456,7 +485,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
 
         {/* Input */}
         <div className="border-t p-3 sm:p-4 shrink-0">
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-end">
             <Textarea
               value={newMessage}
               onChange={(e) => {
@@ -466,7 +495,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                 }
               }}
               placeholder={`Message ${partner.full_name}...`}
-              className="min-h-[30px] sm:min-h-[40px] max-h-[100px] sm:max-h-[120px] resize-none text-base"
+              className="min-h-[50px] sm:min-h-[60px] max-h-[100px] sm:max-h-[120px] resize-none text-base"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -478,7 +507,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
               onClick={handleSend}
               disabled={isLoading || !newMessage.trim()}
               size="icon"
-              className="h-auto aspect-square"
+              className="h-10 w-10 shrink-0"
             >
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

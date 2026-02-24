@@ -14,7 +14,7 @@ import {
     BookOpen, ChevronLeft, ChevronRight, BookMarked, ArrowLeft,
     Highlighter, MessageSquare, Trash2, X, Check,
     Volume2, VolumeX, Pause, Play, Type,
-    BookHeart, Share2, PenLine, Send, Loader2
+    BookHeart, Share2, PenLine, Send, Loader2, Sparkles
 } from 'lucide-react'
 import useSWR from 'swr'
 import {
@@ -34,6 +34,7 @@ import {
     shareMultipleVersesWithPartner,
 } from '@/lib/bible-highlight-actions'
 import { ScriptureText } from '@/components/bible/scripture-text'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
 
@@ -103,9 +104,10 @@ interface BibleReaderProps {
     savedChapter?: number | null
     savedSkipVerseNumbers?: boolean
     savedVoiceURI?: string | null
+    userRole?: string | null
 }
 
-export function BibleReader({ weekScripture, weekNumber, pairingId, savedTranslation, savedTextSize, savedBook, savedChapter, savedSkipVerseNumbers = false, savedVoiceURI }: BibleReaderProps) {
+export function BibleReader({ weekScripture, weekNumber, pairingId, savedTranslation, savedTextSize, savedBook, savedChapter, savedSkipVerseNumbers = false, savedVoiceURI, userRole }: BibleReaderProps) {
     const searchParams = useSearchParams()
     const router = useRouter()
 
@@ -187,7 +189,27 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [ttsProgress, setTtsProgress] = useState(0) // 0 to 1 progress through chapter
     const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null) // seconds left
     const [autoPlayNextChapter, setAutoPlayNextChapter] = useState(false)
+
+    // AI Explain feature (Leaders only)
+    const [showExplainDialog, setShowExplainDialog] = useState(false)
+    const [explainReference, setExplainReference] = useState('')
+    const [explainText, setExplainText] = useState('')
+    const [explainLoading, setExplainLoading] = useState(false)
+    const [explainContent, setExplainContent] = useState('')
+    const explainAbortRef = useRef<AbortController | null>(null)
     const isMobile = useIsMobile()
+    // Detect Apple platforms (iOS, iPadOS, macOS) to prefer cloud voices
+    // Safari/WebKit speechSynthesis voices are lower quality than Google Cloud TTS
+    const [isAppleDevice, setIsAppleDevice] = useState(false)
+    useEffect(() => {
+        if (typeof navigator === 'undefined') return
+        const ua = navigator.userAgent
+        const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+        const isMacSafari = /Macintosh/.test(ua) && /Safari/.test(ua) && !/Chrome/.test(ua)
+        setIsAppleDevice(isIOS || isMacSafari)
+    }, [])
+    // Use cloud voices for mobile screens OR any Apple device
+    const useCloudVoices = isMobile || isAppleDevice
 
     // Desktop: browser speechSynthesis
     const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
@@ -247,9 +269,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const chapters: BibleChapter[] = chaptersData?.chapters || []
     const verses: BibleVerse[] = versesData?.verses || []
 
-    // Load browser voices for desktop only
+    // Load browser voices for non-cloud-voice devices only
     useEffect(() => {
-        if (isMobile || !speechSupportedRef.current) return
+        if (useCloudVoices || !speechSupportedRef.current) return
 
         // macOS novelty/robotic voices to exclude
         const noveltyVoices = new Set([
@@ -307,7 +329,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         loadVoices()
         window.speechSynthesis.onvoiceschanged = loadVoices
         return () => { window.speechSynthesis.onvoiceschanged = null }
-    }, [isMobile, selectedVoiceURI])
+    }, [useCloudVoices, selectedVoiceURI])
 
     // Keep ref in sync so mid-playback reads the latest value
     useEffect(() => {
@@ -1132,12 +1154,52 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }
 
     // ---- Unified handlers ----
+    const handleExplainVerse = async (reference: string, verseText: string) => {
+        setExplainReference(reference)
+        setExplainText(verseText)
+        setExplainContent('')
+        setExplainLoading(true)
+        setShowExplainDialog(true)
+        setSelectedVerse(null)
+
+        // Abort any previous request
+        if (explainAbortRef.current) explainAbortRef.current.abort()
+        const abortController = new AbortController()
+        explainAbortRef.current = abortController
+
+        try {
+            const res = await fetch('/api/bible/explain', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reference, verseText, translation }),
+                signal: abortController.signal,
+            })
+            if (!res.ok) throw new Error('Failed to get explanation')
+            const reader = res.body?.getReader()
+            if (!reader) throw new Error('No reader')
+            const decoder = new TextDecoder()
+            let content = ''
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                content += decoder.decode(value, { stream: true })
+                setExplainContent(content)
+            }
+        } catch (e: unknown) {
+            if (e instanceof Error && e.name !== 'AbortError') {
+                setExplainContent('Failed to generate explanation. Please try again.')
+            }
+        } finally {
+            setExplainLoading(false)
+        }
+    }
+
     const handlePlayChapter = (initialStartVerse?: number) => {
-        if (isMobile) handlePlayMobile(initialStartVerse)
+        if (useCloudVoices) handlePlayMobile(initialStartVerse)
         else handlePlayDesktop(initialStartVerse)
     }
     const handlePauseAudio = () => {
-        if (isMobile) handlePauseMobile()
+        if (useCloudVoices) handlePauseMobile()
         else handlePauseDesktop()
     }
     const clearAutoAdvance = useCallback(() => {
@@ -1145,7 +1207,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }, [])
 
     const handleStopAudio = () => {
-        if (isMobile) handleStopMobile()
+        if (useCloudVoices) handleStopMobile()
         else handleStopDesktop()
         setTtsProgress(0)
         clearAutoAdvance()
@@ -1217,13 +1279,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const handleTranslationChange = (v: string) => {
         setTranslation(v)
         updateURL(selectedBook, selectedChapter, v)
-        savePrefs(v, textSize, skipVerseNumbers, isMobile ? selectedCloudVoice : selectedVoiceURI)
+        savePrefs(v, textSize, skipVerseNumbers, useCloudVoices ? selectedCloudVoice : selectedVoiceURI)
         handleStopAudio()
     }
 
     const handleTextSizeChange = (size: string) => {
         setTextSize(size)
-        savePrefs(translation, size, skipVerseNumbers, isMobile ? selectedCloudVoice : selectedVoiceURI)
+        savePrefs(translation, size, skipVerseNumbers, useCloudVoices ? selectedCloudVoice : selectedVoiceURI)
     }
 
     const handleBack = () => {
@@ -1297,11 +1359,14 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }, [weekScripture, parseScriptureRef, updateURL, translation])
 
     // Auto-detect if current chapter matches week scripture and highlight it
+    // Clear the highlight when navigating to any other book/chapter
     useEffect(() => {
         if (!weekScripture || !selectedBook || !selectedChapter || books.length === 0) return
         const parsed = parseScriptureRef(weekScripture)
         if (parsed && parsed.bookId === selectedBook && parsed.chapter === selectedChapter && parsed.verseRange) {
             setWeekVerseRange(parsed.verseRange)
+        } else {
+            setWeekVerseRange(null)
         }
     }, [weekScripture, selectedBook, selectedChapter, books.length, parseScriptureRef])
 
@@ -1414,12 +1479,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     Reading Voice
                                 </label>
                                 <p className="text-xs text-muted-foreground">
-                                    {isMobile
+                                    {useCloudVoices
                                         ? 'Neural cloud voices for natural-sounding scripture reading.'
                                         : 'Choose a voice for the audio Bible. Voices marked Neural or Enhanced sound the most human.'}
                                 </p>
 
-                                {isMobile ? (
+                                {useCloudVoices ? (
                                     <Select value={selectedCloudVoice} onValueChange={(v) => {
                                         const wasPlaying = isPlaying || isPaused
                                         const resumeVerse = currentReadingVerse
@@ -1533,7 +1598,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     id="skip-verse-numbers"
                                     role="switch"
                                     aria-checked={skipVerseNumbers}
-                                    onClick={() => { const next = !skipVerseNumbers; setSkipVerseNumbers(next); savePrefs(translation, textSize, next, isMobile ? selectedCloudVoice : selectedVoiceURI) }}
+                                    onClick={() => { const next = !skipVerseNumbers; setSkipVerseNumbers(next); savePrefs(translation, textSize, next, useCloudVoices ? selectedCloudVoice : selectedVoiceURI) }}
                                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors ${skipVerseNumbers ? 'bg-primary' : 'bg-muted'
                                         }`}
                                 >
@@ -1578,7 +1643,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                 className="h-8 text-xs gap-1.5 bg-card"
                                 onClick={async () => {
                                     const previewText = 'For God so loved the world, that he gave his only begotten Son.'
-                                    if (isMobile) {
+                                    if (useCloudVoices) {
                                         try {
                                             const res = await fetch('/api/tts', {
                                                 method: 'POST',
@@ -2071,7 +2136,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                     <PopoverContent
                                                         className="w-80 p-3"
                                                         align="start"
-                                                        side="bottom"
+                                                        side="top"
+                                                        sideOffset={8}
+                                                        collisionPadding={16}
                                                         onOpenAutoFocus={(e) => e.preventDefault()}
                                                     >
                                                         {(() => {
@@ -2281,6 +2348,35 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                                             {verseSent ? 'Sent' : sendingVerse ? 'Sending...' : 'Send'}
                                                                                         </Button>
                                                                                     )
+                                                                                )}
+
+                                                                                {/* AI Explain -- Leaders only */}
+                                                                                {userRole === 'leader' && (
+                                                                                    <Button
+                                                                                        variant="outline"
+                                                                                        size="sm"
+                                                                                        className="h-7 text-xs gap-1 font-sans bg-transparent text-primary border-primary/30 hover:bg-primary/5"
+                                                                                        onClick={() => {
+                                                                                            const bookName = books.find(b => b.id === selectedBook)?.name || ''
+                                                                                            if (isGroup && highlightGroup.length > 1) {
+                                                                                                const ref = `${bookName} ${selectedChapter}:${buildRangeStr(highlightGroup)}`
+                                                                                                const text = highlightGroup
+                                                                                                    .map(vn => {
+                                                                                                        const vData = verses.find(vv => vv.verse === vn)
+                                                                                                        return vData ? `${vn} ${vData.text}` : ''
+                                                                                                    })
+                                                                                                    .filter(Boolean)
+                                                                                                    .join(' ')
+                                                                                                handleExplainVerse(ref, text)
+                                                                                            } else {
+                                                                                                const ref = `${bookName} ${selectedChapter}:${v.verse}`
+                                                                                                handleExplainVerse(ref, v.text)
+                                                                                            }
+                                                                                        }}
+                                                                                    >
+                                                                                        <Sparkles className="h-3 w-3" />
+                                                                                        Explain
+                                                                                    </Button>
                                                                                 )}
 
                                                                                 {/* Listen from here -- available for ALL verses */}
@@ -2564,6 +2660,100 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                         </div>
                     </CardContent>
                 </Card>
+            )}
+            {/* AI Explain Dialog (Leaders only) */}
+            {userRole === 'leader' && (
+                <Dialog open={showExplainDialog} onOpenChange={(open) => {
+                    if (!open && explainAbortRef.current) explainAbortRef.current.abort()
+                    setShowExplainDialog(open)
+                }}>
+                    <DialogContent className="max-w-lg max-h-[80vh] flex flex-col gap-0 p-0 overflow-hidden">
+                        {/* Header */}
+                        <div className="px-5 pt-5 pb-3 border-b border-border/50">
+                            <DialogHeader className="space-y-1">
+                                <DialogTitle className="text-base font-semibold text-foreground font-sans">
+                                    {explainReference}
+                                </DialogTitle>
+                                <p className="text-xs text-muted-foreground font-sans">{ENGLISH_TRANSLATIONS.find(t => t.identifier === translation)?.name || translation}</p>
+                            </DialogHeader>
+                            {/* Quoted verse text */}
+                            <blockquote className="mt-3 border-l-2 border-primary/30 pl-3 text-[13px] italic text-muted-foreground font-serif leading-relaxed">
+                                {explainText.length > 250 ? explainText.slice(0, 250).trim() + '...' : explainText}
+                            </blockquote>
+                        </div>
+
+                        {/* Scrollable content */}
+                        <div className="flex-1 overflow-y-auto px-5 py-4">
+                            {/* Loading state */}
+                            {explainLoading && !explainContent && (
+                                <div className="flex items-center gap-2.5 text-sm text-muted-foreground py-6 justify-center">
+                                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                    <span className="font-sans">Thinking...</span>
+                                </div>
+                            )}
+                            {/* Rendered explanation */}
+                            {explainContent && (
+                                <div className="space-y-0 font-sans">
+                                    {explainContent.split('\n').map((line, i) => {
+                                        const trimmed = line.trim()
+                                        if (!trimmed) return <div key={i} className="h-2.5" />
+
+                                        // ### or ## headers -> section title
+                                        if (/^#{1,3}\s+/.test(trimmed)) {
+                                            const text = trimmed.replace(/^#{1,3}\s+/, '').replace(/\*\*/g, '')
+                                            return <h4 key={i} className="text-sm font-semibold text-foreground mt-4 mb-1.5 first:mt-0">{text}</h4>
+                                        }
+
+                                        // **Bold line** (entire line is bold) -> section title
+                                        if (/^\*\*[^*]+\*\*$/.test(trimmed)) {
+                                            return <h4 key={i} className="text-sm font-semibold text-foreground mt-4 mb-1.5 first:mt-0">{trimmed.replace(/\*\*/g, '')}</h4>
+                                        }
+
+                                        // Numbered header like "1. **Summary**" or "1. Summary"
+                                        if (/^\d+\.\s/.test(trimmed)) {
+                                            const text = trimmed.replace(/\*\*/g, '')
+                                            // If short (likely a header), render as title
+                                            if (text.length < 60 && !text.includes('. ')) {
+                                                return <h4 key={i} className="text-sm font-semibold text-foreground mt-4 mb-1.5 first:mt-0">{text}</h4>
+                                            }
+                                        }
+
+                                        // Bullet point with inline bold rendering
+                                        if (/^[-*]\s/.test(trimmed)) {
+                                            const bulletText = trimmed.replace(/^[-*]\s+/, '')
+                                            const parts = bulletText.split(/\*\*(.*?)\*\*/g)
+                                            return (
+                                                <div key={i} className="flex gap-2 ml-1 my-1">
+                                                    <span className="text-primary/60 mt-[3px] text-xs shrink-0">{'●'}</span>
+                                                    <p className="text-sm leading-relaxed text-foreground/85">
+                                                        {parts.map((part, j) =>
+                                                            j % 2 === 1
+                                                                ? <strong key={j} className="font-semibold text-foreground">{part}</strong>
+                                                                : <span key={j}>{part}</span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            )
+                                        }
+
+                                        // Regular paragraph with inline bold
+                                        const parts = trimmed.split(/\*\*(.*?)\*\*/g)
+                                        return (
+                                            <p key={i} className="text-sm leading-relaxed text-foreground/85 my-1.5">
+                                                {parts.map((part, j) =>
+                                                    j % 2 === 1
+                                                        ? <strong key={j} className="font-semibold text-foreground">{part}</strong>
+                                                        : <span key={j}>{part}</span>
+                                                )}
+                                            </p>
+                                        )
+                                    })}
+                                    {explainLoading && <span className="inline-block w-1.5 h-4 bg-primary/50 animate-pulse ml-0.5 align-text-bottom rounded-sm" />}
+                                </div>
+                            )}
+                        </div>
+                    </DialogContent>
+                </Dialog>
             )}
         </div>
     )

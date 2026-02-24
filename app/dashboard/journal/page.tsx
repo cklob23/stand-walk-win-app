@@ -122,7 +122,7 @@ export default async function JournalPage({
                 dailyLines.push('')
             }
             if (freeText) {
-                dailyLines.push(`Q: What is God saying to you today in prayer?`)
+                dailyLines.push(`Q: What am I learning today?`)
                 dailyLines.push(`A: ${freeText}`)
             }
             journalSharedItems.push({
@@ -137,7 +137,7 @@ export default async function JournalPage({
         }
 
         // 2) Verse sections (shared_sections.verse_0, verse_1, etc.)
-        verseParts.forEach((raw: any, idx: number) => {
+        verseParts.forEach((raw, idx) => {
             if (!sections[`verse_${idx}`]) return
             let title = ''
             let scriptureRef = ''

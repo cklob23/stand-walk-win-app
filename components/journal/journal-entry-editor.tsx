@@ -104,12 +104,12 @@ export function JournalEntryEditor({
 
                 <div className="space-y-2">
                     <Label className="text-sm font-medium text-foreground">
-                        What is God saying to you today in prayer?
+                        What am I learning today?
                     </Label>
                     <Textarea
                         value={godSaying}
                         onChange={(e) => setGodSaying(e.target.value)}
-                        placeholder="Write what you sense God is speaking to you..."
+                        placeholder="Write what you're learning today..."
                         rows={4}
                         className="resize-none"
                     />

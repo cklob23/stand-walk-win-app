@@ -11,6 +11,7 @@ export async function saveJournalEntry(data: {
     prayerItems: string
     godSaying: string
     pairingId: string
+    sharedWithLeader?: boolean
 }) {
     try {
         const supabase = await createClient()
