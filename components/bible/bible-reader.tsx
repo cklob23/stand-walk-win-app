@@ -184,6 +184,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [isPaused, setIsPaused] = useState(false)
     const [currentReadingVerse, setCurrentReadingVerse] = useState<number | null>(null)
     const [pausedAtVerse, setPausedAtVerse] = useState<number | null>(null)
+    const [ttsProgress, setTtsProgress] = useState(0) // 0 to 1 progress through chapter
+    const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null) // seconds left
+    const [autoPlayNextChapter, setAutoPlayNextChapter] = useState(false)
     const isMobile = useIsMobile()
 
     // Desktop: browser speechSynthesis
@@ -821,14 +824,24 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setIsPlaying(true)
         setIsPaused(false)
 
+        // Track progress based on total chapter verses (not just remaining)
+        const totalVerses = verses.length
+        setTtsProgress(totalVerses > 0 ? verseIndex / totalVerses : 0)
+        clearAutoAdvance()
+
         const readNextVerse = () => {
             // Ignore if session has changed (user started a new play or stopped)
             if (ttsSessionRef.current !== session) return
             if (verseIndex >= verses.length) {
                 setIsPlaying(false)
                 setCurrentReadingVerse(null)
+                setTtsProgress(1) // 100% complete
+                // Trigger auto-advance countdown (handled by effect)
+                setAutoAdvanceCountdown(3)
                 return
             }
+            // Update progress based on position within entire chapter
+            setTtsProgress(totalVerses > 0 ? verseIndex / totalVerses : 0)
             const v = verses[verseIndex]
             const verseText = v.text.replace(/\n/g, ' ').trim()
             let text: string
@@ -952,11 +965,18 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             setCurrentReadingVerse(null)
             setAudioLoading(false)
             mobilePlayingRef.current = false
+            setTtsProgress(1) // 100% complete
+            // Trigger auto-advance countdown (handled by effect)
+            setAutoAdvanceCountdown(3)
             return
         }
 
         mobileCurrentIdxRef.current = queueIdx
         const item = queue[queueIdx]
+
+        // Update progress based on absolute verse position in entire chapter
+        const totalChapterVerses = verses.length
+        setTtsProgress(totalChapterVerses > 0 ? item.verseIndex / totalChapterVerses : 0)
 
         // Set verse highlight
         setCurrentReadingVerse(item.verseNum)
@@ -1058,6 +1078,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
         setIsPlaying(true)
         setIsPaused(false)
+        // Set initial progress based on starting position within entire chapter
+        setTtsProgress(verses.length > 0 ? verseIndex / verses.length : 0)
+        clearAutoAdvance()
 
         // Start pre-buffering the first 3 verses immediately
         const voice = selectedCloudVoice
@@ -1117,9 +1140,15 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         if (isMobile) handlePauseMobile()
         else handlePauseDesktop()
     }
+    const clearAutoAdvance = useCallback(() => {
+        setAutoAdvanceCountdown(null)
+    }, [])
+
     const handleStopAudio = () => {
         if (isMobile) handleStopMobile()
         else handleStopDesktop()
+        setTtsProgress(0)
+        clearAutoAdvance()
     }
 
     // Update URL params when selections change
@@ -1131,6 +1160,45 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         const query = params.toString()
         router.replace(`/dashboard/bible${query ? `?${query}` : ''}`, { scroll: false })
     }, [router])
+
+    // Auto-advance countdown: tick down from 3 to 0, then navigate
+    useEffect(() => {
+        if (autoAdvanceCountdown === null) return
+        // Check if we can actually advance
+        if (!selectedChapter || !chapters.length || selectedChapter >= chapters.length) {
+            setAutoAdvanceCountdown(null)
+            return
+        }
+        if (autoAdvanceCountdown <= 0) {
+            // Time's up -- navigate to next chapter
+            setAutoAdvanceCountdown(null)
+            setTtsProgress(0)
+            const next = selectedChapter + 1
+            setWeekVerseRange(null)
+            setSelectedChapter(next)
+            updateURL(selectedBook, next, translation)
+            setAutoPlayNextChapter(true)
+            return
+        }
+        // Tick down every second
+        const timer = setTimeout(() => {
+            setAutoAdvanceCountdown(prev => prev !== null ? prev - 1 : null)
+        }, 1000)
+        return () => clearTimeout(timer)
+    }, [autoAdvanceCountdown, selectedChapter, chapters.length, selectedBook, translation, updateURL])
+
+    // Auto-play when new chapter verses load after auto-advance
+    useEffect(() => {
+        if (autoPlayNextChapter && verses.length > 0) {
+            setAutoPlayNextChapter(false)
+            setTtsProgress(0)
+            // Small delay to let the new chapter render
+            setTimeout(() => {
+                handlePlayChapter()
+            }, 300)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoPlayNextChapter, verses])
 
     const handleSelectBook = (bookId: string) => {
         setSelectedBook(bookId)
@@ -1176,6 +1244,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const handlePrevChapter = () => {
         handleStopAudio()
         setWeekVerseRange(null)
+        setTtsProgress(0)
+        clearAutoAdvance()
         if (selectedChapter && selectedChapter > 1) {
             const prev = selectedChapter - 1
             setSelectedChapter(prev)
@@ -1186,6 +1256,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const handleNextChapter = () => {
         handleStopAudio()
         setWeekVerseRange(null)
+        setTtsProgress(0)
+        clearAutoAdvance()
         if (selectedChapter && chapters.length > 0 && selectedChapter < chapters.length) {
             const next = selectedChapter + 1
             setSelectedChapter(next)
@@ -1690,8 +1762,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         <button
                                             key={c.color}
                                             className={`h-6 w-6 rounded-full ${c.bg} border-2 transition-all ${activeColor === c.color
-                                                    ? `${c.ring} ring-2 ring-offset-1 border-transparent scale-110`
-                                                    : 'border-border hover:scale-105'
+                                                ? `${c.ring} ring-2 ring-offset-1 border-transparent scale-110`
+                                                : 'border-border hover:scale-105'
                                                 }`}
                                             onClick={() => setActiveColor(c.color)}
                                             aria-label={`${c.label} highlight`}
@@ -1911,8 +1983,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                             role="button"
                                                             tabIndex={0}
                                                             className={`inline rounded-sm transition-all cursor-pointer ${isStudyVerse
-                                                                    ? 'bg-primary/15 border-l-2 border-primary pl-1 -ml-1 rounded-l-none'
-                                                                    : hl ? `${getHighlightBg(hl.color)} px-0.5 -mx-0.5` : ''
+                                                                ? 'bg-primary/15 border-l-2 border-primary pl-1 -ml-1 rounded-l-none'
+                                                                : hl ? `${getHighlightBg(hl.color)} px-0.5 -mx-0.5` : ''
                                                                 } ${selectedVerses.has(v.verse) && !hl
                                                                     ? 'bg-primary/15 ring-1 ring-primary/40 rounded px-0.5 -mx-0.5'
                                                                     : highlightMode
@@ -2018,8 +2090,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                                 <button
                                                                                     key={c.color}
                                                                                     className={`h-5 w-5 rounded-full ${c.bg} border transition-all ${hl?.color === c.color
-                                                                                            ? `${c.ring} ring-1 ring-offset-1 border-transparent`
-                                                                                            : 'border-border hover:scale-110'
+                                                                                        ? `${c.ring} ring-1 ring-offset-1 border-transparent`
+                                                                                        : 'border-border hover:scale-110'
                                                                                         }`}
                                                                                     onClick={async () => {
                                                                                         if (selectedBook && selectedChapter) {
@@ -2452,16 +2524,43 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             <span className="text-sm text-muted-foreground">
                                 Chapter {selectedChapter} of {chapters.length}
                             </span>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="gap-1 bg-card"
-                                onClick={handleNextChapter}
-                                disabled={!selectedChapter || selectedChapter >= chapters.length}
-                            >
-                                Next
-                                <ChevronRight className="h-4 w-4" />
-                            </Button>
+                            {/* Next button with audio progress fill */}
+                            {(isPlaying || isPaused || ttsProgress > 0 || autoAdvanceCountdown !== null) && selectedChapter && selectedChapter < chapters.length ? (
+                                <button
+                                    className="relative inline-flex items-center gap-1 rounded-md border border-border text-sm font-medium h-9 px-3 overflow-hidden transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    onClick={() => {
+                                        clearAutoAdvance()
+                                        handleStopAudio()
+                                        handleNextChapter()
+                                    }}
+                                >
+                                    {/* Progress fill background */}
+                                    <span
+                                        className="absolute inset-0 bg-primary/15 transition-all duration-700 ease-linear"
+                                        style={{ width: `${ttsProgress * 100}%` }}
+                                    />
+                                    {/* Button content */}
+                                    <span className="relative z-10 flex items-center gap-1 text-foreground">
+                                        {autoAdvanceCountdown !== null ? (
+                                            <>Next in {autoAdvanceCountdown}s</>
+                                        ) : (
+                                            <>Next</>
+                                        )}
+                                        <ChevronRight className="h-4 w-4" />
+                                    </span>
+                                </button>
+                            ) : (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-1 bg-card"
+                                    onClick={handleNextChapter}
+                                    disabled={!selectedChapter || selectedChapter >= chapters.length}
+                                >
+                                    Next
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
