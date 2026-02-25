@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
@@ -220,27 +220,45 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     // Mobile: Cloud TTS verse-by-verse with pre-buffering
     const [selectedCloudVoice, setSelectedCloudVoice] = useState<string>(
-        savedVoiceURI?.startsWith('en-') ? savedVoiceURI : 'en-US-Wavenet-D'
+        savedVoiceURI?.startsWith('en-') || savedVoiceURI?.startsWith('openai-') ? savedVoiceURI : 'openai-nova'
     )
     const [audioLoading, setAudioLoading] = useState(false)
     const mobileAudioRef = useRef<HTMLAudioElement | null>(null)
-    const mobileQueueRef = useRef<{ verseIndex: number; verseNum: number; audio: HTMLAudioElement | null; loading: boolean; blobUrl?: string }[]>([])
+    type MobileQueueItem = {
+        verseIndices: number[]     // verse indices covered by this batch
+        verseNums: number[]        // verse numbers for highlights
+        audio: HTMLAudioElement | null
+        loading: boolean
+        blobUrl?: string
+    }
+    const mobileQueueRef = useRef<MobileQueueItem[]>([])
     const mobilePlayingRef = useRef(false)
     const mobileCurrentIdxRef = useRef(0)
     const mobileStoppedRef = useRef(false)
 
     const CLOUD_TTS_VOICES = [
-        { id: 'en-US-Wavenet-D', name: 'David', description: 'Warm male' },
-        { id: 'en-US-Wavenet-C', name: 'Clara', description: 'Clear female' },
-        { id: 'en-US-Wavenet-A', name: 'Adam', description: 'Deep male' },
-        { id: 'en-US-Wavenet-E', name: 'Emily', description: 'Gentle female' },
-        { id: 'en-US-Wavenet-B', name: 'Brian', description: 'Calm male' },
-        { id: 'en-US-Wavenet-F', name: 'Fiona', description: 'Bright female' },
-        { id: 'en-GB-Wavenet-B', name: 'James', description: 'British male' },
-        { id: 'en-GB-Wavenet-A', name: 'Charlotte', description: 'British female' },
-        { id: 'en-AU-Wavenet-B', name: 'Liam', description: 'Australian male' },
-        { id: 'en-AU-Wavenet-C', name: 'Sophie', description: 'Australian female' },
+        // OpenAI voices (high quality, natural sounding)
+        { id: 'openai-nova', name: 'Nova', description: 'Warm female', provider: 'openai' as const },
+        { id: 'openai-echo', name: 'Echo', description: 'Clear male', provider: 'openai' as const },
+        { id: 'openai-alloy', name: 'Alloy', description: 'Neutral balanced', provider: 'openai' as const },
+        { id: 'openai-fable', name: 'Fable', description: 'Expressive male', provider: 'openai' as const },
+        { id: 'openai-onyx', name: 'Onyx', description: 'Deep male', provider: 'openai' as const },
+        { id: 'openai-shimmer', name: 'Shimmer', description: 'Gentle female', provider: 'openai' as const },
+        // Google Wavenet voices
+        { id: 'en-US-Wavenet-D', name: 'David', description: 'Warm male', provider: 'google' as const },
+        { id: 'en-US-Wavenet-C', name: 'Clara', description: 'Clear female', provider: 'google' as const },
+        { id: 'en-US-Wavenet-A', name: 'Adam', description: 'Deep male', provider: 'google' as const },
+        { id: 'en-US-Wavenet-E', name: 'Emily', description: 'Gentle female', provider: 'google' as const },
+        { id: 'en-US-Wavenet-B', name: 'Brian', description: 'Calm male', provider: 'google' as const },
+        { id: 'en-US-Wavenet-F', name: 'Fiona', description: 'Bright female', provider: 'google' as const },
+        { id: 'en-GB-Wavenet-B', name: 'James', description: 'British male', provider: 'google' as const },
+        { id: 'en-GB-Wavenet-A', name: 'Charlotte', description: 'British female', provider: 'google' as const },
+        { id: 'en-AU-Wavenet-B', name: 'Liam', description: 'Australian male', provider: 'google' as const },
+        { id: 'en-AU-Wavenet-C', name: 'Sophie', description: 'Australian female', provider: 'google' as const },
     ]
+
+    const getVoiceProvider = (voiceId: string) => voiceId.startsWith('openai-') ? 'openai' : 'google'
+    const getOpenAIVoiceName = (voiceId: string) => voiceId.replace('openai-', '')
 
     const [skipVerseNumbers, setSkipVerseNumbers] = useState(savedSkipVerseNumbers)
     const skipVerseNumbersRef = useRef(savedSkipVerseNumbers)
@@ -851,26 +869,17 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setTtsProgress(totalVerses > 0 ? verseIndex / totalVerses : 0)
         clearAutoAdvance()
 
-        const readNextVerse = () => {
-            // Ignore if session has changed (user started a new play or stopped)
-            if (ttsSessionRef.current !== session) return
-            if (verseIndex >= verses.length) {
-                setIsPlaying(false)
-                setCurrentReadingVerse(null)
-                setTtsProgress(1) // 100% complete
-                // Trigger auto-advance countdown (handled by effect)
-                setAutoAdvanceCountdown(3)
-                return
-            }
-            // Update progress based on position within entire chapter
-            setTtsProgress(totalVerses > 0 ? verseIndex / totalVerses : 0)
-            const v = verses[verseIndex]
+        // Build all utterances upfront and use the browser's speech queue
+        // This eliminates the gap between verses since the browser pre-queues them
+        const utterances: { utt: SpeechSynthesisUtterance; verseNum: number; idx: number }[] = []
+        for (let i = verseIndex; i < verses.length; i++) {
+            const v = verses[i]
             const verseText = v.text.replace(/\n/g, ' ').trim()
             let text: string
             if (skipVerseNumbersRef.current) {
-                text = verseIndex === 0 ? `${bookName} chapter ${selectedChapter}. ${verseText}` : verseText
+                text = i === verseIndex ? `${bookName} chapter ${selectedChapter}. ${verseText}` : verseText
             } else {
-                text = verseIndex === 0 ? `${bookName} chapter ${selectedChapter}. Verse ${v.verse}. ${verseText}` : `Verse ${v.verse}. ${verseText}`
+                text = i === verseIndex ? `${bookName} chapter ${selectedChapter}. Verse ${v.verse}. ${verseText}` : `Verse ${v.verse}. ${verseText}`
             }
             const utt = new SpeechSynthesisUtterance(text)
             utt.rate = speechRateRef.current
@@ -879,25 +888,35 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 const voice = availableVoices.find(av => av.voiceURI === selectedVoiceURI)
                 if (voice) utt.voice = voice
             }
-            utteranceRef.current = utt
-            // Set verse highlight BEFORE speaking so it appears immediately
-            setCurrentReadingVerse(v.verse)
+            utterances.push({ utt, verseNum: v.verse, idx: i })
+        }
+
+        // Attach event handlers and queue all utterances at once
+        utterances.forEach(({ utt, verseNum, idx }, arrIdx) => {
+            utt.onstart = () => {
+                if (ttsSessionRef.current !== session) return
+                setCurrentReadingVerse(verseNum)
+                setTtsProgress(totalVerses > 0 ? idx / totalVerses : 0)
+            }
             utt.onend = () => {
                 if (ttsSessionRef.current !== session) return
-                verseIndex++
-                readNextVerse()
+                // If last utterance, mark complete
+                if (arrIdx === utterances.length - 1) {
+                    setIsPlaying(false)
+                    setCurrentReadingVerse(null)
+                    setTtsProgress(1)
+                    setAutoAdvanceCountdown(3)
+                }
             }
             utt.onerror = (e) => {
-                // Ignore 'interrupted' and 'canceled' errors (caused by cancel() calls)
                 if (ttsSessionRef.current !== session) return
-                if (e && (e as any).error === 'interrupted' || (e as any).error === 'canceled') return
+                if (e && ((e as any).error === 'interrupted' || (e as any).error === 'canceled')) return
                 setIsPlaying(false)
                 setCurrentReadingVerse(null)
             }
+            utteranceRef.current = utt
             window.speechSynthesis.speak(utt)
-        }
-
-        readNextVerse()
+        })
     }
 
     const handlePauseDesktop = () => {
@@ -927,11 +946,21 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     // Fetch a single verse audio blob
     const fetchVerseAudio = async (text: string, voice: string): Promise<{ audio: HTMLAudioElement; blobUrl: string }> => {
-        const res = await fetch('/api/tts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, voice, speakingRate: speechRateRef.current }),
-        })
+        const provider = getVoiceProvider(voice)
+        let res: Response
+        if (provider === 'openai') {
+            res = await fetch('/api/tts-openai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, voice: getOpenAIVoiceName(voice), speed: speechRateRef.current }),
+            })
+        } else {
+            res = await fetch('/api/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, voice, speakingRate: speechRateRef.current }),
+            })
+        }
         if (!res.ok) throw new Error('TTS failed')
         const blob = await res.blob()
         const blobUrl = URL.createObjectURL(blob)
@@ -957,15 +986,23 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         return isFirst ? `${bookName} chapter ${selectedChapter}. Verse ${v.verse}. ${verseText}` : `Verse ${v.verse}. ${verseText}`
     }
 
-    // Pre-buffer upcoming verses in the queue
+    // Number of verses to batch into a single TTS request for smoother transitions
+    const BATCH_SIZE = 3
+
+    // Pre-buffer upcoming batches in the queue
     const preBufferAhead = (startQueueIdx: number, voice: string) => {
         const queue = mobileQueueRef.current
-        const BUFFER_AHEAD = 2
+        const BUFFER_AHEAD = 3
         for (let i = startQueueIdx; i < Math.min(startQueueIdx + BUFFER_AHEAD, queue.length); i++) {
             const item = queue[i]
             if (item && !item.audio && !item.loading) {
                 item.loading = true
-                const text = buildVerseText(item.verseIndex, i === 0)
+                // Build batched text for all verses in this batch item
+                let text = ''
+                item.verseIndices.forEach((vIdx, j) => {
+                    const part = buildVerseText(vIdx, i === 0 && j === 0)
+                    text += (j > 0 ? ' ' : '') + part
+                })
                 fetchVerseAudio(text, voice).then(({ audio, blobUrl }) => {
                     item.audio = audio
                     item.blobUrl = blobUrl
@@ -977,18 +1014,20 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         }
     }
 
-    // Play the next item in the queue
+    // Ref to hold verse highlight interval timers (cleared on stop)
+    const verseHighlightTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+    // Play the next batch item in the queue
     const playMobileQueueItem = async (queueIdx: number, voice: string) => {
         if (mobileStoppedRef.current) return
         const queue = mobileQueueRef.current
         if (queueIdx >= queue.length) {
-            // Finished all verses
+            // Finished all batches
             setIsPlaying(false)
             setCurrentReadingVerse(null)
             setAudioLoading(false)
             mobilePlayingRef.current = false
             setTtsProgress(1) // 100% complete
-            // Trigger auto-advance countdown (handled by effect)
             setAutoAdvanceCountdown(3)
             return
         }
@@ -996,21 +1035,24 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         mobileCurrentIdxRef.current = queueIdx
         const item = queue[queueIdx]
 
-        // Update progress based on absolute verse position in entire chapter
+        // Update progress based on first verse in this batch
         const totalChapterVerses = verses.length
-        setTtsProgress(totalChapterVerses > 0 ? item.verseIndex / totalChapterVerses : 0)
+        setTtsProgress(totalChapterVerses > 0 ? item.verseIndices[0] / totalChapterVerses : 0)
 
-        // Set verse highlight
-        setCurrentReadingVerse(item.verseNum)
+        // Set verse highlight to first verse in batch
+        setCurrentReadingVerse(item.verseNums[0])
 
-        // Pre-buffer upcoming verses
+        // Pre-buffer upcoming batches
         preBufferAhead(queueIdx + 1, voice)
 
-        // Wait for this verse's audio if not ready yet
+        // Wait for this batch's audio if not ready yet
         if (!item.audio) {
-            // Only show loading on the very first verse
             if (queueIdx === 0) setAudioLoading(true)
-            const text = buildVerseText(item.verseIndex, queueIdx === 0)
+            let text = ''
+            item.verseIndices.forEach((vIdx, j) => {
+                const part = buildVerseText(vIdx, queueIdx === 0 && j === 0)
+                text += (j > 0 ? ' ' : '') + part
+            })
             try {
                 item.loading = true
                 const { audio, blobUrl } = await fetchVerseAudio(text, voice)
@@ -1034,12 +1076,52 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         const audio = item.audio!
         mobileAudioRef.current = audio
 
-        audio.onended = () => {
-            if (mobileStoppedRef.current) return
-            // Revoke this blob URL
-            if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
-            playMobileQueueItem(queueIdx + 1, voice)
+        // Animate verse highlights within a batch using estimated timing
+        // Split the audio duration evenly across verses in the batch
+        if (item.verseNums.length > 1) {
+            // We estimate timing after audio starts -- use timeupdate to cycle through verses
+            let currentVerseInBatch = 0
+            const totalVersesInBatch = item.verseNums.length
+            // Estimate each verse's share based on text length
+            const verseLengths = item.verseIndices.map(idx => {
+                const v = verses[idx]
+                return v ? v.text.length : 50
+            })
+            const totalLength = verseLengths.reduce((a, b) => a + b, 0)
+            const verseTimeFractions = verseLengths.map(l => l / totalLength)
+
+            const onTimeUpdate = () => {
+                if (mobileStoppedRef.current || !audio.duration) return
+                const progress = audio.currentTime / audio.duration
+                let cumulative = 0
+                for (let i = 0; i < totalVersesInBatch; i++) {
+                    cumulative += verseTimeFractions[i]
+                    if (progress < cumulative) {
+                        if (currentVerseInBatch !== i) {
+                            currentVerseInBatch = i
+                            setCurrentReadingVerse(item.verseNums[i])
+                            // Update tts progress
+                            setTtsProgress(totalChapterVerses > 0 ? item.verseIndices[i] / totalChapterVerses : 0)
+                        }
+                        break
+                    }
+                }
+            }
+            audio.addEventListener('timeupdate', onTimeUpdate)
+            audio.onended = () => {
+                audio.removeEventListener('timeupdate', onTimeUpdate)
+                if (mobileStoppedRef.current) return
+                if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
+                playMobileQueueItem(queueIdx + 1, voice)
+            }
+        } else {
+            audio.onended = () => {
+                if (mobileStoppedRef.current) return
+                if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
+                playMobileQueueItem(queueIdx + 1, voice)
+            }
         }
+
         audio.onerror = () => {
             if (mobileStoppedRef.current) return
             toast.error('Audio playback error.')
@@ -1049,7 +1131,6 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         }
 
         audio.play().catch(() => {
-            // Autoplay might be blocked
             setIsPlaying(false)
             setCurrentReadingVerse(null)
             mobilePlayingRef.current = false
@@ -1089,12 +1170,19 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             if (idx >= 0) verseIndex = idx
         }
 
-        // Build the queue
+        // Build the batched queue (group verses in batches of BATCH_SIZE)
         mobileStoppedRef.current = false
         mobilePlayingRef.current = true
-        const queue: typeof mobileQueueRef.current = []
-        for (let i = verseIndex; i < verses.length; i++) {
-            queue.push({ verseIndex: i, verseNum: verses[i].verse, audio: null, loading: false })
+        const queue: MobileQueueItem[] = []
+        for (let i = verseIndex; i < verses.length; i += BATCH_SIZE) {
+            const endIdx = Math.min(i + BATCH_SIZE, verses.length)
+            const verseIndices: number[] = []
+            const verseNums: number[] = []
+            for (let j = i; j < endIdx; j++) {
+                verseIndices.push(j)
+                verseNums.push(verses[j].verse)
+            }
+            queue.push({ verseIndices, verseNums, audio: null, loading: false })
         }
         mobileQueueRef.current = queue
 
@@ -1104,13 +1192,17 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setTtsProgress(verses.length > 0 ? verseIndex / verses.length : 0)
         clearAutoAdvance()
 
-        // Start pre-buffering the first 3 verses immediately
+        // Start pre-buffering the first 3 batches immediately
         const voice = selectedCloudVoice
         const INITIAL_BUFFER = 3
         for (let i = 0; i < Math.min(INITIAL_BUFFER, queue.length); i++) {
             const item = queue[i]
             item.loading = true
-            const text = buildVerseText(item.verseIndex, i === 0)
+            let text = ''
+            item.verseIndices.forEach((vIdx, j) => {
+                const part = buildVerseText(vIdx, i === 0 && j === 0)
+                text += (j > 0 ? ' ' : '') + part
+            })
             fetchVerseAudio(text, voice).then(({ audio, blobUrl }) => {
                 item.audio = audio
                 item.blobUrl = blobUrl
@@ -1118,7 +1210,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             }).catch(() => { item.loading = false })
         }
 
-        // Start playing the first verse (will wait for it if needed)
+        // Start playing the first batch
         playMobileQueueItem(0, voice)
     }
 
@@ -1135,6 +1227,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const handleStopMobile = () => {
         mobileStoppedRef.current = true
         mobilePlayingRef.current = false
+        if (verseHighlightTimerRef.current) {
+            clearInterval(verseHighlightTimerRef.current)
+            verseHighlightTimerRef.current = null
+        }
         if (mobileAudioRef.current) {
             mobileAudioRef.current.pause()
             mobileAudioRef.current.onended = null
@@ -1480,7 +1576,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                 </label>
                                 <p className="text-xs text-muted-foreground">
                                     {useCloudVoices
-                                        ? 'Neural cloud voices for natural-sounding scripture reading.'
+                                        ? 'Choose from OpenAI or Google cloud voices for natural-sounding scripture reading.'
                                         : 'Choose a voice for the audio Bible. Voices marked Neural or Enhanced sound the most human.'}
                                 </p>
 
@@ -1500,14 +1596,28 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             <SelectValue placeholder="Select a voice..." />
                                         </SelectTrigger>
                                         <SelectContent className="max-h-[300px]">
-                                            {CLOUD_TTS_VOICES.map((voice) => (
-                                                <SelectItem key={voice.id} value={voice.id}>
-                                                    <span className="flex items-center gap-1.5">
-                                                        {voice.name}
-                                                        <span className="text-muted-foreground text-xs">{voice.description}</span>
-                                                    </span>
-                                                </SelectItem>
-                                            ))}
+                                            <SelectGroup>
+                                                <SelectLabel className="text-xs font-semibold text-primary/70">OpenAI Voices</SelectLabel>
+                                                {CLOUD_TTS_VOICES.filter(v => v.provider === 'openai').map((voice) => (
+                                                    <SelectItem key={voice.id} value={voice.id}>
+                                                        <span className="flex items-center gap-1.5">
+                                                            {voice.name}
+                                                            <span className="text-muted-foreground text-xs">{voice.description}</span>
+                                                        </span>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectGroup>
+                                            <SelectGroup>
+                                                <SelectLabel className="text-xs font-semibold text-primary/70">Google Voices</SelectLabel>
+                                                {CLOUD_TTS_VOICES.filter(v => v.provider === 'google').map((voice) => (
+                                                    <SelectItem key={voice.id} value={voice.id}>
+                                                        <span className="flex items-center gap-1.5">
+                                                            {voice.name}
+                                                            <span className="text-muted-foreground text-xs">{voice.description}</span>
+                                                        </span>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectGroup>
                                         </SelectContent>
                                     </Select>
                                 ) : (
@@ -1645,11 +1755,21 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     const previewText = 'For God so loved the world, that he gave his only begotten Son.'
                                     if (useCloudVoices) {
                                         try {
-                                            const res = await fetch('/api/tts', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ text: previewText, voice: selectedCloudVoice, speakingRate: speechRate }),
-                                            })
+                                            const provider = getVoiceProvider(selectedCloudVoice)
+                                            let res: Response
+                                            if (provider === 'openai') {
+                                                res = await fetch('/api/tts-openai', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ text: previewText, voice: getOpenAIVoiceName(selectedCloudVoice), speed: speechRate }),
+                                                })
+                                            } else {
+                                                res = await fetch('/api/tts', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ text: previewText, voice: selectedCloudVoice, speakingRate: speechRate }),
+                                                })
+                                            }
                                             if (!res.ok) throw new Error('Preview failed')
                                             const blob = await res.blob()
                                             const url = URL.createObjectURL(blob)
@@ -1827,8 +1947,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         <button
                                             key={c.color}
                                             className={`h-6 w-6 rounded-full ${c.bg} border-2 transition-all ${activeColor === c.color
-                                                ? `${c.ring} ring-2 ring-offset-1 border-transparent scale-110`
-                                                : 'border-border hover:scale-105'
+                                                    ? `${c.ring} ring-2 ring-offset-1 border-transparent scale-110`
+                                                    : 'border-border hover:scale-105'
                                                 }`}
                                             onClick={() => setActiveColor(c.color)}
                                             aria-label={`${c.label} highlight`}
@@ -2048,8 +2168,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                             role="button"
                                                             tabIndex={0}
                                                             className={`inline rounded-sm transition-all cursor-pointer ${isStudyVerse
-                                                                ? 'bg-primary/15 border-l-2 border-primary pl-1 -ml-1 rounded-l-none'
-                                                                : hl ? `${getHighlightBg(hl.color)} px-0.5 -mx-0.5` : ''
+                                                                    ? 'bg-primary/15 border-l-2 border-primary pl-1 -ml-1 rounded-l-none'
+                                                                    : hl ? `${getHighlightBg(hl.color)} px-0.5 -mx-0.5` : ''
                                                                 } ${selectedVerses.has(v.verse) && !hl
                                                                     ? 'bg-primary/15 ring-1 ring-primary/40 rounded px-0.5 -mx-0.5'
                                                                     : highlightMode
@@ -2157,8 +2277,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                                 <button
                                                                                     key={c.color}
                                                                                     className={`h-5 w-5 rounded-full ${c.bg} border transition-all ${hl?.color === c.color
-                                                                                        ? `${c.ring} ring-1 ring-offset-1 border-transparent`
-                                                                                        : 'border-border hover:scale-110'
+                                                                                            ? `${c.ring} ring-1 ring-offset-1 border-transparent`
+                                                                                            : 'border-border hover:scale-110'
                                                                                         }`}
                                                                                     onClick={async () => {
                                                                                         if (selectedBook && selectedChapter) {
