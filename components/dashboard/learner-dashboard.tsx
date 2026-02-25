@@ -191,6 +191,7 @@ export function LearnerDashboard({
                     userRole="learner"
                     leaderId={pairing.leader_id}
                     learnerName={profile.full_name || 'Learner'}
+                    leaderName={partner?.full_name || 'your leader'}
                     currentWeek={currentWeek}
                     totalWeekAssignments={currentWeekAssignments.length}
                     completedWeekAssignments={currentWeekAssignments.filter(a => a.progress?.status === 'completed').length}

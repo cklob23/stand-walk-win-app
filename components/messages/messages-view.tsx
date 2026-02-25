@@ -19,11 +19,12 @@ interface MessagesViewProps {
   pairing: Pairing
   partner: Profile
   initialMessages: Message[]
+  draftMessage?: string | null
 }
 
-export function MessagesView({ profile, pairing, partner, initialMessages }: MessagesViewProps) {
+export function MessagesView({ profile, pairing, partner, initialMessages, draftMessage }: MessagesViewProps) {
   const [messages, setMessages] = useState(initialMessages)
-  const [newMessage, setNewMessage] = useState('')
+  const [newMessage, setNewMessage] = useState(draftMessage || '')
   const [isLoading, setIsLoading] = useState(false)
   const [isPartnerOnline, setIsPartnerOnline] = useState(false)
   const [isPartnerTyping, setIsPartnerTyping] = useState(false)
@@ -369,7 +370,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                   asChild
                 >
                   <a href={`tel:${partner.phone}`} title={`Call ${partner.full_name}`}>
-                    <Phone className="h-8 w-8" />
+                    <Phone className="h-6 w-6" />
                     <span className="sr-only">Call {partner.full_name}</span>
                   </a>
                 </Button>
@@ -382,7 +383,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                   asChild
                 >
                   <a href={`facetime:${partner.phone}`} title={`FaceTime ${partner.full_name}`}>
-                    <Video className="h-8 w-8" />
+                    <Video className="h-6 w-6" />
                     <span className="sr-only">FaceTime {partner.full_name}</span>
                   </a>
                 </Button>
@@ -437,8 +438,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
                           <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${isOwn ? 'text-right' : 'text-left'}`}>
                             <div
                               className={`inline-block rounded-2xl px-4 py-2 ${isOwn
-                                ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                                : 'bg-muted text-foreground rounded-tl-sm'
+                                  ? 'bg-primary text-primary-foreground rounded-tr-sm'
+                                  : 'bg-muted text-foreground rounded-tl-sm'
                                 }`}
                             >
                               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -487,6 +488,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages }: Mes
         <div className="border-t p-3 sm:p-4 shrink-0">
           <div className="flex gap-2 items-end">
             <Textarea
+              ref={(el) => { if (el && draftMessage) el.focus() }}
               value={newMessage}
               onChange={(e) => {
                 setNewMessage(e.target.value)

@@ -2,7 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { MessagesView } from '@/components/messages/messages-view'
 
-export default async function MessagesPage() {
+export default async function MessagesPage({ searchParams }: { searchParams: Promise<{ draft?: string }> }) {
+  const { draft } = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -36,7 +37,7 @@ export default async function MessagesPage() {
       .order('created_at', { ascending: false })
       .limit(1)
       .single()
-    
+
     if (data) {
       pairing = data
       partner = data.learner
@@ -53,7 +54,7 @@ export default async function MessagesPage() {
       .order('created_at', { ascending: false })
       .limit(1)
       .single()
-    
+
     if (data) {
       pairing = data
       partner = data.leader
@@ -83,11 +84,12 @@ export default async function MessagesPage() {
     .eq('is_read', false)
 
   return (
-    <MessagesView 
+    <MessagesView
       profile={profile}
       pairing={pairing}
       partner={partner}
       initialMessages={messages || []}
+      draftMessage={draft || null}
     />
   )
 }

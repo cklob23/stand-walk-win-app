@@ -27,7 +27,11 @@ import {
   BookMarked,
   Play,
   Pause,
-  RotateCcw
+  RotateCcw,
+  HandHeart,
+  Send,
+  CalendarHeart,
+  Cross
 } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
@@ -57,6 +61,7 @@ interface AssignmentCardProps {
   userRole?: 'leader' | 'learner'
   leaderId?: string
   learnerName?: string
+  leaderName?: string
   currentWeek?: number
   totalWeekAssignments?: number
   completedWeekAssignments?: number
@@ -107,6 +112,7 @@ export function AssignmentCard({
   userRole,
   leaderId,
   learnerName,
+  leaderName,
   currentWeek,
   totalWeekAssignments,
   completedWeekAssignments,
@@ -190,6 +196,45 @@ export function AssignmentCard({
   const isLeader = userRole === 'leader'
   const isMeetingType = assignment.assignment_type === 'meeting'
 
+  // Salvation Story detection + decision state
+  const isSalvationStory = assignment.title === 'Your Salvation Story'
+  const [salvationChoice, setSalvationChoice] = useState<'yes' | 'no' | null>(() => {
+    // Parse from saved notes prefix
+    const notes = progress?.notes || ''
+    if (notes.startsWith('[ACCEPTED_CHRIST:yes]')) return 'yes'
+    if (notes.startsWith('[ACCEPTED_CHRIST:no]')) return 'no'
+    return null
+  })
+
+  // Strip the prefix tag from notes for display/editing
+  const stripSalvationPrefix = (text: string) =>
+    text.replace(/^\[ACCEPTED_CHRIST:(yes|no)\]\s*/, '')
+
+  // When salvation choice changes, update the response text prefix and persist immediately
+  const handleSalvationChoice = async (choice: 'yes' | 'no') => {
+    setSalvationChoice(choice)
+    // Preserve any existing response text (strip old prefix first)
+    const cleanResponse = stripSalvationPrefix(response)
+    const updatedNotes = `[ACCEPTED_CHRIST:${choice}] ${cleanResponse}`.trim()
+    setResponse(updatedNotes)
+
+    // Save to DB immediately so the choice persists across page navigations
+    await supabase
+      .from('assignment_progress')
+      .upsert({
+        pairing_id: pairingId,
+        assignment_id: assignment.id,
+        user_id: userId,
+        status: progress?.status === 'completed' ? 'completed' : 'in_progress',
+        notes: updatedNotes,
+        completed_at: progress?.completed_at || null,
+      }, {
+        onConflict: 'pairing_id,assignment_id,user_id',
+        ignoreDuplicates: false
+      })
+    router.refresh()
+  }
+
   // For leaders, show learner's status; for learners, show own status
   const displayProgress = isLeader ? learnerProgress : progress
 
@@ -230,8 +275,16 @@ export function AssignmentCard({
 
   const handleSaveProgress = async (newStatus: 'in_progress' | 'completed') => {
     // Validate that reflection/discussion assignments have a response before completing
-    if (newStatus === 'completed' && requiresResponse && !response.trim()) {
+    // Salvation story with "no" choice can complete without full response
+    const salvationNoChoice = isSalvationStory && salvationChoice === 'no'
+    const hasResponse = salvationNoChoice ? true : !!stripSalvationPrefix(response).trim()
+    if (newStatus === 'completed' && requiresResponse && !hasResponse) {
       toast.error('Please write a response before marking as complete.')
+      return
+    }
+    // Salvation story requires making a choice first
+    if (newStatus === 'completed' && isSalvationStory && salvationChoice === null) {
+      toast.error('Please answer the question first.')
       return
     }
 
@@ -594,11 +647,27 @@ export function AssignmentCard({
                 {/* Learner's written response */}
                 {learnerProgress.notes && (
                   <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
+                    {/* Salvation story: show their choice as a badge */}
+                    {isSalvationStory && learnerProgress.notes.includes('[ACCEPTED_CHRIST:') && (
+                      <div className="mb-2">
+                        {learnerProgress.notes.includes('[ACCEPTED_CHRIST:yes]') ? (
+                          <Badge variant="secondary" className="bg-success/10 text-success border-success/20 text-xs gap-1">
+                            <HandHeart className="h-3 w-3" />
+                            Has accepted Christ
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800/40 text-xs gap-1">
+                            <Heart className="h-3 w-3" />
+                            Has not yet accepted Christ -- follow up recommended
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       {learnerName ? `${learnerName}'s` : "Learner's"} Response
                     </p>
                     <p className="text-sm text-foreground whitespace-pre-wrap">
-                      {learnerProgress.notes}
+                      {isSalvationStory ? stripSalvationPrefix(learnerProgress.notes) || 'No written response.' : learnerProgress.notes}
                     </p>
                   </div>
                 )}
@@ -619,81 +688,215 @@ export function AssignmentCard({
               </p>
             )}
 
+            {/* Salvation Story Decision Flow (Learners only) */}
+            {isSalvationStory && !isLeader && !isCompleted && (
+              <div className="space-y-3">
+                {/* Initial choice - not yet answered */}
+                {salvationChoice === null && (
+                  <div className="rounded-xl border border-primary/20 bg-gradient-to-b from-primary/5 to-card p-4 sm:p-5 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                        <Cross className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-semibold text-foreground">Have you accepted Jesus Christ as your Lord and Savior?</h4>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {'There\'s no wrong answer here -- this is a safe space. Your response helps us walk alongside you in the best way possible.'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                      <Button
+                        className="flex-1 h-11 gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+                        onClick={() => handleSalvationChoice('yes')}
+                      >
+                        <HandHeart className="h-4 w-4" />
+                        Yes, I have
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex-1 h-11 gap-2 border-border hover:bg-muted"
+                        onClick={() => handleSalvationChoice('no')}
+                      >
+                        Not yet
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* YES path - accepted Christ */}
+                {salvationChoice === 'yes' && (
+                  <div className="rounded-xl border border-success/20 bg-success/5 p-4 sm:p-5 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success/15">
+                        <HandHeart className="h-4 w-4 text-success" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-semibold text-foreground">{'That\'s wonderful!'}</h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {'Your decision to follow Christ is the most important one you\'ll ever make. Take a moment to reflect on your journey -- when did you first come to know Jesus? What led you to that moment? Write your story below.'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-muted-foreground"
+                      onClick={() => setSalvationChoice(null)}
+                    >
+                      Change answer
+                    </Button>
+                  </div>
+                )}
+
+                {/* NO path - not yet accepted */}
+                {salvationChoice === 'no' && (
+                  <div className="rounded-xl border border-amber-200 dark:border-amber-800/40 bg-gradient-to-b from-amber-50/80 dark:from-amber-950/20 to-card p-4 sm:p-5 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                        <Heart className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <h4 className="text-sm font-semibold text-foreground">{'We\'re so glad you\'re here'}</h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {'That\'s completely okay -- this is exactly why you\'re here, and we\'re thankful you\'re on this journey. '}
+                          {leaderName ? `${leaderName} would` : 'Your leader would'} love to sit down with you and talk about what it means to have a personal relationship with Jesus.
+                          {' This could be one of the most meaningful conversations of your life.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button
+                        className="flex-1 h-10 gap-2"
+                        asChild
+                      >
+                        <Link href={`/dashboard/messages?draft=${encodeURIComponent(`Hey ${leaderName?.substring(0, leaderName?.indexOf(" ")) || ''}, I'm going through the second assignment on week one about salvation and accepting Jesus as my Lord and Savior and I'd love to talk with you more about faith and what it means to have a relationship with Jesus. Would you be free to meet up sometime soon?`)}`}>
+                          <Send className="h-4 w-4" />
+                          Message {leaderName || 'Your Leader'}
+                        </Link>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex-1 h-10 gap-2"
+                        asChild
+                      >
+                        <Link href="/dashboard/schedule">
+                          <CalendarHeart className="h-4 w-4" />
+                          Schedule a Meeting
+                        </Link>
+                      </Button>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-muted-foreground"
+                      onClick={() => setSalvationChoice(null)}
+                    >
+                      Change answer
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Learner view: Response Input (not for meeting type) */}
             {!isLeader && !isMeetingType && (assignment.assignment_type === 'reflection' ||
               assignment.assignment_type === 'discussion') && (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-foreground">
-                      Your Response
-                    </label>
-                    {isCompleted && !isEditing && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
-                        onClick={() => setIsEditing(true)}
-                      >
-                        <PenLine className="h-3 w-3" />
-                        Edit Response
-                      </Button>
-                    )}
-                  </div>
-                  <Textarea
-                    value={response}
-                    onChange={(e) => setResponse(e.target.value)}
-                    placeholder="Write your thoughts here..."
-                    rows={4}
-                    disabled={isCompleted && !isEditing}
-                    className={cn(isCompleted && !isEditing && "opacity-60")}
-                  />
-                  {isEditing && (
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="default"
-                        className="h-8 text-xs"
-                        disabled={isLoading}
-                        onClick={async () => {
-                          setIsLoading(true)
-                          const { error } = await supabase
-                            .from('assignment_progress')
-                            .upsert({
-                              pairing_id: pairingId,
-                              assignment_id: assignment.id,
-                              user_id: userId,
-                              status: 'completed',
-                              notes: response || null,
-                              completed_at: progress?.completed_at || new Date().toISOString(),
-                            }, {
-                              onConflict: 'pairing_id,assignment_id,user_id',
-                              ignoreDuplicates: false
-                            })
-                          setIsLoading(false)
-                          if (error) {
-                            toast.error('Failed to update response')
+                  {/* For salvation story, only show textarea after a choice is made */}
+                  {(!isSalvationStory || salvationChoice !== null || isCompleted) && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-foreground">
+                          {isSalvationStory && salvationChoice === 'yes'
+                            ? 'Your Salvation Story'
+                            : isSalvationStory && salvationChoice === 'no'
+                              ? 'Your Thoughts & Questions'
+                              : 'Your Response'}
+                        </label>
+                        {isCompleted && !isEditing && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                            onClick={() => setIsEditing(true)}
+                          >
+                            <PenLine className="h-3 w-3" />
+                            Edit Response
+                          </Button>
+                        )}
+                      </div>
+                      <Textarea
+                        value={isSalvationStory ? stripSalvationPrefix(response) : response}
+                        onChange={(e) => {
+                          if (isSalvationStory && salvationChoice) {
+                            setResponse(`[ACCEPTED_CHRIST:${salvationChoice}] ${e.target.value}`)
                           } else {
-                            toast.success('Response updated!')
-                            setIsEditing(false)
-                            router.refresh()
+                            setResponse(e.target.value)
                           }
                         }}
-                      >
-                        {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                        Save Changes
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 text-xs"
-                        onClick={() => {
-                          setResponse(progress?.notes || '')
-                          setIsEditing(false)
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
+                        placeholder={
+                          isSalvationStory && salvationChoice === 'yes'
+                            ? 'Share when and how you came to know Christ...'
+                            : isSalvationStory && salvationChoice === 'no'
+                              ? 'Share any questions or thoughts you have about faith...'
+                              : 'Write your thoughts here...'
+                        }
+                        rows={4}
+                        disabled={isCompleted && !isEditing}
+                        className={cn(isCompleted && !isEditing && "opacity-60")}
+                      />
+                      {isEditing && (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="h-8 text-xs"
+                            disabled={isLoading}
+                            onClick={async () => {
+                              setIsLoading(true)
+                              const { error } = await supabase
+                                .from('assignment_progress')
+                                .upsert({
+                                  pairing_id: pairingId,
+                                  assignment_id: assignment.id,
+                                  user_id: userId,
+                                  status: 'completed',
+                                  notes: response || null,
+                                  completed_at: progress?.completed_at || new Date().toISOString(),
+                                }, {
+                                  onConflict: 'pairing_id,assignment_id,user_id',
+                                  ignoreDuplicates: false
+                                })
+                              setIsLoading(false)
+                              if (error) {
+                                toast.error('Failed to update response')
+                              } else {
+                                toast.success('Response updated!')
+                                setIsEditing(false)
+                                router.refresh()
+                              }
+                            }}
+                          >
+                            {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                            Save Changes
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 text-xs"
+                            onClick={() => {
+                              setResponse(progress?.notes || '')
+                              setIsEditing(false)
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -721,7 +924,7 @@ export function AssignmentCard({
                   <Button
                     size="sm"
                     onClick={() => handleSaveProgress('completed')}
-                    disabled={isLoading || (requiresResponse && !response.trim())}
+                    disabled={isLoading || (requiresResponse && !isSalvationStory && !response.trim()) || (isSalvationStory && salvationChoice === null)}
                   >
                     {isLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -730,7 +933,10 @@ export function AssignmentCard({
                     )}
                     Mark Complete
                   </Button>
-                  {requiresResponse && !response.trim() && (
+                  {isSalvationStory && salvationChoice === null && (
+                    <p className="text-xs text-muted-foreground self-center">Answer the question first</p>
+                  )}
+                  {requiresResponse && !isSalvationStory && !response.trim() && (
                     <p className="text-xs text-muted-foreground self-center">Write a response first</p>
                   )}
                 </>

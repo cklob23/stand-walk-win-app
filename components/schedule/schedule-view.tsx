@@ -249,6 +249,7 @@ export function ScheduleView({
                             pairingId={pairing.id}
                             availabilitySlots={initialSlots}
                             upcomingMeetings={upcomingMeetings}
+                            pastMeetings={pastMeetings}
                             leaderName={partner?.full_name || 'Leader'}
                             leaderPhone={partner?.phone || null}
                             leaderZoomLink={partner?.zoom_link || null}
@@ -618,6 +619,7 @@ function BookingView({
     pairingId,
     availabilitySlots,
     upcomingMeetings,
+    pastMeetings,
     leaderName,
     leaderPhone,
     leaderZoomLink,
@@ -626,6 +628,7 @@ function BookingView({
     pairingId: string
     availabilitySlots: AvailabilitySlot[]
     upcomingMeetings: ScheduledMeeting[]
+    pastMeetings: ScheduledMeeting[]
     leaderName: string
     leaderPhone: string | null
     leaderZoomLink: string | null
@@ -655,17 +658,21 @@ function BookingView({
 
     // Build a set of booked hour ranges for quick overlap lookup
     // Each booked meeting marks all its 1-hour sub-slots as taken
+    // Also track completed meetings separately for visual distinction
     const bookedHourSet = new Set<string>()
-    for (const m of upcomingMeetings) {
+    const completedHourSet = new Set<string>()
+    const allMeetings = [...upcomingMeetings, ...pastMeetings]
+    for (const m of allMeetings) {
         const mStart = m.start_time.slice(0, 5)
         const mEnd = m.end_time.slice(0, 5)
         const subSlots = getHourSlots(mStart, mEnd)
+        const targetSet = m.status === 'completed' ? completedHourSet : bookedHourSet
         // If the meeting is exactly 1 hour or less, just add it directly
         if (subSlots.length === 0) {
-            bookedHourSet.add(`${m.meeting_date}_${mStart}`)
+            targetSet.add(`${m.meeting_date}_${mStart}`)
         }
         for (const s of subSlots) {
-            bookedHourSet.add(`${m.meeting_date}_${s.start}`)
+            targetSet.add(`${m.meeting_date}_${s.start}`)
         }
     }
 
@@ -771,20 +778,34 @@ function BookingView({
                                             <p className="text-xs text-muted-foreground ml-1">{formatDate(date)}</p>
                                             <div className="flex flex-wrap gap-2">
                                                 {allHourSlots.map((hourSlot) => {
-                                                    const isBooked = bookedHourSet.has(`${date}_${hourSlot.start}`)
+                                                    const key = `${date}_${hourSlot.start}`
+                                                    const isBooked = bookedHourSet.has(key)
+                                                    const isCompleted = completedHourSet.has(key)
+                                                    const isUnavailable = isBooked || isCompleted
 
                                                     return (
                                                         <Button
                                                             key={`${hourSlot.slotId}_${date}_${hourSlot.start}`}
-                                                            variant={isBooked ? 'secondary' : 'outline'}
+                                                            variant={isUnavailable ? 'secondary' : 'outline'}
                                                             size="sm"
-                                                            disabled={isBooked}
+                                                            disabled={isUnavailable}
                                                             onClick={() => handleSelectSlot(date, dayIdx, hourSlot.start, hourSlot.end)}
-                                                            className={isBooked ? 'opacity-50 line-through' : 'hover:bg-primary/10 hover:text-primary hover:border-primary/30'}
+                                                            className={
+                                                                isCompleted
+                                                                    ? 'opacity-50 line-through bg-muted text-muted-foreground'
+                                                                    : isBooked
+                                                                        ? 'opacity-50 line-through'
+                                                                        : 'hover:bg-primary/10 hover:text-primary hover:border-primary/30'
+                                                            }
                                                         >
-                                                            <Clock className="h-3 w-3 mr-1.5" />
+                                                            {isCompleted ? (
+                                                                <CheckCircle2 className="h-3 w-3 mr-1.5 text-muted-foreground" />
+                                                            ) : (
+                                                                <Clock className="h-3 w-3 mr-1.5" />
+                                                            )}
                                                             {formatTime(hourSlot.start)} - {formatTime(hourSlot.end)}
-                                                            {isBooked && <span className="ml-1 text-xs">(Booked)</span>}
+                                                            {isBooked && !isCompleted && <span className="ml-1 text-xs">(Booked)</span>}
+                                                            {isCompleted && <span className="ml-1 text-xs">(Completed)</span>}
                                                         </Button>
                                                     )
                                                 })}
@@ -1004,7 +1025,7 @@ function UpcomingMeetings({
     partnerZoomLink,
     availabilitySlots,
     weekTopic,
-    weekNumber
+    weekNumber,
 }: {
     meetings: ScheduledMeeting[]
     profile: Profile

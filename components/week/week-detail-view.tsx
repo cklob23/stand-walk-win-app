@@ -205,6 +205,7 @@ export function WeekDetailView({
                   userRole={profile.role || undefined}
                   leaderId={pairing.leader_id}
                   learnerName={profile.role === 'learner' ? (profile.full_name || 'Learner') : (partner?.full_name || 'Learner')}
+                  leaderName={profile.role === 'learner' ? (partner?.full_name || 'your leader') : (profile.full_name || 'Leader')}
                   currentWeek={weekNumber}
                   totalWeekAssignments={assignments.length}
                   completedWeekAssignments={completedCount}
