@@ -1592,7 +1592,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         setSelectedCloudVoice(v)
                                         savePrefs(translation, textSize, skipVerseNumbers, v)
                                     }}>
-                                        <SelectTrigger className="w-full h-9 text-sm bg-card">
+                                        <SelectTrigger className="w-full sm:w-[320px] h-9 text-sm bg-card">
                                             <SelectValue placeholder="Select a voice..." />
                                         </SelectTrigger>
                                         <SelectContent className="max-h-[300px]">
