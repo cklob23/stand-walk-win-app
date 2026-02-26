@@ -62,7 +62,7 @@ function getAppUrl(): string {
     if (typeof window !== 'undefined') return window.location.origin
     const vercelUrl = process.env.NEXT_PUBLIC_VERCEL_URL
     if (vercelUrl) return `https://${vercelUrl}`
-    return 'https://standwalkrun.com'
+    return 'https://stand-walk-run.onrender.com'
 }
 
 function buildScheduleLink(): string {
@@ -239,16 +239,57 @@ function buildICSContent(meeting: ScheduledMeeting, partnerName: string, options
     return icsLines.join('\r\n')
 }
 
+// Force a traditional .ics file download (for Outlook / non-Apple users)
+export function forceDownloadICSFile(meeting: ScheduledMeeting, partnerName: string, options?: CalendarOptions): void {
+    const icsContent = buildICSContent(meeting, partnerName, options)
+    const fileName = `meeting-${meeting.meeting_date}.ics`
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+}
+
+function isAppleDevice(): boolean {
+    if (typeof navigator === 'undefined') return false
+    const ua = navigator.userAgent
+    return /iPhone|iPad|iPod|Macintosh/.test(ua) && 'ontouchend' in document
+}
+
+function isApplePlatform(): boolean {
+    if (typeof navigator === 'undefined') return false
+    const ua = navigator.userAgent
+    // Covers iOS, iPadOS, and macOS Safari
+    return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && /Safari/.test(ua) && !/Chrome/.test(ua))
+}
+
 export async function downloadICSFile(meeting: ScheduledMeeting, partnerName: string, options?: CalendarOptions): Promise<void> {
     const icsContent = buildICSContent(meeting, partnerName, options)
     const fileName = `meeting-${meeting.meeting_date}.ics`
     const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' })
-    const file = new File([blob], fileName, { type: 'text/calendar' })
 
-    // Use Web Share API if available (iOS/macOS Safari, some Android browsers)
-    // This lets the OS handle the .ics file natively -- on Apple devices it
-    // opens the "Add to Calendar" sheet directly instead of downloading a file.
-    if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare?.({ files: [file] })) {
+    // ── Strategy 1: iOS / iPadOS ──
+    // Open a data URI directly -- Safari on iOS intercepts text/calendar and
+    // shows the native "Add to Calendar" sheet immediately, no file download.
+    if (isAppleDevice()) {
+        const reader = new FileReader()
+        reader.onload = () => {
+            const dataUri = reader.result as string
+            window.open(dataUri, '_self')
+        }
+        reader.readAsDataURL(blob)
+        return
+    }
+
+    // ── Strategy 2: macOS Safari / Web Share API ──
+    // Use navigator.share with a File object. macOS Safari shows a share sheet
+    // that includes "Add to Calendar" as an option.
+    const file = new File([blob], fileName, { type: 'text/calendar' })
+    if (isApplePlatform() && navigator.share && navigator.canShare?.({ files: [file] })) {
         try {
             await navigator.share({
                 files: [file],
@@ -256,13 +297,13 @@ export async function downloadICSFile(meeting: ScheduledMeeting, partnerName: st
             })
             return
         } catch (err: unknown) {
-            // User cancelled the share sheet -- that's fine, fall through to download
             if (err instanceof Error && err.name === 'AbortError') return
-            // For any other error, fall through to download
+            // Fall through to download for other errors
         }
     }
 
-    // Fallback: traditional download
+    // ── Strategy 3: Fallback (Windows, Android, Linux, etc.) ──
+    // Traditional .ics file download.
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
