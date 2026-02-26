@@ -184,6 +184,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [verseRefInput, setVerseRefInput] = useState('')
 
     // Audio state
+    const [previewLoading, setPreviewLoading] = useState(false)
     const [isPlaying, setIsPlaying] = useState(false)
     const [isPaused, setIsPaused] = useState(false)
     const [currentReadingVerse, setCurrentReadingVerse] = useState<number | null>(null)
@@ -1502,7 +1503,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
+                <div data-tour="bible-settings" className="flex items-center gap-2 flex-wrap">
                     {/* Text size toggle */}
                     <Button
                         variant={showSettings ? 'default' : 'outline'}
@@ -1753,9 +1754,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                 variant="outline"
                                 size="sm"
                                 className="h-8 text-xs gap-1.5 bg-card"
+                                disabled={previewLoading}
                                 onClick={async () => {
                                     const previewText = 'For God so loved the world, that he gave his only begotten Son.'
                                     if (useCloudVoices) {
+                                        setPreviewLoading(true)
                                         try {
                                             const provider = getVoiceProvider(selectedCloudVoice)
                                             let res: Response
@@ -1780,6 +1783,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             audio.play()
                                         } catch {
                                             toast.error('Could not preview voice.')
+                                        } finally {
+                                            setPreviewLoading(false)
                                         }
                                     } else {
                                         window.speechSynthesis.cancel()
@@ -1794,8 +1799,17 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     }
                                 }}
                             >
-                                <Play className="h-3 w-3" />
-                                Preview Voice
+                                {previewLoading ? (
+                                    <>
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        Loading...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Play className="h-3 w-3" />
+                                        Preview Voice
+                                    </>
+                                )}
                             </Button>
                         </div>
                     </CardContent>
