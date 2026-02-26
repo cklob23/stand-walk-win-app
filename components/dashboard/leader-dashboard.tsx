@@ -26,6 +26,8 @@ import { QuickChat } from './quick-chat'
 import { format, parseISO } from 'date-fns'
 import { scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
+import { FeatureTour } from '@/components/onboarding/feature-tour'
+import { leaderDashboardSteps } from '@/lib/tour-steps'
 
 interface LeaderDashboardProps {
   profile: Profile
@@ -95,7 +97,7 @@ export function LeaderDashboard({
         {/* Main Content - Left Side */}
         <div className="lg:col-span-2 space-y-6">
           {/* Current Week Card */}
-          <Card className="overflow-hidden">
+          <Card data-tour="leader-overview" className="overflow-hidden">
             <CardHeader className="pb-3">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                 <div className="min-w-0">
@@ -155,7 +157,7 @@ export function LeaderDashboard({
           </Card>
 
           {/* Timeline */}
-          <Card className="overflow-hidden">
+          <Card data-tour="leader-timeline" className="overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <BookOpen className="h-5 w-5 text-primary shrink-0" />
@@ -176,7 +178,7 @@ export function LeaderDashboard({
           </Card>
 
           {/* Quick Chat */}
-          <Card className="overflow-hidden">
+          <Card data-tour="leader-messages" className="overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <MessageSquare className="h-5 w-5 text-primary shrink-0" />
@@ -327,7 +329,7 @@ export function LeaderDashboard({
           </Card>
 
           {/* Overall Progress */}
-          <Card>
+          <Card data-tour="leader-assignments">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Overall Progress</CardTitle>
             </CardHeader>
@@ -439,6 +441,9 @@ export function LeaderDashboard({
           </Card>
         </div>
       </div>
+
+      {/* Onboarding Tour */}
+      <FeatureTour tourId="leader-dashboard" steps={leaderDashboardSteps} />
     </div>
   )
 }

@@ -57,10 +57,12 @@ export function JournalEntryEditor({
                 pairingId,
             })
         } else {
+            const localDate = new Date().toLocaleDateString('en-CA') // yyyy-MM-dd
             result = await saveJournalEntry({
                 prayerItems: prayerItems.trim(),
                 godSaying: godSaying.trim(),
                 pairingId,
+                localDate,
             })
         }
 

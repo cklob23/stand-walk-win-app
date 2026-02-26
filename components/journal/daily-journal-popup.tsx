@@ -32,7 +32,7 @@ function getDismissedDate(): string | null {
 }
 
 function setDismissedToday(): void {
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date().toLocaleDateString('en-CA') // local yyyy-MM-dd
     localStorage.setItem(LS_KEY, today)
 }
 
@@ -48,7 +48,7 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
         // Only show if learner hasn't already written today and hasn't dismissed today
         if (hasEntryToday) return
 
-        const today = new Date().toISOString().split('T')[0]
+        const today = new Date().toLocaleDateString('en-CA') // local yyyy-MM-dd
         const dismissed = getDismissedDate()
         if (dismissed === today) return
 
@@ -69,11 +69,13 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
         }
 
         setIsSaving(true)
+        const localDate = new Date().toLocaleDateString('en-CA') // yyyy-MM-dd
         const result = await saveJournalEntry({
             prayerItems: prayerItems.trim(),
             godSaying: godSaying.trim(),
-            sharedWithLeader: shareWithLeader,
             pairingId,
+            localDate,
+            shareWithLeader,
         })
 
         if (result.error) {
@@ -89,7 +91,7 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
 
     return (
         <Dialog open={open} onOpenChange={(o) => { if (!o) handleDismiss() }}>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-lg" data-journal-popup>
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-foreground">
                         <BookHeart className="h-5 w-5 text-primary" />

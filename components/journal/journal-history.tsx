@@ -238,6 +238,7 @@ export function JournalHistory({
                         {hasDailyContent && (!isLeaderView || dailyShared) && (
                             <SectionCard
                                 label="Daily Reflection"
+                                timestamp={formatFriendlyTime(entry.created_at)}
                                 isLeaderView={isLeaderView}
                                 shared={dailyShared}
                                 loadingKey={loadingKey}

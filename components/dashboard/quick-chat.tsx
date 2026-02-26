@@ -84,7 +84,7 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
               .from('messages')
               .select(`
                 *,
-                sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)
+                sender:profiles(id, full_name, avatar_url)
               `)
               .eq('id', payload.new.id)
               .single()
@@ -152,7 +152,7 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
         .from('messages')
         .select(`
           *,
-          sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)
+          sender:profiles(id, full_name, avatar_url)
         `)
         .eq('pairing_id', pairingId)
         .order('created_at', { ascending: false })
@@ -318,7 +318,7 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
       )}
 
       {/* Message Input */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-end">
         <Textarea
           value={message}
           onChange={(e) => {
@@ -328,7 +328,7 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
             }
           }}
           placeholder={`Message ${partnerName}...`}
-          className="min-h-[30px] sm:min-h-[40px] resize-none text-base"
+          className="min-h-[60px] sm:min-h-[80px] resize-none text-base"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
@@ -340,7 +340,7 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
           onClick={handleSend}
           disabled={isLoading || !message.trim()}
           size="icon"
-          className="h-auto"
+          className="h-10 w-10 shrink-0"
         >
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />

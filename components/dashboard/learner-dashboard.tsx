@@ -26,6 +26,8 @@ import { AddToCalendarButton } from '@/components/add-to-calendar-button'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
 import { scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
+import { FeatureTour } from '@/components/onboarding/feature-tour'
+import { learnerDashboardSteps } from '@/lib/tour-steps'
 
 interface LearnerDashboardProps {
   profile: Profile
@@ -102,7 +104,7 @@ export function LearnerDashboard({
         {/* Main Content - Left Side */}
         <div className="lg:col-span-2 space-y-6 min-w-0">
           {/* Current Week Card */}
-          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent overflow-hidden w-full">
+          <Card data-tour="learner-week-card" className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent overflow-hidden w-full">
             <CardHeader className="pb-3">
               <div className="min-w-0 w-full">
                 <CardTitle className="flex items-start gap-2 text-base sm:text-lg">
@@ -169,7 +171,7 @@ export function LearnerDashboard({
           </Card>
 
           {/* Current Assignments */}
-          <Card className="overflow-hidden w-full">
+          <Card data-tour="learner-assignments" className="overflow-hidden w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Sparkles className="h-5 w-5 text-primary shrink-0" />
@@ -208,7 +210,7 @@ export function LearnerDashboard({
           </Card>
 
           {/* Timeline */}
-          <Card className="overflow-hidden">
+          <Card data-tour="learner-timeline" className="overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <BookOpen className="h-5 w-5 text-primary shrink-0" />
@@ -232,7 +234,7 @@ export function LearnerDashboard({
         {/* Sidebar - Right Side */}
         <div className="space-y-6 min-w-0">
           {/* Leader Card */}
-          <Card>
+          <Card data-tour="learner-partner">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Your Leader</CardTitle>
             </CardHeader>
@@ -462,6 +464,9 @@ export function LearnerDashboard({
         hasEntryToday={hasJournalEntryToday}
         leaderName={partner?.full_name || 'your leader'}
       />
+
+      {/* Onboarding Tour */}
+      <FeatureTour tourId="learner-dashboard" steps={learnerDashboardSteps} />
     </div>
   )
 }

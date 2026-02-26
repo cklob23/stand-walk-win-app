@@ -127,7 +127,7 @@ export default async function DashboardPage() {
       .from('messages')
       .select(`
         *,
-        sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)
+        sender:profiles(id, full_name, avatar_url)
       `)
       .eq('pairing_id', pairing.id)
       .order('created_at', { ascending: false })

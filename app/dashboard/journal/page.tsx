@@ -12,9 +12,11 @@ export const metadata = {
 export default async function JournalPage({
     searchParams,
 }: {
-    searchParams: Promise<{ section?: string }>
+    searchParams: Promise<{ section?: string; localDate?: string }>
 }) {
     const params = await searchParams
+    // localDate is passed from the client via URL param to handle timezone correctly
+    const localDate = params.localDate || new Date().toISOString().split('T')[0]
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/auth/login')
@@ -137,7 +139,7 @@ export default async function JournalPage({
         }
 
         // 2) Verse sections (shared_sections.verse_0, verse_1, etc.)
-        verseParts.forEach((raw, idx) => {
+        verseParts.forEach((raw: any, idx: number) => {
             if (!sections[`verse_${idx}`]) return
             let title = ''
             let scriptureRef = ''
@@ -184,8 +186,8 @@ export default async function JournalPage({
     const sharedItems = [...verseSharedItems, ...journalSharedItems]
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-    // Fetch today's entry for editor
-    const todayEntry = await getTodayEntry(user.id)
+    // Fetch today's entry for editor (using local date to avoid timezone issues)
+    const todayEntry = await getTodayEntry(user.id, localDate)
 
     return (
         <JournalPageClient

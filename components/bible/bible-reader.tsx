@@ -34,6 +34,8 @@ import {
     shareMultipleVersesWithPartner,
 } from '@/lib/bible-highlight-actions'
 import { ScriptureText } from '@/components/bible/scripture-text'
+import { FeatureTour } from '@/components/onboarding/feature-tour'
+import { bibleSteps } from '@/lib/tour-steps'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
@@ -1592,7 +1594,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         setSelectedCloudVoice(v)
                                         savePrefs(translation, textSize, skipVerseNumbers, v)
                                     }}>
-                                        <SelectTrigger className="w-full sm:w-[320px] h-9 text-sm bg-card">
+                                        <SelectTrigger className="w-full h-9 text-sm bg-card">
                                             <SelectValue placeholder="Select a voice..." />
                                         </SelectTrigger>
                                         <SelectContent className="max-h-[300px]">
@@ -1820,7 +1822,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
             {/* Books View */}
             {view === 'books' && (
-                <div className="space-y-4">
+                <div data-tour="bible-books" className="space-y-4">
                     {booksLoading ? (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                             {Array.from({ length: 12 }).map((_, i) => (
@@ -1913,7 +1915,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                         </div>
 
                         {/* Toolbar */}
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div data-tour="bible-toolbar" className="flex items-center gap-2 flex-wrap">
                             {/* Highlight toggle */}
                             <Button
                                 variant={highlightMode ? 'default' : 'outline'}
@@ -2036,7 +2038,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             )}
                         </div>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent data-tour="bible-verses">
                         {/* Floating action bar for selected/highlighted verses */}
                         {selectedVerses.size > 0 && (
                             <div className="sticky top-0 z-10 bg-card border border-border rounded-lg p-3 mb-4 shadow-sm space-y-2">
@@ -2875,6 +2877,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     </DialogContent>
                 </Dialog>
             )}
+
+            {/* Onboarding Tour */}
+            <FeatureTour tourId="bible" steps={bibleSteps} />
         </div>
     )
 }

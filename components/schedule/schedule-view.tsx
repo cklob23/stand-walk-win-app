@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { FeatureTour } from '@/components/onboarding/feature-tour'
+import { scheduleSteps } from '@/lib/tour-steps'
 import {
     Select,
     SelectContent,
@@ -231,7 +233,7 @@ export function ScheduleView({
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Main area */}
-                <div className="lg:col-span-2 space-y-6">
+                <div data-tour="schedule-main" className="lg:col-span-2 space-y-6">
                     {/* Contact Info Card -- for both roles */}
                     <ContactInfoCard
                         profile={profile}
@@ -259,7 +261,7 @@ export function ScheduleView({
                 </div>
 
                 {/* Sidebar */}
-                <div className="space-y-6">
+                <div data-tour="schedule-upcoming" className="space-y-6">
                     <UpcomingMeetings
                         meetings={upcomingMeetings}
                         profile={profile}
@@ -276,6 +278,9 @@ export function ScheduleView({
                     />
                 </div>
             </div>
+
+            {/* Onboarding Tour */}
+            <FeatureTour tourId="schedule" steps={scheduleSteps} />
         </div>
     )
 }

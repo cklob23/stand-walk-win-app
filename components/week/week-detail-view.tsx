@@ -26,6 +26,8 @@ import { AssignmentCard } from '@/components/dashboard/assignment-card'
 import { formatDistanceToNow } from 'date-fns'
 import { scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
+import { FeatureTour } from '@/components/onboarding/feature-tour'
+import { weekDetailSteps } from '@/lib/tour-steps'
 
 interface WeekDetailViewProps {
   profile: Profile
@@ -154,7 +156,7 @@ export function WeekDetailView({
         <div className="lg:col-span-2 space-y-6">
           {/* Scripture */}
           {weekContent.scripture_reference && (
-            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+            <Card data-tour="week-scripture" className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <BookOpen className="h-5 w-5 text-primary" />
@@ -181,7 +183,7 @@ export function WeekDetailView({
           )}
 
           {/* Assignments */}
-          <Card>
+          <Card data-tour="week-assignments">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Assignments</CardTitle>
@@ -222,7 +224,7 @@ export function WeekDetailView({
 
           {/* Write Reflection */}
           {profile.role === 'learner' && (
-            <Card>
+            <Card data-tour="week-reflection">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <PenLine className="h-5 w-5 text-primary" />
@@ -274,7 +276,7 @@ export function WeekDetailView({
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Progress */}
-          <Card>
+          <Card data-tour="week-progress">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Week Progress</CardTitle>
             </CardHeader>
@@ -338,6 +340,9 @@ export function WeekDetailView({
           )}
         </div>
       </div>
+
+      {/* Onboarding Tour */}
+      <FeatureTour tourId="week-detail" steps={weekDetailSteps} />
     </div>
   )
 }

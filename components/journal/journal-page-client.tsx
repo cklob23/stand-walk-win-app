@@ -1,11 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { BookHeart, Plus, PenLine } from 'lucide-react'
 import { JournalHistory, type JournalEntry } from '@/components/journal/journal-history'
 import { JournalEntryEditor } from '@/components/journal/journal-entry-editor'
 import { SharedWithMe, type SharedItem } from '@/components/journal/shared-with-me'
+import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
+import { FeatureTour } from '@/components/onboarding/feature-tour'
+import { journalSteps } from '@/lib/tour-steps'
 
 interface JournalPageClientProps {
     isLeader: boolean
@@ -28,8 +32,21 @@ export function JournalPageClient({
     todayEntry,
     initialSection,
 }: JournalPageClientProps) {
+    const router = useRouter()
+    const searchParamsHook = useSearchParams()
     const [showEditor, setShowEditor] = useState(false)
     const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null)
+
+    // Ensure the server has the correct local date for "today" queries
+    useEffect(() => {
+        const localDate = new Date().toLocaleDateString('en-CA') // yyyy-MM-dd format
+        const urlDate = searchParamsHook.get('localDate')
+        if (urlDate !== localDate) {
+            const params = new URLSearchParams(searchParamsHook.toString())
+            params.set('localDate', localDate)
+            router.replace(`/dashboard/journal?${params.toString()}`)
+        }
+    }, [searchParamsHook, router])
 
     const handleNewEntry = () => {
         if (todayEntry) {
@@ -63,7 +80,7 @@ export function JournalPageClient({
                         Your daily prayer reflections and what God is saying to you
                     </p>
                 </div>
-                <Button onClick={handleNewEntry} size="sm" className="gap-1.5 shrink-0">
+                <Button data-tour="journal-new" onClick={handleNewEntry} size="sm" className="gap-1.5 shrink-0">
                     {todayEntry?.prayer_items?.trim() ? (
                         <>
                             <PenLine className="h-4 w-4" />
@@ -95,10 +112,12 @@ export function JournalPageClient({
             )}
 
             {/* Shared With Me section */}
-            <SharedWithMe items={sharedItems} autoOpen={initialSection === 'shared'} />
+            <div data-tour="journal-shared">
+                <SharedWithMe items={sharedItems} autoOpen={initialSection === 'shared'} />
+            </div>
 
             {/* Own journal entries */}
-            <div>
+            <div data-tour="journal-history">
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                     Your Entries
                 </h2>
@@ -111,6 +130,15 @@ export function JournalPageClient({
                     onEditDaily={handleEdit}
                 />
             </div>
+            {/* Daily reflection prompt -- popup manages its own open/dismissed state */}
+            <DailyJournalPopup
+                pairingId={pairingId}
+                hasEntryToday={!!todayEntry}
+                leaderName={isLeader ? learnerName : leaderName}
+            />
+
+            {/* Onboarding Tour */}
+            <FeatureTour tourId="journal" steps={journalSteps} />
         </div>
     )
 }

@@ -258,7 +258,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav data-tour="dashboard-nav" className="hidden md:flex items-center gap-1">
             {navItems.map((item) => {
               const isActive = pathname === item.href
               return (

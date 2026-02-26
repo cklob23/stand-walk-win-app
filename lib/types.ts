@@ -79,6 +79,14 @@ export interface AssignmentProgress {
   assignment?: Assignment
 }
 
+export interface MessageReaction {
+  id: string
+  message_id: string
+  user_id: string
+  emoji: 'thumbsup' | 'heart' | 'pray' | 'laugh' | 'sad' | 'exclamation'
+  created_at: string
+}
+
 export interface Message {
   id: string
   pairing_id: string
@@ -86,18 +94,29 @@ export interface Message {
   content: string
   is_read: boolean
   created_at: string
+  reply_to_id?: string | null
+  edited_at?: string | null
+  attachment_url?: string | null
+  attachment_type?: 'image' | 'file' | 'link' | null
   sender?: {
     id: string
     full_name: string | null
     avatar_url: string | null
   } | null
+  reply_to?: {
+    id: string
+    content: string
+    sender_id: string
+    sender?: { full_name: string | null } | null
+  } | null
+  reactions?: MessageReaction[]
 }
 
 export interface Notification {
   id: string
   user_id: string
   pairing_id: string | null
-  type: 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing' | "journal_shared"
+  type: 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing' | 'journal_shared'
   title: string
   message: string
   read: boolean

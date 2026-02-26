@@ -11,14 +11,16 @@ export async function saveJournalEntry(data: {
     prayerItems: string
     godSaying: string
     pairingId: string
-    sharedWithLeader?: boolean
+    localDate?: string // 'yyyy-MM-dd' in user's local timezone
+    shareWithLeader?: boolean
 }) {
     try {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { error: 'Not authenticated' }
 
-        const today = new Date().toISOString().split('T')[0]
+        // Use client-provided local date, or fall back to UTC (for backward compat)
+        const today = data.localDate || new Date().toISOString().split('T')[0]
 
         const { data: existing } = await supabase
             .from('prayer_journal')
@@ -52,8 +54,8 @@ export async function saveJournalEntry(data: {
                     journal_date: today,
                     prayer_items: data.prayerItems,
                     god_speaking: data.godSaying.trim(),
-                    shared_with_leader: false,
-                    shared_sections: {},
+                    shared_with_leader: data.shareWithLeader ?? false,
+                    shared_sections: data.shareWithLeader ? { daily: true } : {},
                     custom_entries: [],
                 })
 
@@ -466,9 +468,9 @@ export async function deleteCustomEntry(
 // Helpers
 // ──────────────────────────────────────────
 
-export async function hasTodayEntry(userId: string): Promise<boolean> {
+export async function hasTodayEntry(userId: string, localDate?: string): Promise<boolean> {
     const supabase = await createClient()
-    const today = new Date().toISOString().split('T')[0]
+    const today = localDate || new Date().toISOString().split('T')[0]
     const { data } = await supabase
         .from('prayer_journal')
         .select('id')
@@ -478,9 +480,9 @@ export async function hasTodayEntry(userId: string): Promise<boolean> {
     return (data?.length ?? 0) > 0
 }
 
-export async function getTodayEntry(userId: string) {
+export async function getTodayEntry(userId: string, localDate?: string) {
     const supabase = await createClient()
-    const today = new Date().toISOString().split('T')[0]
+    const today = localDate || new Date().toISOString().split('T')[0]
     const { data } = await supabase
         .from('prayer_journal')
         .select('*')

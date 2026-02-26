@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { MessagesView } from '@/components/messages/messages-view'
+import type { Message } from '@/lib/types'
 
 export default async function MessagesPage({ searchParams }: { searchParams: Promise<{ draft?: string }> }) {
   const { draft } = await searchParams
@@ -70,10 +71,29 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
     .from('messages')
     .select(`
       *,
-      sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)
+      sender:profiles(id, full_name, avatar_url),
+      reactions:message_reactions(id, message_id, user_id, emoji, created_at)
     `)
     .eq('pairing_id', pairing.id)
     .order('created_at', { ascending: true })
+
+  // Hydrate reply_to from the fetched messages (self-join not supported by PostgREST)
+  if (messages) {
+    const byId = new Map(messages.map((m: Message) => [m.id, m]))
+    for (const msg of messages) {
+      if (msg.reply_to_id) {
+        const original = byId.get(msg.reply_to_id)
+        if (original) {
+          msg.reply_to = {
+            id: original.id,
+            content: original.content,
+            sender_id: original.sender_id,
+            sender: original.sender ? { full_name: original.sender.full_name } : null,
+          }
+        }
+      }
+    }
+  }
 
   // Mark unread messages as read
   await supabase
