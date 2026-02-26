@@ -113,7 +113,7 @@ export function WeekDetailView({
   }))
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-4 sm:py-6">
+    <div className="mx-auto max-w-4xl px-4 py-4 sm:py-6 overflow-x-hidden">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
         <Link
@@ -151,12 +151,12 @@ export function WeekDetailView({
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-3 min-w-0">
         {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-6 min-w-0">
           {/* Scripture */}
           {weekContent.scripture_reference && (
-            <Card data-tour="week-scripture" className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+            <Card data-tour="week-scripture" className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent overflow-hidden">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <BookOpen className="h-5 w-5 text-primary" />
@@ -164,7 +164,7 @@ export function WeekDetailView({
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <p className="font-serif italic text-lg text-foreground">
+                <p className="font-serif italic text-lg text-foreground break-words">
                   <ScriptureText
                     reference={weekContent.scripture_reference!}
                     translation={bibleTranslation}

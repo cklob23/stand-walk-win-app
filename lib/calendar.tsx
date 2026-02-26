@@ -60,9 +60,9 @@ function buildTitle(partnerName: string): string {
 
 function getAppUrl(): string {
     if (typeof window !== 'undefined') return window.location.origin
-    const vercelUrl = process.env.NEXT_PUBLIC_SITE_URL
-    if (vercelUrl) return vercelUrl
-    return 'https://stand-walk-run.onrender.com'
+    const vercelUrl = process.env.NEXT_PUBLIC_VERCEL_URL
+    if (vercelUrl) return `https://${vercelUrl}`
+    return 'https://standwalkrun.com'
 }
 
 function buildScheduleLink(): string {
@@ -75,7 +75,7 @@ function buildGoogleDescription(meeting: ScheduledMeeting, partnerName: string, 
     const scheduleLink = buildScheduleLink()
     const lines: string[] = []
 
-    lines.push(`${typeLabel} Meeting with ${partnerName}`)
+    lines.push(`${typeLabel} with ${partnerName}`)
 
     if (options?.weekNumber && options?.weekTopic) {
         lines.push(`Week ${options.weekNumber}: ${options.weekTopic}`)
@@ -92,15 +92,20 @@ function buildGoogleDescription(meeting: ScheduledMeeting, partnerName: string, 
     }
 
     if (meeting.meeting_type === 'facetime') {
-        lines.push(`Join FaceTime from your iPhone or from the meeting entry in the app.`)
+        if (options?.partnerPhone) {
+            const cleaned = options.partnerPhone.replace(/[^+\d]/g, '')
+            lines.push(`<a href="facetime:${cleaned}">FaceTime Video</a>`)
+            lines.push(`<a href="facetime-audio:${cleaned}">FaceTime Audio</a>`)
+        }
         lines.push(`<a href="${scheduleLink}">Open Stand Walk Run</a>`)
-        lines.push(`${partnerName}'s Cell: ${options?.partnerPhone}`)
     }
 
     if (meeting.meeting_type === 'phone') {
-        lines.push(`Join the call from the meeting entry in the app or your mobile device.`)
+        if (options?.partnerPhone) {
+            const cleaned = options.partnerPhone.replace(/[^+\d]/g, '')
+            lines.push(`<a href="tel:${cleaned}">Call ${partnerName}</a>`)
+        }
         lines.push(`<a href="${scheduleLink}">Open Stand Walk Run</a>`)
-        lines.push(`${partnerName}'s Cell: ${options?.partnerPhone}`)
     }
 
     if (meeting.meeting_type === 'in_person') {
@@ -125,7 +130,7 @@ function buildICSDescription(meeting: ScheduledMeeting, partnerName: string, opt
     const scheduleLink = buildScheduleLink()
     const lines: string[] = []
 
-    lines.push(`${typeLabel} Meeting with ${partnerName}`)
+    lines.push(`${typeLabel} with ${partnerName}`)
 
     if (options?.weekNumber && options?.weekTopic) {
         lines.push(`Week ${options.weekNumber}: ${options.weekTopic}`)
@@ -143,15 +148,24 @@ function buildICSDescription(meeting: ScheduledMeeting, partnerName: string, opt
     }
 
     if (meeting.meeting_type === 'facetime') {
-        lines.push(`Join FaceTime from your iPhone or from the meeting entry in the app.`)
-        lines.push(`Open Stand Walk Run: ${scheduleLink}`)
-        lines.push(`${partnerName}'s Cell: ${options?.partnerPhone}`)
+        if (options?.partnerPhone) {
+            const cleaned = options.partnerPhone.replace(/[^+\d]/g, '')
+            lines.push(`FaceTime Video: facetime:${cleaned}`)
+            lines.push(`FaceTime Audio: facetime-audio:${cleaned}`)
+            lines.push('')
+        }
+        lines.push(`Or join from the app:`)
+        lines.push(scheduleLink)
     }
 
     if (meeting.meeting_type === 'phone') {
-        lines.push(`Join the call from the meeting entry in the app or your mobile device.`)
-        lines.push(`Open Stand Walk Run: ${scheduleLink}`)
-        lines.push(`${partnerName}'s Cell: ${options?.partnerPhone}`)
+        if (options?.partnerPhone) {
+            const cleaned = options.partnerPhone.replace(/[^+\d]/g, '')
+            lines.push(`Call: tel:${cleaned}`)
+            lines.push('')
+        }
+        lines.push(`Or join from the app:`)
+        lines.push(scheduleLink)
     }
 
     if (meeting.meeting_type === 'in_person') {
@@ -186,13 +200,12 @@ export function getGoogleCalendarUrl(meeting: ScheduledMeeting, partnerName: str
     return `https://calendar.google.com/calendar/render?${params.toString()}`
 }
 
-export function downloadICSFile(meeting: ScheduledMeeting, partnerName: string, options?: CalendarOptions): void {
+function buildICSContent(meeting: ScheduledMeeting, partnerName: string, options?: CalendarOptions): string {
     const { startDT, endDT } = buildDateTimes(meeting)
     const title = buildTitle(partnerName)
     const description = buildICSDescription(meeting, partnerName, options).replace(/\n/g, '\\n')
     const uid = `swr-meeting-${meeting.id}@standwalkrun.com`
 
-    // Determine a URL for the ICS URL field (gives Outlook/Apple a dedicated "Join" button)
     let meetingUrl = ''
     if (meeting.meeting_type === 'zoom' && meeting.meeting_link) {
         meetingUrl = meeting.meeting_link
@@ -223,13 +236,37 @@ export function downloadICSFile(meeting: ScheduledMeeting, partnerName: string, 
 
     icsLines.push('END:VEVENT', 'END:VCALENDAR')
 
-    const icsContent = icsLines.join('\r\n')
+    return icsLines.join('\r\n')
+}
 
+export async function downloadICSFile(meeting: ScheduledMeeting, partnerName: string, options?: CalendarOptions): Promise<void> {
+    const icsContent = buildICSContent(meeting, partnerName, options)
+    const fileName = `meeting-${meeting.meeting_date}.ics`
     const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' })
+    const file = new File([blob], fileName, { type: 'text/calendar' })
+
+    // Use Web Share API if available (iOS/macOS Safari, some Android browsers)
+    // This lets the OS handle the .ics file natively -- on Apple devices it
+    // opens the "Add to Calendar" sheet directly instead of downloading a file.
+    if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare?.({ files: [file] })) {
+        try {
+            await navigator.share({
+                files: [file],
+                title: `Stand Walk Run - Meeting`,
+            })
+            return
+        } catch (err: unknown) {
+            // User cancelled the share sheet -- that's fine, fall through to download
+            if (err instanceof Error && err.name === 'AbortError') return
+            // For any other error, fall through to download
+        }
+    }
+
+    // Fallback: traditional download
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `meeting-${meeting.meeting_date}.ics`
+    link.download = fileName
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

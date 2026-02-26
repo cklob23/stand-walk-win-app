@@ -47,9 +47,11 @@ export function AddToCalendarButton({ meeting, partnerName, partnerPhone, weekTo
                     </a>
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                    onClick={() => downloadICSFile(meeting, partnerName, options)}
+                    onClick={async () => {
+                        await downloadICSFile(meeting, partnerName, options)
+                    }}
                 >
-                    Apple Calendar / Outlook (.ics)
+                    Apple Calendar / Outlook
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>

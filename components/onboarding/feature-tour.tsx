@@ -19,12 +19,22 @@ interface FeatureTourProps {
     onComplete?: () => void
 }
 
+interface SmoothRect {
+    top: number
+    left: number
+    width: number
+    height: number
+}
+
 export function FeatureTour({ tourId, steps, onComplete }: FeatureTourProps) {
     const { showTour, completeTour } = useFeatureTour(tourId)
     const [currentStep, setCurrentStep] = useState(0)
     const [visible, setVisible] = useState(false)
-    const [spotlightRect, setSpotlightRect] = useState<DOMRect | null>(null)
+    const [targetRect, setTargetRect] = useState<DOMRect | null>(null)
+    const [smoothRect, setSmoothRect] = useState<SmoothRect | null>(null)
+    const [isTransitioning, setIsTransitioning] = useState(false)
     const cardRef = useRef<HTMLDivElement>(null)
+    const animFrameRef = useRef<number>(0)
 
     // Fade in after mount
     useEffect(() => {
@@ -36,39 +46,77 @@ export function FeatureTour({ tourId, steps, onComplete }: FeatureTourProps) {
         }
     }, [showTour])
 
+    // Smoothly animate the spotlight rect using CSS transitions
+    // Update smoothRect whenever targetRect changes
+    useEffect(() => {
+        if (!targetRect) {
+            setSmoothRect(null)
+            return
+        }
+        setSmoothRect({
+            top: targetRect.top,
+            left: targetRect.left,
+            width: targetRect.width,
+            height: targetRect.height,
+        })
+    }, [targetRect])
+
     // Find and spotlight the target element, scrolling it into view if needed
     const updateSpotlight = useCallback(() => {
         const step = steps[currentStep]
         if (!step?.targetSelector) {
-            setSpotlightRect(null)
+            setTargetRect(null)
             return
         }
         const el = document.querySelector(step.targetSelector)
         if (el) {
-            // Scroll into view if not visible
             const rect = el.getBoundingClientRect()
-            const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight
+            const viewH = window.innerHeight
+            // Calculate visible area considering the card height (~220px)
+            const cardHeight = 220
+            const padding = 8
+            const gap = 16
+            // Check if element is in a position where it won't be blocked by the card
+            const isVisible = rect.top >= 0 && rect.bottom <= viewH
+
             if (!isVisible) {
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                // Recalculate rect after scroll settles
                 setTimeout(() => {
-                    const newRect = el.getBoundingClientRect()
-                    setSpotlightRect(newRect)
-                }, 400)
+                    setTargetRect(el.getBoundingClientRect())
+                }, 450)
             } else {
-                setSpotlightRect(rect)
+                // On mobile, check if the card at the bottom would overlap the target
+                const isMobile = window.innerWidth < 640
+                if (isMobile) {
+                    const cardTop = viewH - cardHeight - 24 // bottom: 24px + card height
+                    const spotlightBottom = rect.bottom + padding + gap
+                    if (spotlightBottom > cardTop) {
+                        // Target would be blocked -- scroll it up so there's room
+                        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                        setTimeout(() => {
+                            setTargetRect(el.getBoundingClientRect())
+                        }, 450)
+                        return
+                    }
+                }
+                setTargetRect(rect)
             }
         } else {
-            setSpotlightRect(null)
+            setTargetRect(null)
         }
     }, [currentStep, steps])
 
     useEffect(() => {
         if (!showTour) return
-        updateSpotlight()
+        // Small delay to let the transition state settle
+        const timer = setTimeout(() => {
+            updateSpotlight()
+            setIsTransitioning(false)
+        }, 80)
         window.addEventListener('resize', updateSpotlight)
         window.addEventListener('scroll', updateSpotlight, true)
         return () => {
+            clearTimeout(timer)
             window.removeEventListener('resize', updateSpotlight)
             window.removeEventListener('scroll', updateSpotlight, true)
         }
@@ -79,11 +127,12 @@ export function FeatureTour({ tourId, steps, onComplete }: FeatureTourProps) {
         setTimeout(() => {
             completeTour()
             onComplete?.()
-        }, 200)
+        }, 250)
     }, [completeTour, onComplete])
 
     const handleNext = useCallback(() => {
         if (currentStep < steps.length - 1) {
+            setIsTransitioning(true)
             setCurrentStep(prev => prev + 1)
         } else {
             handleClose()
@@ -92,14 +141,10 @@ export function FeatureTour({ tourId, steps, onComplete }: FeatureTourProps) {
 
     const handleBack = useCallback(() => {
         if (currentStep > 0) {
+            setIsTransitioning(true)
             setCurrentStep(prev => prev - 1)
         }
     }, [currentStep])
-
-    // Note: we intentionally do NOT lock body scroll -- dashboard and other
-    // pages use nested scroll containers and locking body would have no
-    // visible effect while breaking the tour. The overlay itself prevents
-    // interaction with elements underneath.
 
     const [mounted, setMounted] = useState(false)
     useEffect(() => { setMounted(true) }, [])
@@ -111,35 +156,81 @@ export function FeatureTour({ tourId, steps, onComplete }: FeatureTourProps) {
     const isFirst = currentStep === 0
     const padding = 8
 
-    // Build the overlay clip path to cut out the spotlight
-    const clipPath = spotlightRect
+    // Build overlay clip path from the smoothed rect
+    const clipPath = smoothRect
         ? `polygon(
         0% 0%, 0% 100%, 
-        ${spotlightRect.left - padding}px 100%, 
-        ${spotlightRect.left - padding}px ${spotlightRect.top - padding}px, 
-        ${spotlightRect.right + padding}px ${spotlightRect.top - padding}px, 
-        ${spotlightRect.right + padding}px ${spotlightRect.bottom + padding}px, 
-        ${spotlightRect.left - padding}px ${spotlightRect.bottom + padding}px, 
-        ${spotlightRect.left - padding}px 100%, 
+        ${smoothRect.left - padding}px 100%, 
+        ${smoothRect.left - padding}px ${smoothRect.top - padding}px, 
+        ${smoothRect.left + smoothRect.width + padding}px ${smoothRect.top - padding}px, 
+        ${smoothRect.left + smoothRect.width + padding}px ${smoothRect.top + smoothRect.height + padding}px, 
+        ${smoothRect.left - padding}px ${smoothRect.top + smoothRect.height + padding}px, 
+        ${smoothRect.left - padding}px 100%, 
         100% 100%, 100% 0%
       )`
         : undefined
 
-    // Position the card near the spotlight or centered
+    // Position the card near the spotlight
     const getCardStyle = (): React.CSSProperties => {
-        // On mobile (< 640px), always bottom sheet
-        if (typeof window !== 'undefined' && window.innerWidth < 640) {
+        const isMobile = typeof window !== 'undefined' && window.innerWidth < 640
+        const isTablet = typeof window !== 'undefined' && window.innerWidth >= 640 && window.innerWidth < 1024
+
+        // On mobile: position at bottom, but check if spotlight is near bottom
+        if (isMobile) {
+            if (smoothRect) {
+                const spotlightBottom = smoothRect.top + smoothRect.height + padding
+                const cardFromBottom = 24
+                const cardHeight = 220
+                const cardTop = window.innerHeight - cardFromBottom - cardHeight
+
+                // If spotlight is in the bottom half, put the card at the TOP
+                if (spotlightBottom > cardTop - 16) {
+                    return {
+                        position: 'fixed',
+                        top: '16px',
+                        left: '12px',
+                        right: '12px',
+                        zIndex: 10001,
+                    }
+                }
+            }
             return {
                 position: 'fixed',
                 bottom: '24px',
-                left: '16px',
-                right: '16px',
+                left: '12px',
+                right: '12px',
                 zIndex: 10001,
             }
         }
 
-        if (!spotlightRect) {
-            // Centered modal
+        // On tablet: similar logic but with more width
+        if (isTablet) {
+            if (smoothRect) {
+                const spotlightBottom = smoothRect.top + smoothRect.height + padding
+                const cardFromBottom = 24
+                const cardHeight = 220
+                const cardTop = window.innerHeight - cardFromBottom - cardHeight
+
+                if (spotlightBottom > cardTop - 16) {
+                    return {
+                        position: 'fixed',
+                        top: '24px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 10001,
+                    }
+                }
+            }
+            return {
+                position: 'fixed',
+                bottom: '24px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 10001,
+            }
+        }
+
+        if (!smoothRect) {
             return {
                 position: 'fixed',
                 top: '50%',
@@ -149,31 +240,28 @@ export function FeatureTour({ tourId, steps, onComplete }: FeatureTourProps) {
             }
         }
 
-        // Position card below or above the spotlight
+        // Desktop: position card below or above the spotlight
         const viewportHeight = window.innerHeight
-        const cardHeight = 200
+        const cardHeight = 220
         const gap = 16
-        const spaceBelow = viewportHeight - spotlightRect.bottom - padding
-        const spaceAbove = spotlightRect.top - padding
+        const spaceBelow = viewportHeight - (smoothRect.top + smoothRect.height) - padding
+        const spaceAbove = smoothRect.top - padding
 
         if (spaceBelow > cardHeight + gap) {
-            // Place below
             return {
                 position: 'fixed',
-                top: `${spotlightRect.bottom + padding + gap}px`,
-                left: `${Math.max(16, Math.min(spotlightRect.left, window.innerWidth - 380))}px`,
+                top: `${smoothRect.top + smoothRect.height + padding + gap}px`,
+                left: `${Math.max(16, Math.min(smoothRect.left, window.innerWidth - 380))}px`,
                 zIndex: 10001,
             }
         } else if (spaceAbove > cardHeight + gap) {
-            // Place above
             return {
                 position: 'fixed',
-                bottom: `${viewportHeight - spotlightRect.top + padding + gap}px`,
-                left: `${Math.max(16, Math.min(spotlightRect.left, window.innerWidth - 380))}px`,
+                bottom: `${viewportHeight - smoothRect.top + padding + gap}px`,
+                left: `${Math.max(16, Math.min(smoothRect.left, window.innerWidth - 380))}px`,
                 zIndex: 10001,
             }
         } else {
-            // Centered fallback
             return {
                 position: 'fixed',
                 top: '50%',
@@ -186,7 +274,7 @@ export function FeatureTour({ tourId, steps, onComplete }: FeatureTourProps) {
 
     return createPortal(
         <>
-            {/* Full-screen click catcher (transparent, behind the dark overlay) */}
+            {/* Full-screen click catcher */}
             <div
                 className="fixed inset-0"
                 style={{ zIndex: 9999 }}
@@ -194,56 +282,73 @@ export function FeatureTour({ tourId, steps, onComplete }: FeatureTourProps) {
                 aria-hidden="true"
             />
 
-            {/* Overlay backdrop with spotlight cutout */}
+            {/* Overlay backdrop with spotlight cutout -- smooth transition on clip-path */}
             <div
                 className={cn(
-                    'fixed inset-0 transition-opacity duration-300 pointer-events-none',
+                    'fixed inset-0 pointer-events-none',
                     visible ? 'opacity-100' : 'opacity-0'
                 )}
                 style={{
                     zIndex: 10000,
                     backgroundColor: 'rgba(0, 0, 0, 0.55)',
                     clipPath,
+                    transition: 'opacity 300ms ease, clip-path 400ms cubic-bezier(0.4, 0, 0.2, 1)',
                 }}
                 aria-hidden="true"
             />
 
-            {/* Spotlight border ring */}
-            {spotlightRect && (
+            {/* Spotlight border ring -- smooth animated position */}
+            {smoothRect && (
                 <div
                     className={cn(
-                        'fixed rounded-lg ring-2 ring-primary/60 transition-all duration-300 pointer-events-none',
+                        'fixed rounded-lg ring-2 ring-primary/60 pointer-events-none',
                         visible ? 'opacity-100' : 'opacity-0'
                     )}
                     style={{
                         zIndex: 10000,
-                        top: spotlightRect.top - padding,
-                        left: spotlightRect.left - padding,
-                        width: spotlightRect.width + padding * 2,
-                        height: spotlightRect.height + padding * 2,
+                        top: smoothRect.top - padding,
+                        left: smoothRect.left - padding,
+                        width: smoothRect.width + padding * 2,
+                        height: smoothRect.height + padding * 2,
+                        transition: 'top 400ms cubic-bezier(0.4, 0, 0.2, 1), left 400ms cubic-bezier(0.4, 0, 0.2, 1), width 400ms cubic-bezier(0.4, 0, 0.2, 1), height 400ms cubic-bezier(0.4, 0, 0.2, 1), opacity 300ms ease',
                     }}
                     aria-hidden="true"
                 />
             )}
 
-            {/* Tour card */}
+            {/* Tour card -- smooth transitions */}
             <div
                 ref={cardRef}
                 className={cn(
-                    'w-full max-w-[360px] rounded-xl bg-card border border-border shadow-2xl transition-all duration-300',
+                    'w-full max-w-[360px] rounded-xl bg-card border border-border shadow-2xl',
                     visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
                 )}
-                style={getCardStyle()}
+                style={{
+                    ...getCardStyle(),
+                    transition: 'opacity 300ms ease, transform 300ms ease, top 400ms cubic-bezier(0.4, 0, 0.2, 1), bottom 400ms cubic-bezier(0.4, 0, 0.2, 1), left 400ms cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
                 role="dialog"
                 aria-modal="true"
                 aria-label={`Feature tour step ${currentStep + 1} of ${steps.length}`}
                 data-feature-tour
             >
-                {/* Header: step counter + skip */}
+                {/* Progress dots */}
                 <div className="flex items-center justify-between px-5 pt-4 pb-1">
-                    <span className="text-xs font-medium text-muted-foreground">
-                        {currentStep + 1} / {steps.length}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                        {steps.map((_, i) => (
+                            <div
+                                key={i}
+                                className={cn(
+                                    'h-1.5 rounded-full transition-all duration-300',
+                                    i === currentStep
+                                        ? 'w-4 bg-primary'
+                                        : i < currentStep
+                                            ? 'w-1.5 bg-primary/40'
+                                            : 'w-1.5 bg-muted-foreground/20'
+                                )}
+                            />
+                        ))}
+                    </div>
                     <button
                         onClick={handleClose}
                         className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
@@ -254,8 +359,11 @@ export function FeatureTour({ tourId, steps, onComplete }: FeatureTourProps) {
                     </button>
                 </div>
 
-                {/* Content */}
-                <div className="px-5 pb-2">
+                {/* Content with fade transition */}
+                <div className={cn(
+                    'px-5 pb-2 transition-opacity duration-200',
+                    isTransitioning ? 'opacity-0' : 'opacity-100'
+                )}>
                     <h3 className="text-base font-semibold text-foreground text-balance leading-snug">
                         {step.title}
                     </h3>
