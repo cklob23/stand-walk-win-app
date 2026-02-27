@@ -17,6 +17,7 @@ import { Loader2, BookHeart } from 'lucide-react'
 import { saveJournalEntry } from '@/lib/journal-actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
+import { onTourComplete } from '@/hooks/use-feature-tour'
 
 interface DailyJournalPopupProps {
     pairingId: string
@@ -48,12 +49,34 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
         // Only show if learner hasn't already written today and hasn't dismissed today
         if (hasEntryToday) return
 
-        const today = new Date().toLocaleDateString('en-CA') // local yyyy-MM-dd
+        const today = new Date().toLocaleDateString('en-CA')
         const dismissed = getDismissedDate()
         if (dismissed === today) return
 
-        // Small delay to avoid showing immediately on page load
-        const timer = setTimeout(() => setOpen(true), 800)
+        // Wait for any active feature tour to finish before showing
+        function isTourActive(): boolean {
+            return !!document.querySelector('[data-feature-tour]')
+        }
+
+        function tryShow() {
+            if (isTourActive()) return // Tour is still open, don't show yet
+            setOpen(true)
+        }
+
+        // Check after a delay -- if tour is already gone, show immediately
+        const timer = setTimeout(() => {
+            if (!isTourActive()) {
+                setOpen(true)
+                return
+            }
+            // Tour is still active -- listen for tour completion
+            const unsub = onTourComplete(() => {
+                // Small delay after tour closes for smooth transition
+                setTimeout(() => setOpen(true), 600)
+                unsub()
+            })
+        }, 800)
+
         return () => clearTimeout(timer)
     }, [hasEntryToday])
 

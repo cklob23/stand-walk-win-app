@@ -204,7 +204,7 @@ function buildICSContent(meeting: ScheduledMeeting, partnerName: string, options
     const { startDT, endDT } = buildDateTimes(meeting)
     const title = buildTitle(partnerName)
     const description = buildICSDescription(meeting, partnerName, options).replace(/\n/g, '\\n')
-    const uid = `swr-meeting-${meeting.id}@standwalkrun.com`
+    const uid = `swr-meeting-${meeting.id}@stand-walk-run.onrender.com`
 
     let meetingUrl = ''
     if (meeting.meeting_type === 'zoom' && meeting.meeting_link) {
@@ -254,12 +254,6 @@ export function forceDownloadICSFile(meeting: ScheduledMeeting, partnerName: str
     URL.revokeObjectURL(url)
 }
 
-function isAppleDevice(): boolean {
-    if (typeof navigator === 'undefined') return false
-    const ua = navigator.userAgent
-    return /iPhone|iPad|iPod|Macintosh/.test(ua) && 'ontouchend' in document
-}
-
 function isApplePlatform(): boolean {
     if (typeof navigator === 'undefined') return false
     const ua = navigator.userAgent
@@ -269,41 +263,26 @@ function isApplePlatform(): boolean {
 
 export async function downloadICSFile(meeting: ScheduledMeeting, partnerName: string, options?: CalendarOptions): Promise<void> {
     const icsContent = buildICSContent(meeting, partnerName, options)
-    const fileName = `meeting-${meeting.meeting_date}.ics`
     const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' })
 
-    // ── Strategy 1: iOS / iPadOS ──
-    // Open a data URI directly -- Safari on iOS intercepts text/calendar and
-    // shows the native "Add to Calendar" sheet immediately, no file download.
-    if (isAppleDevice()) {
+    // Apple devices (iOS, iPadOS, macOS Safari):
+    // Open a data:text/calendar URI which triggers the native Calendar.app
+    // "Add to Calendar" sheet directly -- no file download, no share sheet.
+    if (isApplePlatform()) {
         const reader = new FileReader()
         reader.onload = () => {
             const dataUri = reader.result as string
-            window.open(dataUri, '_self')
+            // On iOS: opens "Add to Calendar" natively in-page
+            // On macOS Safari: opens Calendar.app with the event
+            window.location.href = dataUri
         }
         reader.readAsDataURL(blob)
         return
     }
 
-    // ── Strategy 2: macOS Safari / Web Share API ──
-    // Use navigator.share with a File object. macOS Safari shows a share sheet
-    // that includes "Add to Calendar" as an option.
-    const file = new File([blob], fileName, { type: 'text/calendar' })
-    if (isApplePlatform() && navigator.share && navigator.canShare?.({ files: [file] })) {
-        try {
-            await navigator.share({
-                files: [file],
-                title: `Stand Walk Run - Meeting`,
-            })
-            return
-        } catch (err: unknown) {
-            if (err instanceof Error && err.name === 'AbortError') return
-            // Fall through to download for other errors
-        }
-    }
-
-    // ── Strategy 3: Fallback (Windows, Android, Linux, etc.) ──
+    // Fallback (Windows, Android, Linux, Chrome, Firefox, etc.):
     // Traditional .ics file download.
+    const fileName = `meeting-${meeting.meeting_date}.ics`
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url

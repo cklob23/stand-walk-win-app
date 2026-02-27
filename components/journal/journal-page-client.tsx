@@ -9,7 +9,8 @@ import { JournalEntryEditor } from '@/components/journal/journal-entry-editor'
 import { SharedWithMe, type SharedItem } from '@/components/journal/shared-with-me'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
-import { journalSteps } from '@/lib/tour-steps'
+import { getJournalSteps } from '@/lib/tour-steps'
+import { useMemo } from 'react'
 
 interface JournalPageClientProps {
     isLeader: boolean
@@ -36,6 +37,9 @@ export function JournalPageClient({
     const searchParamsHook = useSearchParams()
     const [showEditor, setShowEditor] = useState(false)
     const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null)
+
+    // Generate tour steps based on whether today's entry exists
+    const journalTourSteps = useMemo(() => getJournalSteps(!!todayEntry), [todayEntry])
 
     // Ensure the server has the correct local date for "today" queries
     useEffect(() => {
@@ -138,7 +142,7 @@ export function JournalPageClient({
             />
 
             {/* Onboarding Tour */}
-            <FeatureTour tourId="journal" steps={journalSteps} />
+            <FeatureTour tourId="journal" steps={journalTourSteps} />
         </div>
     )
 }

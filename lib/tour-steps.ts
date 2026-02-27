@@ -71,15 +71,21 @@ export const leaderDashboardSteps: TourStep[] = [
 // ── Bible Reader ──
 export const bibleSteps: TourStep[] = [
     {
+        title: 'Settings & Bible Version',
+        description:
+            'Tap "Settings" to adjust text size, reading voice, and audio options. Use the version dropdown to switch between ESV, KJV, NIV, NLT and other translations.',
+        targetSelector: '[data-tour="bible-settings"]',
+    },
+    {
         title: 'Browse the Bible',
         description:
             'Select any book and chapter to read. Books are organized into Old and New Testament sections for easy navigation.',
         targetSelector: '[data-tour="bible-books"]',
     },
     {
-        title: 'Highlight & Interact',
+        title: 'Highlight & Listen',
         description:
-            'Use the toolbar to highlight verses, listen to audio, and more. Tap any verse to add notes, share it, or save it to your journal.',
+            'Use the toolbar to highlight verses or listen to the chapter read aloud. Tap any verse to add notes, share it, or save it to your journal.',
         targetSelector: '[data-tour="bible-toolbar"]',
     },
     {
@@ -91,26 +97,33 @@ export const bibleSteps: TourStep[] = [
 ]
 
 // ── Journal ──
-export const journalSteps: TourStep[] = [
-    {
-        title: 'Start a Reflection',
-        description:
-            'Tap here to record your daily prayers, what God is speaking to you, and personal reflections. This is your private space to grow.',
-        targetSelector: '[data-tour="journal-new"]',
-    },
-    {
-        title: 'Shared With You',
-        description:
-            'When your partner shares journal entries, Bible verses, or highlights with you, they appear here.',
-        targetSelector: '[data-tour="journal-shared"]',
-    },
-    {
-        title: 'Your Entries',
-        description:
-            'Look back on past entries to see how God has been moving in your life throughout the program. You can share any entry with your partner.',
-        targetSelector: '[data-tour="journal-history"]',
-    },
-]
+// Steps adapt depending on whether the user already has a journal entry today
+export function getJournalSteps(hasEntryToday: boolean): TourStep[] {
+    return [
+        {
+            title: hasEntryToday ? "Edit Today's Reflection" : 'Start a Reflection',
+            description: hasEntryToday
+                ? "You've already journaled today! Tap here to edit your entry, add more thoughts, or update what you're praying about."
+                : 'Tap here to record your daily prayers, what God is speaking to you, and personal reflections. This is your private space to grow.',
+            targetSelector: '[data-tour="journal-new"]',
+        },
+        {
+            title: 'Shared With You',
+            description:
+                'When your partner shares journal entries, Bible verses, or highlights with you, they appear here.',
+            targetSelector: '[data-tour="journal-shared"]',
+        },
+        {
+            title: 'Your Entries',
+            description:
+                'Look back on past entries to see how God has been moving in your life throughout the program. You can share any entry with your partner.',
+            targetSelector: '[data-tour="journal-history"]',
+        },
+    ]
+}
+
+// Static export for backward compatibility
+export const journalSteps = getJournalSteps(false)
 
 // ── Messages ──
 export const messagesSteps: TourStep[] = [

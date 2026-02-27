@@ -49,7 +49,7 @@ export default async function BiblePage() {
     }
 
     return (
-        <div className="mx-auto max-w-4xl px-4 py-6">
+        <div className="mx-auto max-w-4xl px-4 py-6" role="application">
             <Suspense fallback={
                 <div className="space-y-4">
                     <Skeleton className="h-10 w-48" />

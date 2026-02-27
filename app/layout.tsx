@@ -12,11 +12,21 @@ const _merriweather = Merriweather({
   subsets: ["latin"]
 });
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: '#ffffff',
+}
+
 export const metadata: Metadata = {
   title: 'Stand Walk Run - Grow Together in Faith',
   description: 'A 6-week discipleship journey connecting Leaders and Learners for spiritual growth and mentorship.',
   generator: 'Developed by Caleb Klobe',
-
+  // Prevent Safari Reader View from activating on content-heavy pages
+  other: {
+    'apple-mobile-web-app-capable': 'yes',
+  },
   icons: {
     icon: [
       {
