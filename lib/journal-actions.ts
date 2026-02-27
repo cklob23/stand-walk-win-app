@@ -29,7 +29,10 @@ export async function saveJournalEntry(data: {
             .eq('journal_date', today)
             .single()
 
+        let entryId: string
+
         if (existing) {
+            entryId = existing.id
             // Preserve verse entries (sections after the first ---) when updating daily questions
             const sections = (existing.god_speaking || '').split('\n\n---\n\n')
             const verseSections = sections.slice(1) // keep verse entries
@@ -46,7 +49,7 @@ export async function saveJournalEntry(data: {
 
             if (error) return { error: error.message }
         } else {
-            const { error } = await supabase
+            const { data: inserted, error } = await supabase
                 .from('prayer_journal')
                 .insert({
                     user_id: user.id,
@@ -58,13 +61,16 @@ export async function saveJournalEntry(data: {
                     shared_sections: data.shareWithLeader ? { daily: true } : {},
                     custom_entries: [],
                 })
+                .select('id')
+                .single()
 
             if (error) return { error: error.message }
+            entryId = inserted.id
         }
 
         revalidatePath('/dashboard')
         revalidatePath('/dashboard/journal')
-        return { success: true }
+        return { success: true, entryId }
     } catch {
         return { error: 'Failed to save journal entry.' }
     }
@@ -86,7 +92,7 @@ export async function updateJournalEntry(data: {
 
         const { data: existing } = await supabase
             .from('prayer_journal')
-            .select('god_speaking')
+            .select('god_speaking, shared_with_leader, shared_sections')
             .eq('id', data.entryId)
             .eq('user_id', user.id)
             .single()
@@ -109,6 +115,33 @@ export async function updateJournalEntry(data: {
             .eq('user_id', user.id)
 
         if (error) return { error: error.message }
+
+        // Notify partner if the daily section was shared
+        const sharedSections = (existing.shared_sections as Record<string, boolean>) || {}
+        if (sharedSections.daily) {
+            const { data: pairing } = await supabase
+                .from('pairings')
+                .select('leader_id, learner_id')
+                .eq('id', data.pairingId)
+                .single()
+
+            if (pairing) {
+                const partnerId = pairing.leader_id === user.id ? pairing.learner_id : pairing.leader_id
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('id', user.id)
+                    .single()
+
+                await createNotification({
+                    userId: partnerId!,
+                    pairingId: data.pairingId,
+                    type: 'journal_shared',
+                    title: 'Shared Entry Updated',
+                    message: `${profile?.full_name || 'Your partner'} updated a journal entry shared with you.`,
+                })
+            }
+        }
 
         revalidatePath('/dashboard/journal')
         return { success: true }
@@ -403,7 +436,8 @@ export async function updateCustomEntry(
 
 export async function deleteCustomEntry(
     entryId: string,
-    customIndex: number
+    customIndex: number,
+    pairingId?: string
 ): Promise<{ success?: boolean; error?: string }> {
     try {
         const supabase = await createClient()
@@ -412,7 +446,7 @@ export async function deleteCustomEntry(
 
         const { data: entry } = await supabase
             .from('prayer_journal')
-            .select('custom_entries, shared_sections')
+            .select('custom_entries, shared_sections, pairing_id')
             .eq('id', entryId)
             .eq('user_id', user.id)
             .single()
@@ -424,8 +458,10 @@ export async function deleteCustomEntry(
 
         customs.splice(customIndex, 1)
 
-        // Also clean up shared_sections for this custom entry
+        // Check if this custom entry was shared
         const sections: Record<string, boolean> = (entry.shared_sections as Record<string, boolean>) || {}
+        const wasShared = sections[`custom_${customIndex}`]
+
         delete sections[`custom_${customIndex}`]
         // Re-index remaining custom entries
         const newSections: Record<string, boolean> = {}
@@ -457,10 +493,203 @@ export async function deleteCustomEntry(
 
         if (error) return { error: error.message }
 
+        // Notify partner if the deleted entry was shared
+        const resolvedPairingId = pairingId || entry.pairing_id
+        if (wasShared && resolvedPairingId) {
+            const { data: pairing } = await supabase
+                .from('pairings')
+                .select('leader_id, learner_id')
+                .eq('id', resolvedPairingId)
+                .single()
+
+            if (pairing) {
+                const partnerId = pairing.leader_id === user.id ? pairing.learner_id : pairing.leader_id
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('id', user.id)
+                    .single()
+
+                await createNotification({
+                    userId: partnerId!,
+                    pairingId: resolvedPairingId,
+                    type: 'journal_shared',
+                    title: 'Shared Entry Updated',
+                    message: `${profile?.full_name || 'Your partner'} removed a custom entry that was shared with you.`,
+                })
+            }
+        }
+
         revalidatePath('/dashboard/journal')
         return { success: true }
     } catch {
         return { error: 'Failed to delete entry.' }
+    }
+}
+
+// ──────────────────────────────────────────
+// Delete entire journal entry (entire day)
+// ──────────────────────────────────────────
+export async function deleteJournalEntry(
+    entryId: string,
+    pairingId: string
+): Promise<{ success?: boolean; error?: string }> {
+    try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { error: 'Not authenticated' }
+
+        // Check if any section was shared so we can notify partner
+        const { data: entry } = await supabase
+            .from('prayer_journal')
+            .select('shared_with_leader, shared_sections')
+            .eq('id', entryId)
+            .eq('user_id', user.id)
+            .single()
+
+        if (!entry) return { error: 'Entry not found' }
+
+        const wasShared = entry.shared_with_leader
+
+        const { error } = await supabase
+            .from('prayer_journal')
+            .delete()
+            .eq('id', entryId)
+            .eq('user_id', user.id)
+
+        if (error) return { error: error.message }
+
+        // Notify partner if anything was shared
+        if (wasShared) {
+            const { data: pairing } = await supabase
+                .from('pairings')
+                .select('leader_id, learner_id')
+                .eq('id', pairingId)
+                .single()
+
+            if (pairing) {
+                const partnerId = pairing.leader_id === user.id ? pairing.learner_id : pairing.leader_id
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('id', user.id)
+                    .single()
+
+                await createNotification({
+                    userId: partnerId!,
+                    pairingId,
+                    type: 'journal_shared',
+                    title: 'Shared Entry Removed',
+                    message: `${profile?.full_name || 'Your partner'} removed a previously shared journal entry.`,
+                })
+            }
+        }
+
+        revalidatePath('/dashboard/journal')
+        revalidatePath('/dashboard')
+        return { success: true }
+    } catch {
+        return { error: 'Failed to delete journal entry.' }
+    }
+}
+
+// ──────────────────────────────────────────
+// Delete a verse section from god_speaking
+// ──────────────────────────────────────────
+export async function deleteVerseEntry(
+    entryId: string,
+    sectionIndex: number,
+    pairingId: string
+): Promise<{ success?: boolean; error?: string }> {
+    try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { error: 'Not authenticated' }
+
+        const { data: entry } = await supabase
+            .from('prayer_journal')
+            .select('god_speaking, shared_sections, shared_with_leader')
+            .eq('id', entryId)
+            .eq('user_id', user.id)
+            .single()
+
+        if (!entry) return { error: 'Entry not found' }
+
+        const sections = (entry.god_speaking || '').split('\n\n---\n\n')
+        if (sectionIndex < 0 || sectionIndex >= sections.length) {
+            return { error: 'Section not found' }
+        }
+
+        // Check if this verse section was shared
+        const sharedSections: Record<string, boolean> = (entry.shared_sections as Record<string, boolean>) || {}
+        const verseIdx = sectionIndex - 1 // verse_0 corresponds to section index 1
+        const wasShared = sharedSections[`verse_${verseIdx}`]
+
+        // Remove the section
+        sections.splice(sectionIndex, 1)
+        const updatedGodSpeaking = sections.filter(Boolean).join('\n\n---\n\n')
+
+        // Re-index verse shared_sections
+        const newSections: Record<string, boolean> = {}
+        for (const [key, val] of Object.entries(sharedSections)) {
+            if (key.startsWith('verse_')) {
+                const idx = parseInt(key.split('_')[1])
+                if (idx === verseIdx) continue // skip the deleted one
+                if (idx > verseIdx) {
+                    newSections[`verse_${idx - 1}`] = val
+                } else {
+                    newSections[key] = val
+                }
+            } else {
+                newSections[key] = val
+            }
+        }
+
+        const anyShared = Object.values(newSections).some(v => v === true)
+
+        const { error } = await supabase
+            .from('prayer_journal')
+            .update({
+                god_speaking: updatedGodSpeaking,
+                shared_sections: newSections,
+                shared_with_leader: anyShared,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', entryId)
+            .eq('user_id', user.id)
+
+        if (error) return { error: error.message }
+
+        // Notify partner if was shared
+        if (wasShared) {
+            const { data: pairing } = await supabase
+                .from('pairings')
+                .select('leader_id, learner_id')
+                .eq('id', pairingId)
+                .single()
+
+            if (pairing) {
+                const partnerId = pairing.leader_id === user.id ? pairing.learner_id : pairing.leader_id
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('id', user.id)
+                    .single()
+
+                await createNotification({
+                    userId: partnerId!,
+                    pairingId,
+                    type: 'journal_shared',
+                    title: 'Shared Entry Updated',
+                    message: `${profile?.full_name || 'Your partner'} removed a section from a shared journal entry.`,
+                })
+            }
+        }
+
+        revalidatePath('/dashboard/journal')
+        return { success: true }
+    } catch {
+        return { error: 'Failed to delete verse entry.' }
     }
 }
 

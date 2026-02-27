@@ -17,7 +17,7 @@ import { Loader2, BookHeart } from 'lucide-react'
 import { saveJournalEntry } from '@/lib/journal-actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import { onTourComplete } from '@/hooks/use-feature-tour'
+import { isAnyTourActive, onTourStateChange } from '@/hooks/use-feature-tour'
 
 interface DailyJournalPopupProps {
     pairingId: string
@@ -53,31 +53,36 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
         const dismissed = getDismissedDate()
         if (dismissed === today) return
 
-        // Wait for any active feature tour to finish before showing
-        function isTourActive(): boolean {
-            return !!document.querySelector('[data-feature-tour]')
+        let unsub: (() => void) | null = null
+        let delayTimer: ReturnType<typeof setTimeout> | null = null
+
+        function showPopup() {
+            // Extra safety: wait a beat after tour ends for smooth transition
+            delayTimer = setTimeout(() => setOpen(true), 600)
         }
 
-        function tryShow() {
-            if (isTourActive()) return // Tour is still open, don't show yet
-            setOpen(true)
-        }
-
-        // Check after a delay -- if tour is already gone, show immediately
-        const timer = setTimeout(() => {
-            if (!isTourActive()) {
+        // Wait 1500ms to give tours time to register as active
+        const initTimer = setTimeout(() => {
+            if (!isAnyTourActive()) {
+                // No tour active -- safe to show immediately
                 setOpen(true)
                 return
             }
-            // Tour is still active -- listen for tour completion
-            const unsub = onTourComplete(() => {
-                // Small delay after tour closes for smooth transition
-                setTimeout(() => setOpen(true), 600)
-                unsub()
+            // A tour is active -- wait for it to finish
+            unsub = onTourStateChange((active) => {
+                if (!active) {
+                    showPopup()
+                    unsub?.()
+                    unsub = null
+                }
             })
-        }, 800)
+        }, 1500)
 
-        return () => clearTimeout(timer)
+        return () => {
+            clearTimeout(initTimer)
+            if (delayTimer) clearTimeout(delayTimer)
+            unsub?.()
+        }
     }, [hasEntryToday])
 
     const handleDismiss = () => {

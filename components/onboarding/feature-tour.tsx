@@ -17,6 +17,8 @@ interface FeatureTourProps {
     tourId: string
     steps: TourStep[]
     onComplete?: () => void
+    /** When set, the tour will not activate until this becomes true */
+    waitFor?: boolean
 }
 
 interface SmoothRect {
@@ -26,8 +28,8 @@ interface SmoothRect {
     height: number
 }
 
-export function FeatureTour({ tourId, steps, onComplete }: FeatureTourProps) {
-    const { showTour, completeTour } = useFeatureTour(tourId)
+export function FeatureTour({ tourId, steps, onComplete, waitFor }: FeatureTourProps) {
+    const { showTour, completeTour } = useFeatureTour(tourId, waitFor)
     const [currentStep, setCurrentStep] = useState(0)
     const [visible, setVisible] = useState(false)
     const [targetRect, setTargetRect] = useState<DOMRect | null>(null)

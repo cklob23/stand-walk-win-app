@@ -71,17 +71,21 @@ export const leaderDashboardSteps: TourStep[] = [
 // ── Bible Reader ──
 export const bibleSteps: TourStep[] = [
     {
+        title: 'Browse the Bible',
+        description:
+            'Choose any book and chapter to read. Books are organized into Old and New Testament sections for easy navigation. You can always come back here by tapping the Back arrow.',
+        targetSelector: '[data-tour="bible-books"]',
+    },
+    {
         title: 'Settings & Bible Version',
         description:
             'Tap "Settings" to adjust text size, reading voice, and audio options. Use the version dropdown to switch between ESV, KJV, NIV, NLT and other translations.',
         targetSelector: '[data-tour="bible-settings"]',
     },
-    {
-        title: 'Browse the Bible',
-        description:
-            'Select any book and chapter to read. Books are organized into Old and New Testament sections for easy navigation.',
-        targetSelector: '[data-tour="bible-books"]',
-    },
+]
+
+// Steps shown after user selects a chapter and enters reading view
+export const bibleReadingSteps: TourStep[] = [
     {
         title: 'Highlight & Listen',
         description:
@@ -93,6 +97,12 @@ export const bibleSteps: TourStep[] = [
         description:
             'Tap on any verse to highlight it, add notes, share it with your partner, or journal about it. Your weekly scripture is pre-highlighted in green.',
         targetSelector: '[data-tour="bible-verses"]',
+    },
+    {
+        title: 'Navigate Back',
+        description:
+            'Tap the Back arrow anytime to go back to chapters or the full list of Bible books. You can explore any book and chapter from there.',
+        targetSelector: '[data-tour="bible-back"]',
     },
 ]
 

@@ -17,6 +17,9 @@ import {
     addCustomEntry,
     updateCustomEntry,
     deleteCustomEntry,
+    deleteJournalEntry,
+    deleteVerseEntry,
+    saveJournalEntry,
 } from '@/lib/journal-actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -169,9 +172,30 @@ export function JournalHistory({
     }
 
     const handleDeleteCustom = async (entryId: string, customIndex: number) => {
+        if (!confirm('Delete this custom entry? This cannot be undone.')) return
         const key = `del-${entryId}-custom-${customIndex}`
         setLoadingKey(key)
-        const result = await deleteCustomEntry(entryId, customIndex)
+        const result = await deleteCustomEntry(entryId, customIndex, pairingId)
+        if (result.error) toast.error(result.error)
+        else { toast.success('Deleted'); router.refresh() }
+        setLoadingKey(null)
+    }
+
+    const handleDeleteEntry = async (entryId: string) => {
+        if (!confirm('Delete this entire journal entry? This cannot be undone.')) return
+        const key = `del-entry-${entryId}`
+        setLoadingKey(key)
+        const result = await deleteJournalEntry(entryId, pairingId)
+        if (result.error) toast.error(result.error)
+        else { toast.success('Entry deleted'); router.refresh() }
+        setLoadingKey(null)
+    }
+
+    const handleDeleteVerse = async (entryId: string, sectionIndex: number) => {
+        if (!confirm('Delete this entry? This cannot be undone.')) return
+        const key = `del-${entryId}-verse-${sectionIndex}`
+        setLoadingKey(key)
+        const result = await deleteVerseEntry(entryId, sectionIndex, pairingId)
         if (result.error) toast.error(result.error)
         else { toast.success('Deleted'); router.refresh() }
         setLoadingKey(null)
@@ -247,6 +271,8 @@ export function JournalHistory({
                                 learnerName={learnerName}
                                 onToggleShare={() => handleToggleSectionShare(entry.id, 'daily', dailyShared)}
                                 onEdit={!isLeaderView && onEditDaily ? () => onEditDaily(entry) : undefined}
+                                onDelete={!isLeaderView ? () => handleDeleteEntry(entry.id) : undefined}
+                                deleteLoading={loadingKey === `del-entry-${entry.id}`}
                                 onScheduleMeeting={isLeaderView ? async () => {
                                     setLoadingKey(`meet-${entry.id}`)
                                     const result = await import('@/lib/journal-actions').then(m =>
@@ -306,6 +332,8 @@ export function JournalHistory({
                                         setEditingKey(editKey)
                                         setEditText(verse.content)
                                     } : undefined}
+                                    onDelete={!isLeaderView ? () => handleDeleteVerse(entry.id, idx + 1) : undefined}
+                                    deleteLoading={loadingKey === `del-${entry.id}-verse-${idx + 1}`}
                                     onScheduleMeeting={isLeaderView ? async () => {
                                         setLoadingKey(`meet-${entry.id}`)
                                         const result = await import('@/lib/journal-actions').then(m =>
@@ -442,67 +470,127 @@ export function JournalHistory({
                             )
                         })}
 
-                        {/* ── Add Custom Entry ── */}
-                        {!isLeaderView && (
-                            addingCustomFor === entry.id ? (
-                                <Card className="border-dashed">
-                                    <CardContent className="py-4 space-y-3">
-                                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                                            New Journal Entry
-                                        </p>
-                                        <Input
-                                            value={newTitle}
-                                            onChange={(e) => setNewTitle(e.target.value)}
-                                            placeholder="Title (optional)"
-                                            className="text-sm"
-                                        />
-                                        <Textarea
-                                            value={newContent}
-                                            onChange={(e) => setNewContent(e.target.value)}
-                                            placeholder="Write your reflection..."
-                                            rows={4}
-                                            className="resize-none text-sm"
-                                        />
-                                        <div className="flex items-center gap-2">
-                                            <Button
-                                                size="sm"
-                                                className="h-7 text-xs gap-1"
-                                                onClick={() => handleAddCustom(entry.id)}
-                                                disabled={loadingKey === `add-${entry.id}`}
-                                            >
-                                                {loadingKey === `add-${entry.id}`
-                                                    ? <Loader2 className="h-3 w-3 animate-spin" />
-                                                    : <Check className="h-3 w-3" />}
-                                                Save
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-7 text-xs gap-1"
-                                                onClick={() => { setAddingCustomFor(null); setNewTitle(''); setNewContent('') }}
-                                            >
-                                                <X className="h-3 w-3" />
-                                                Cancel
-                                            </Button>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ) : (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 text-xs gap-1.5 w-full border-dashed"
-                                    onClick={() => setAddingCustomFor(entry.id)}
-                                >
-                                    <Plus className="h-3.5 w-3.5" />
-                                    Add Custom Entry
-                                </Button>
-                            )
-                        )}
                     </div>
                 )
             })}
         </div>
+    )
+}
+
+// ── Standalone Add Custom Entry component ──
+// Placed once above all entries in the parent component
+export function AddCustomEntryButton({
+    entries,
+    pairingId,
+    isLeaderView,
+}: {
+    entries: JournalEntry[]
+    pairingId: string
+    isLeaderView: boolean
+}) {
+    const router = useRouter()
+    const [adding, setAdding] = useState(false)
+    const [newTitle, setNewTitle] = useState('')
+    const [newContent, setNewContent] = useState('')
+    const [saving, setSaving] = useState(false)
+
+    if (isLeaderView) return null
+
+    const handleSave = async () => {
+        if (!newContent.trim()) { toast.error('Please write something.'); return }
+        setSaving(true)
+
+        let targetEntryId: string | null = entries.length > 0 ? entries[0].id : null
+
+        // If no entries exist, create a blank journal entry for today first
+        if (!targetEntryId) {
+            const localDate = new Date().toLocaleDateString('en-CA')
+            const createResult = await saveJournalEntry({
+                prayerItems: '',
+                godSaying: '',
+                pairingId,
+                localDate,
+            })
+            if (createResult.error) {
+                toast.error(createResult.error)
+                setSaving(false)
+                return
+            }
+            targetEntryId = createResult.entryId || null
+        }
+
+        if (!targetEntryId) {
+            toast.error('Could not create journal entry.')
+            setSaving(false)
+            return
+        }
+
+        const result = await addCustomEntry(targetEntryId, newTitle.trim(), newContent.trim())
+        if (result.error) toast.error(result.error)
+        else { toast.success('Entry added!'); router.refresh() }
+        setAdding(false)
+        setNewTitle('')
+        setNewContent('')
+        setSaving(false)
+    }
+
+    if (adding) {
+        return (
+            <Card className="border-dashed">
+                <CardContent className="py-4 space-y-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        New Journal Entry
+                    </p>
+                    <Input
+                        value={newTitle}
+                        onChange={(e) => setNewTitle(e.target.value)}
+                        placeholder="Title (optional)"
+                        className="text-sm"
+                    />
+                    <Textarea
+                        value={newContent}
+                        onChange={(e) => setNewContent(e.target.value)}
+                        placeholder="Write your reflection..."
+                        rows={4}
+                        className="resize-none text-sm"
+                    />
+                    <div className="flex items-center gap-2">
+                        <Button
+                            size="sm"
+                            className="h-7 text-xs gap-1"
+                            onClick={handleSave}
+                            disabled={saving}
+                        >
+                            {saving
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Check className="h-3 w-3" />}
+                            Save
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs gap-1"
+                            onClick={() => { setAdding(false); setNewTitle(''); setNewContent('') }}
+                        >
+                            <X className="h-3 w-3" />
+                            Cancel
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+        )
+    }
+
+    return (
+        <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs gap-1.5 w-full border-dashed"
+            onClick={() => setAdding(true)}
+        >
+            <Plus className="h-3.5 w-3.5" />
+            Add Custom Entry
+        </Button>
     )
 }
 

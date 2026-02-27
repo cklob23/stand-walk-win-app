@@ -35,7 +35,7 @@ import {
 } from '@/lib/bible-highlight-actions'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
-import { bibleSteps } from '@/lib/tour-steps'
+import { bibleSteps, bibleReadingSteps } from '@/lib/tour-steps'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
@@ -113,15 +113,20 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const searchParams = useSearchParams()
     const router = useRouter()
 
-    // Determine initial state: URL params > saved place > books view
+    // Determine initial state: URL params take user directly to reading.
+    // Saved place is remembered but user always starts at books view unless
+    // they arrive via a direct link (e.g. weekly scripture link with URL params).
     const urlBook = searchParams.get('book')
     const urlChapter = searchParams.get('chapter')
     const urlVerses = searchParams.get('verses')
+    const hasUrlParams = !!urlBook
     const initialBook = urlBook || savedBook || null
     const initialChapter = urlChapter ? Number(urlChapter) : (!urlBook && savedChapter ? savedChapter : null)
-    const initialView = (initialBook && initialChapter) ? 'reading' as const
-        : initialBook ? 'chapters' as const
-            : 'books' as const
+    const initialView = hasUrlParams
+        ? (initialBook && initialChapter) ? 'reading' as const
+            : initialBook ? 'chapters' as const
+                : 'books' as const
+        : 'books' as const
 
     // Parse verse range like "3-7" or "16" into start/end
     const parseVerseRange = (range: string | null): { start: number; end: number } | null => {
@@ -1191,6 +1196,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
         setIsPlaying(true)
         setIsPaused(false)
+        setAudioLoading(true) // Show loading immediately on the Listen button
         // Set initial progress based on starting position within entire chapter
         setTtsProgress(verses.length > 0 ? verseIndex / verses.length : 0)
         clearAutoAdvance()
@@ -1485,7 +1491,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                     {view !== 'books' && (
-                        <Button variant="ghost" size="sm" onClick={handleBack} className="gap-1">
+                        <Button data-tour="bible-back" variant="ghost" size="sm" onClick={handleBack} className="gap-1">
                             <ArrowLeft className="h-4 w-4" />
                             <span className="sr-only sm:not-sr-only">Back</span>
                         </Button>
@@ -1595,7 +1601,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         setSelectedCloudVoice(v)
                                         savePrefs(translation, textSize, skipVerseNumbers, v)
                                     }}>
-                                        <SelectTrigger className="w-full h-9 text-sm bg-card">
+                                        <SelectTrigger className="w-full sm:w-[320px] h-9 text-sm bg-card">
                                             <SelectValue placeholder="Select a voice..." />
                                         </SelectTrigger>
                                         <SelectContent className="max-h-[300px]">
@@ -2892,8 +2898,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 </Dialog>
             )}
 
-            {/* Onboarding Tour */}
-            <FeatureTour tourId="bible" steps={bibleSteps} />
+            {/* Onboarding Tours */}
+            {view === 'books' && <FeatureTour tourId="bible" steps={bibleSteps} />}
+            {view === 'reading' && <FeatureTour tourId="bible-reading" steps={bibleReadingSteps} />}
         </div>
     )
 }

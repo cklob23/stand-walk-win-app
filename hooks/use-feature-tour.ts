@@ -5,14 +5,37 @@ import { createClient } from '@/lib/supabase/client'
 
 const TOUR_PREFIX = 'swr-tour-'
 
-// Global event emitter so the daily-journal popup can listen for tour completion
-const tourCompleteListeners = new Set<() => void>()
-export function onTourComplete(cb: () => void) {
-    tourCompleteListeners.add(cb)
-    return () => { tourCompleteListeners.delete(cb) }
+// ── Global tour state tracking ──
+// Tracks how many tours are currently active. The daily-journal popup
+// subscribes so it can wait until all tours finish before showing.
+let activeTourCount = 0
+const tourStateListeners = new Set<(active: boolean) => void>()
+
+function tourStarted() {
+    activeTourCount++
+    tourStateListeners.forEach(cb => cb(true))
 }
-function emitTourComplete() {
-    tourCompleteListeners.forEach(cb => cb())
+
+function tourEnded() {
+    activeTourCount = Math.max(0, activeTourCount - 1)
+    if (activeTourCount === 0) {
+        tourStateListeners.forEach(cb => cb(false))
+    }
+}
+
+/** Returns true if any feature tour is currently shown */
+export function isAnyTourActive(): boolean {
+    return activeTourCount > 0
+}
+
+/**
+ * Subscribe to tour state changes.
+ * Callback receives `true` when a tour becomes active, `false` when ALL tours finish.
+ * Returns an unsubscribe function.
+ */
+export function onTourStateChange(cb: (active: boolean) => void) {
+    tourStateListeners.add(cb)
+    return () => { tourStateListeners.delete(cb) }
 }
 
 // Check if any blocking Radix Dialog is open (ignores the feature tour's own
@@ -72,13 +95,21 @@ async function isTourCompletedInDB(tourId: string): Promise<boolean> {
     }
 }
 
-export function useFeatureTour(tourId: string) {
+export function useFeatureTour(tourId: string, waitFor?: boolean) {
     const [showTour, setShowTour] = useState(false)
     const key = `${TOUR_PREFIX}${tourId}-done`
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    // Track if this hook has already called tourStarted() to avoid double-counting
+    const startedRef = useRef(false)
+
+    // When waitFor is explicitly false, don't activate yet
+    const isReady = waitFor === undefined || waitFor === true
 
     useEffect(() => {
+        if (!isReady) return
+
         let cancelled = false
+        let timerRef: ReturnType<typeof setTimeout> | null = null
 
         async function init() {
             // Check localStorage first (fast)
@@ -95,8 +126,14 @@ export function useFeatureTour(tourId: string) {
 
             if (cancelled) return
 
-            const initialTimer = setTimeout(() => {
-                if (cancelled) return
+            // Signal that this tour intends to show (blocks journal popup)
+            if (!startedRef.current) {
+                tourStarted()
+                startedRef.current = true
+            }
+
+            timerRef = setTimeout(() => {
+                if (cancelled) { tourEnded(); startedRef.current = false; return }
                 if (!isBlockingDialogOpen()) {
                     setShowTour(true)
                     return
@@ -110,25 +147,25 @@ export function useFeatureTour(tourId: string) {
                     }
                 }, 500)
             }, 1200)
-
-            // Store timer ref for cleanup
-            pollRef.current = null
-            return () => clearTimeout(initialTimer)
         }
 
         init()
 
         return () => {
             cancelled = true
+            if (timerRef) clearTimeout(timerRef)
             if (pollRef.current) clearInterval(pollRef.current)
         }
-    }, [key, tourId])
+    }, [key, tourId, isReady])
 
     const completeTour = useCallback(() => {
         localStorage.setItem(key, 'true')
         setShowTour(false)
         markTourCompletedInDB(tourId)
-        emitTourComplete()
+        if (startedRef.current) {
+            tourEnded()
+            startedRef.current = false
+        }
     }, [key, tourId])
 
     const resetTour = useCallback(() => {

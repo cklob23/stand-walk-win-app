@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { BookHeart, Plus, PenLine } from 'lucide-react'
-import { JournalHistory, type JournalEntry } from '@/components/journal/journal-history'
+import { JournalHistory, AddCustomEntryButton, type JournalEntry } from '@/components/journal/journal-history'
 import { JournalEntryEditor } from '@/components/journal/journal-entry-editor'
 import { SharedWithMe, type SharedItem } from '@/components/journal/shared-with-me'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
@@ -125,6 +125,13 @@ export function JournalPageClient({
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                     Your Entries
                 </h2>
+                <div className="mb-3">
+                    <AddCustomEntryButton
+                        entries={entries}
+                        pairingId={pairingId}
+                        isLeaderView={isLeader}
+                    />
+                </div>
                 <JournalHistory
                     entries={entries}
                     leaderName={isLeader ? learnerName : leaderName}
