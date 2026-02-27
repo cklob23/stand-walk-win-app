@@ -494,8 +494,6 @@ export function AddCustomEntryButton({
     const [newContent, setNewContent] = useState('')
     const [saving, setSaving] = useState(false)
 
-    if (isLeaderView) return null
-
     const handleSave = async () => {
         if (!newContent.trim()) { toast.error('Please write something.'); return }
         setSaving(true)
