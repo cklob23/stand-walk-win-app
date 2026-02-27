@@ -14,7 +14,7 @@ import { toast } from 'sonner'
 import type { Profile, Pairing, Message, MessageReaction } from '@/lib/types'
 import { format, isToday, isYesterday } from 'date-fns'
 import { MessageBubble, getFileIcon } from './message-bubble'
-import { notifyNewMessage } from '@/lib/notifications'
+import { notifyNewMessage, notifyMessageReaction } from '@/lib/notifications'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
 import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
 
@@ -562,6 +562,17 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
               : m
           )
         )
+
+        // Notify the message author (only if it's the partner's message)
+        if (msg.sender_id === partner.id) {
+          notifyMessageReaction(
+            partner.id,
+            profile.full_name || 'Your partner',
+            pairing.id,
+            emoji,
+            msg.content
+          ).catch(() => { })
+        }
       }
     }
   }

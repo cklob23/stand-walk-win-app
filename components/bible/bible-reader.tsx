@@ -14,7 +14,7 @@ import {
     BookOpen, ChevronLeft, ChevronRight, BookMarked, ArrowLeft,
     Highlighter, MessageSquare, Trash2, X, Check,
     Volume2, VolumeX, Pause, Play, Type,
-    BookHeart, Share2, PenLine, Send, Loader2, Sparkles
+    BookHeart, Share2, PenLine, Send, Loader2, Sparkles, RefreshCw
 } from 'lucide-react'
 import useSWR from 'swr'
 import {
@@ -32,6 +32,7 @@ import {
     saveMultipleVersesToJournal,
     sendMultipleVersesToPartner,
     shareMultipleVersesWithPartner,
+    sendExplanationToPartner,
 } from '@/lib/bible-highlight-actions'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
@@ -198,12 +199,15 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null) // seconds left
     const [autoPlayNextChapter, setAutoPlayNextChapter] = useState(false)
 
-    // AI Explain feature (Leaders only)
+    // AI Explain feature
     const [showExplainDialog, setShowExplainDialog] = useState(false)
     const [explainReference, setExplainReference] = useState('')
     const [explainText, setExplainText] = useState('')
     const [explainLoading, setExplainLoading] = useState(false)
     const [explainContent, setExplainContent] = useState('')
+    const [explainError, setExplainError] = useState(false)
+    const [explainSharing, setExplainSharing] = useState(false)
+    const [selectedExplainLines, setSelectedExplainLines] = useState<Set<number>>(new Set())
     const explainAbortRef = useRef<AbortController | null>(null)
     const isMobile = useIsMobile()
     // Detect Apple platforms (iOS, iPadOS, macOS) to prefer cloud voices
@@ -1263,7 +1267,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setExplainReference(reference)
         setExplainText(verseText)
         setExplainContent('')
+        setExplainError(false)
         setExplainLoading(true)
+        setExplainSharing(false)
+        setSelectedExplainLines(new Set())
         setShowExplainDialog(true)
         setSelectedVerse(null)
 
@@ -1292,7 +1299,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             }
         } catch (e: unknown) {
             if (e instanceof Error && e.name !== 'AbortError') {
-                setExplainContent('Failed to generate explanation. Please try again.')
+                setExplainError(true)
             }
         } finally {
             setExplainLoading(false)
@@ -2492,34 +2499,32 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                                     )
                                                                                 )}
 
-                                                                                {/* AI Explain -- Leaders only */}
-                                                                                {userRole === 'leader' && (
-                                                                                    <Button
-                                                                                        variant="outline"
-                                                                                        size="sm"
-                                                                                        className="h-7 text-xs gap-1 font-sans bg-transparent text-primary border-primary/30 hover:bg-primary/5"
-                                                                                        onClick={() => {
-                                                                                            const bookName = books.find(b => b.id === selectedBook)?.name || ''
-                                                                                            if (isGroup && highlightGroup.length > 1) {
-                                                                                                const ref = `${bookName} ${selectedChapter}:${buildRangeStr(highlightGroup)}`
-                                                                                                const text = highlightGroup
-                                                                                                    .map(vn => {
-                                                                                                        const vData = verses.find(vv => vv.verse === vn)
-                                                                                                        return vData ? `${vn} ${vData.text}` : ''
-                                                                                                    })
-                                                                                                    .filter(Boolean)
-                                                                                                    .join(' ')
-                                                                                                handleExplainVerse(ref, text)
-                                                                                            } else {
-                                                                                                const ref = `${bookName} ${selectedChapter}:${v.verse}`
-                                                                                                handleExplainVerse(ref, v.text)
-                                                                                            }
-                                                                                        }}
-                                                                                    >
-                                                                                        <Sparkles className="h-3 w-3" />
-                                                                                        Explain
-                                                                                    </Button>
-                                                                                )}
+                                                                                {/* AI Explain */}
+                                                                                <Button
+                                                                                    variant="outline"
+                                                                                    size="sm"
+                                                                                    className="h-7 text-xs gap-1 font-sans bg-transparent text-primary border-primary/30 hover:bg-primary/5"
+                                                                                    onClick={() => {
+                                                                                        const bookName = books.find(b => b.id === selectedBook)?.name || ''
+                                                                                        if (isGroup && highlightGroup.length > 1) {
+                                                                                            const ref = `${bookName} ${selectedChapter}:${buildRangeStr(highlightGroup)}`
+                                                                                            const text = highlightGroup
+                                                                                                .map(vn => {
+                                                                                                    const vData = verses.find(vv => vv.verse === vn)
+                                                                                                    return vData ? `${vn} ${vData.text}` : ''
+                                                                                                })
+                                                                                                .filter(Boolean)
+                                                                                                .join(' ')
+                                                                                            handleExplainVerse(ref, text)
+                                                                                        } else {
+                                                                                            const ref = `${bookName} ${selectedChapter}:${v.verse}`
+                                                                                            handleExplainVerse(ref, v.text)
+                                                                                        }
+                                                                                    }}
+                                                                                >
+                                                                                    <Sparkles className="h-3 w-3" />
+                                                                                    Explain
+                                                                                </Button>
 
                                                                                 {/* Listen from here -- available for ALL verses */}
                                                                                 {(
@@ -2803,60 +2808,119 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     </CardContent>
                 </Card>
             )}
-            {/* AI Explain Dialog (Leaders only) */}
-            {userRole === 'leader' && (
-                <Dialog open={showExplainDialog} onOpenChange={(open) => {
-                    if (!open && explainAbortRef.current) explainAbortRef.current.abort()
-                    setShowExplainDialog(open)
-                }}>
-                    <DialogContent className="max-w-lg max-h-[80vh] flex flex-col gap-0 p-0 overflow-hidden">
-                        {/* Header */}
-                        <div className="px-5 pt-5 pb-3 border-b border-border/50">
-                            <DialogHeader className="space-y-1">
-                                <DialogTitle className="text-base font-semibold text-foreground font-sans">
-                                    {explainReference}
-                                </DialogTitle>
-                                <p className="text-xs text-muted-foreground font-sans">{ENGLISH_TRANSLATIONS.find(t => t.identifier === translation)?.name || translation}</p>
-                            </DialogHeader>
-                            {/* Quoted verse text */}
-                            <blockquote className="mt-3 border-l-2 border-primary/30 pl-3 text-[13px] italic text-muted-foreground font-serif leading-relaxed">
-                                {explainText.length > 250 ? explainText.slice(0, 250).trim() + '...' : explainText}
-                            </blockquote>
-                        </div>
+            {/* AI Explain Dialog */}
+            <Dialog open={showExplainDialog} onOpenChange={(open) => {
+                if (!open && explainAbortRef.current) explainAbortRef.current.abort()
+                setShowExplainDialog(open)
+            }}>
+                <DialogContent className="max-w-lg max-h-[80vh] flex flex-col gap-0 p-0 overflow-hidden">
+                    {/* Header */}
+                    <div className="px-5 pt-5 pb-3 border-b border-border/50">
+                        <DialogHeader className="space-y-1">
+                            <DialogTitle className="text-base font-semibold text-foreground font-sans">
+                                {explainReference}
+                            </DialogTitle>
+                            <p className="text-xs text-muted-foreground font-sans">{ENGLISH_TRANSLATIONS.find(t => t.identifier === translation)?.name || translation}</p>
+                        </DialogHeader>
+                        {/* Quoted verse text */}
+                        <blockquote className="mt-3 border-l-2 border-primary/30 pl-3 text-[13px] italic text-muted-foreground font-serif leading-relaxed">
+                            {explainText.length > 250 ? explainText.slice(0, 250).trim() + '...' : explainText}
+                        </blockquote>
+                    </div>
 
-                        {/* Scrollable content */}
-                        <div className="flex-1 overflow-y-auto px-5 py-4">
-                            {/* Loading state */}
-                            {explainLoading && !explainContent && (
-                                <div className="flex items-center gap-2.5 text-sm text-muted-foreground py-6 justify-center">
-                                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                    <span className="font-sans">Thinking...</span>
-                                </div>
-                            )}
-                            {/* Rendered explanation */}
-                            {explainContent && (
+                    {/* Scrollable content */}
+                    <div className="flex-1 overflow-y-auto px-5 py-4">
+                        {/* Loading state */}
+                        {explainLoading && !explainContent && (
+                            <div className="flex items-center gap-2.5 text-sm text-muted-foreground py-6 justify-center">
+                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                <span className="font-sans">Thinking...</span>
+                            </div>
+                        )}
+                        {/* Error state */}
+                        {explainError && !explainContent && (
+                            <div className="flex flex-col items-center gap-3 py-6">
+                                <p className="text-sm text-destructive font-sans">Failed to generate explanation.</p>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs gap-1.5 font-sans"
+                                    onClick={() => handleExplainVerse(explainReference, explainText)}
+                                >
+                                    <RefreshCw className="h-3 w-3" />
+                                    Try Again
+                                </Button>
+                            </div>
+                        )}
+                        {/* Rendered explanation - tap lines to select */}
+                        {explainContent && (() => {
+                            // Build selectable blocks from the content lines
+                            const lines = explainContent.split('\n')
+                            const blocks: { raw: string; lineIndex: number }[] = []
+                            lines.forEach((line, i) => {
+                                const trimmed = line.trim()
+                                if (trimmed) blocks.push({ raw: trimmed, lineIndex: i })
+                            })
+
+                            const hasSelection = selectedExplainLines.size > 0
+
+                            return (
                                 <div className="space-y-0 font-sans">
-                                    {explainContent.split('\n').map((line, i) => {
+                                    {hasSelection && !explainLoading && (
+                                        <div className="flex items-center justify-between mb-3 px-1">
+                                            <p className="text-[11px] text-primary font-medium font-sans">
+                                                {selectedExplainLines.size} section{selectedExplainLines.size > 1 ? 's' : ''} selected
+                                            </p>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 text-[11px] px-2 text-muted-foreground"
+                                                onClick={() => setSelectedExplainLines(new Set())}
+                                            >
+                                                Clear
+                                            </Button>
+                                        </div>
+                                    )}
+                                    {lines.map((line, i) => {
                                         const trimmed = line.trim()
                                         if (!trimmed) return <div key={i} className="h-2.5" />
+
+                                        const isSelected = selectedExplainLines.has(i)
+                                        const dimmed = hasSelection && !isSelected
+
+                                        const toggleLine = () => {
+                                            if (explainLoading) return
+                                            setSelectedExplainLines(prev => {
+                                                const next = new Set(prev)
+                                                if (next.has(i)) next.delete(i)
+                                                else next.add(i)
+                                                return next
+                                            })
+                                        }
+
+                                        const selectableClass = `rounded-md px-1.5 -mx-1.5 py-0.5 transition-all cursor-pointer select-none ${isSelected
+                                                ? 'bg-primary/10 ring-1 ring-primary/30'
+                                                : dimmed
+                                                    ? 'opacity-40 hover:opacity-70'
+                                                    : 'hover:bg-muted/50 active:bg-muted'
+                                            }`
 
                                         // ### or ## headers -> section title
                                         if (/^#{1,3}\s+/.test(trimmed)) {
                                             const text = trimmed.replace(/^#{1,3}\s+/, '').replace(/\*\*/g, '')
-                                            return <h4 key={i} className="text-sm font-semibold text-foreground mt-4 mb-1.5 first:mt-0">{text}</h4>
+                                            return <h4 key={i} role="button" onClick={toggleLine} className={`text-sm font-semibold text-foreground mt-4 mb-1.5 first:mt-0 ${selectableClass}`}>{text}</h4>
                                         }
 
                                         // **Bold line** (entire line is bold) -> section title
                                         if (/^\*\*[^*]+\*\*$/.test(trimmed)) {
-                                            return <h4 key={i} className="text-sm font-semibold text-foreground mt-4 mb-1.5 first:mt-0">{trimmed.replace(/\*\*/g, '')}</h4>
+                                            return <h4 key={i} role="button" onClick={toggleLine} className={`text-sm font-semibold text-foreground mt-4 mb-1.5 first:mt-0 ${selectableClass}`}>{trimmed.replace(/\*\*/g, '')}</h4>
                                         }
 
                                         // Numbered header like "1. **Summary**" or "1. Summary"
                                         if (/^\d+\.\s/.test(trimmed)) {
                                             const text = trimmed.replace(/\*\*/g, '')
-                                            // If short (likely a header), render as title
                                             if (text.length < 60 && !text.includes('. ')) {
-                                                return <h4 key={i} className="text-sm font-semibold text-foreground mt-4 mb-1.5 first:mt-0">{text}</h4>
+                                                return <h4 key={i} role="button" onClick={toggleLine} className={`text-sm font-semibold text-foreground mt-4 mb-1.5 first:mt-0 ${selectableClass}`}>{text}</h4>
                                             }
                                         }
 
@@ -2865,7 +2929,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             const bulletText = trimmed.replace(/^[-*]\s+/, '')
                                             const parts = bulletText.split(/\*\*(.*?)\*\*/g)
                                             return (
-                                                <div key={i} className="flex gap-2 ml-1 my-1">
+                                                <div key={i} role="button" onClick={toggleLine} className={`flex gap-2 ml-1 my-1 ${selectableClass}`}>
                                                     <span className="text-primary/60 mt-[3px] text-xs shrink-0">{'●'}</span>
                                                     <p className="text-sm leading-relaxed text-foreground/85">
                                                         {parts.map((part, j) =>
@@ -2881,7 +2945,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         // Regular paragraph with inline bold
                                         const parts = trimmed.split(/\*\*(.*?)\*\*/g)
                                         return (
-                                            <p key={i} className="text-sm leading-relaxed text-foreground/85 my-1.5">
+                                            <p key={i} role="button" onClick={toggleLine} className={`text-sm leading-relaxed text-foreground/85 my-1.5 ${selectableClass}`}>
                                                 {parts.map((part, j) =>
                                                     j % 2 === 1
                                                         ? <strong key={j} className="font-semibold text-foreground">{part}</strong>
@@ -2892,15 +2956,73 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     })}
                                     {explainLoading && <span className="inline-block w-1.5 h-4 bg-primary/50 animate-pulse ml-0.5 align-text-bottom rounded-sm" />}
                                 </div>
-                            )}
-                        </div>
-                    </DialogContent>
-                </Dialog>
-            )}
+                            )
+                        })()}
+                    </div>
+
+                    {/* Share with Partner button */}
+                    {explainContent && !explainLoading && !explainError && pairingId && (() => {
+                        const hasSelection = selectedExplainLines.size > 0
+                        const lines = explainContent.split('\n')
+                        const textToShare = hasSelection
+                            ? Array.from(selectedExplainLines).sort((a, b) => a - b).map(i => lines[i]?.trim()).filter(Boolean).join('\n\n')
+                            : explainContent
+
+                        return (
+                            <div className="px-5 py-3 border-t border-border/50 space-y-1.5">
+                                {hasSelection && (
+                                    <p className="text-[10px] text-primary/70 font-sans text-center">
+                                        {selectedExplainLines.size} section{selectedExplainLines.size > 1 ? 's' : ''} will be shared
+                                    </p>
+                                )}
+                                {!hasSelection && (
+                                    <p className="text-[10px] text-muted-foreground font-sans text-center">
+                                        Tap sections to select specific parts, or send all
+                                    </p>
+                                )}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full h-8 text-xs gap-1.5 font-sans"
+                                    onClick={async () => {
+                                        setExplainSharing(true)
+                                        const result = await sendExplanationToPartner(pairingId!, explainReference, textToShare)
+                                        if (result.success) {
+                                            toast.success(
+                                                hasSelection ? 'Selected sections sent!' : 'Explanation sent!',
+                                                {
+                                                    action: {
+                                                        label: 'Go to Messages',
+                                                        onClick: () => router.push('/dashboard/messages'),
+                                                    },
+                                                }
+                                            )
+                                            setSelectedExplainLines(new Set())
+                                        } else {
+                                            toast.error('Failed to share explanation')
+                                        }
+                                        setExplainSharing(false)
+                                    }}
+                                    disabled={explainSharing}
+                                >
+                                    {explainSharing ? (
+                                        <><Loader2 className="h-3 w-3 animate-spin" /> Sending...</>
+                                    ) : hasSelection ? (
+                                        <><Send className="h-3 w-3" /> Send Selection to Partner</>
+                                    ) : (
+                                        <><Send className="h-3 w-3" /> Send All to Partner</>
+                                    )}
+                                </Button>
+                            </div>
+                        )
+                    })()}
+                </DialogContent>
+            </Dialog>
 
             {/* Onboarding Tours */}
+
             {view === 'books' && <FeatureTour tourId="bible" steps={bibleSteps} />}
-            {view === 'reading' && <FeatureTour tourId="bible-reading" steps={bibleReadingSteps} />}
+            <FeatureTour tourId="bible-reading" steps={bibleReadingSteps} waitFor={view === 'reading'} />
         </div>
     )
 }

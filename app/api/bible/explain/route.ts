@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 
 export const maxDuration = 30
 
-const SYSTEM_PROMPT = `You are a Bible study assistant for Christian discipleship leaders. Your ONLY purpose is to explain Bible verses, provide historical and cultural context, and help leaders understand scripture passages so they can teach their learners.
+const SYSTEM_PROMPT = `You are a Bible study assistant for Christian discipleship. Your ONLY purpose is to explain Bible verses, provide historical and cultural context, and help people understand scripture passages for personal growth and teaching.
 
 RULES:
 - You may ONLY discuss Bible verses, biblical stories, biblical characters, biblical history, and biblical context.
@@ -26,30 +26,19 @@ export async function POST(req: Request) {
         return new Response('Unauthorized', { status: 401 })
     }
 
-    // Verify user is a leader
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-
-    if (!profile || profile.role !== 'leader') {
-        return new Response('Only leaders can use this feature', { status: 403 })
-    }
-
     const { reference, verseText, translation } = await req.json()
 
     if (!reference || !verseText) {
         return new Response('Missing verse reference or text', { status: 400 })
     }
 
-    const result = streamText({
+    const result = await streamText({
         model: 'openai/gpt-4o-mini',
         system: SYSTEM_PROMPT,
         messages: [
             {
                 role: 'user',
-                content: `Explain this passage in a way I can share with someone I'm discipling. Start with what it means, weave in any helpful background or context, and wrap up with something practical we could discuss together.
+                content: `Explain this passage in a clear, practical way. Start with what it means, weave in any helpful background or context, and wrap up with something practical to reflect on or discuss.
 
 ${reference} (${translation || 'ESV'})
 "${verseText}"`,

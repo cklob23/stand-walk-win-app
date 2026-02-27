@@ -47,6 +47,7 @@ export function SettingsView({ profile }: SettingsViewProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
+  const [inAppNotifications, setInAppNotifications] = useState(profile.in_app_notifications ?? true)
   const [emailNotifications, setEmailNotifications] = useState(profile.email_notifications ?? true)
   const [messageNotifications, setMessageNotifications] = useState(profile.message_notifications ?? true)
   const [progressNotifications, setProgressNotifications] = useState(profile.progress_notifications ?? true)
@@ -135,6 +136,23 @@ export function SettingsView({ profile }: SettingsViewProps) {
               Notifications
             </h3>
             <div className="space-y-4">
+              <div className="flex items-start sm:items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <Label htmlFor="in-app-notifications" className="text-sm">In-App Notifications</Label>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    Show popup notifications within the app
+                  </p>
+                </div>
+                <Switch
+                  id="in-app-notifications"
+                  checked={inAppNotifications}
+                  onCheckedChange={async (checked) => {
+                    setInAppNotifications(checked)
+                    await updateNotificationSettings({ in_app_notifications: checked })
+                  }}
+                  className="shrink-0"
+                />
+              </div>
               <div className="flex items-start sm:items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <Label htmlFor="email-notifications" className="text-sm">Email Notifications</Label>

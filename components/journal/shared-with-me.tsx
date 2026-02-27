@@ -1,12 +1,16 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { BookOpen, MessageSquare, PenLine, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
+import { Textarea } from '@/components/ui/textarea'
+import { BookOpen, MessageSquare, PenLine, ChevronDown, ChevronUp, ExternalLink, Reply, Loader2, Send } from 'lucide-react'
 import { format } from 'date-fns'
 import { scriptureToUrl } from '@/lib/bible-utils'
+import { replyToSharedItem } from '@/lib/journal-actions'
+import { toast } from 'sonner'
 import Link from 'next/link'
 
 export interface SharedItem {
@@ -17,16 +21,35 @@ export interface SharedItem {
     note: string
     sender_name: string
     created_at: string
+    reply_text?: string | null
+    replied_at?: string | null
 }
 
 interface SharedWithMeProps {
     items: SharedItem[]
     autoOpen?: boolean
+    pairingId: string
+    currentUserName: string
 }
 
-export function SharedWithMe({ items, autoOpen = false }: SharedWithMeProps) {
+export function SharedWithMe({ items, autoOpen = false, pairingId, currentUserName }: SharedWithMeProps) {
+    const router = useRouter()
     const [expanded, setExpanded] = useState(autoOpen)
     const sectionRef = useRef<HTMLDivElement>(null)
+    const [replyingTo, setReplyingTo] = useState<string | null>(null)
+    const [replyText, setReplyText] = useState('')
+    const [replySaving, setReplySaving] = useState(false)
+
+    const handleReply = async (itemId: string) => {
+        if (!replyText.trim()) return
+        setReplySaving(true)
+        const result = await replyToSharedItem(itemId, replyText.trim(), pairingId, currentUserName)
+        if (result.error) toast.error(result.error)
+        else { toast.success('Reply sent!'); router.refresh() }
+        setReplyingTo(null)
+        setReplyText('')
+        setReplySaving(false)
+    }
 
     useEffect(() => {
         if (autoOpen) {
@@ -151,6 +174,62 @@ export function SharedWithMe({ items, autoOpen = false }: SharedWithMeProps) {
                                         </Button>
                                     ) : null
                                 })()}
+
+                                {/* Existing reply */}
+                                {item.reply_text && (
+                                    <div className="bg-primary/5 border border-primary/10 rounded-md p-2.5 mt-2">
+                                        <p className="text-[10px] font-medium text-primary/70 mb-0.5">Your reply</p>
+                                        <p className="text-sm text-foreground/85">{item.reply_text}</p>
+                                        {item.replied_at && (
+                                            <p className="text-[10px] text-muted-foreground mt-1">
+                                                {format(new Date(item.replied_at), 'MMM d, h:mm a')}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Reply form */}
+                                {replyingTo === item.id ? (
+                                    <div className="mt-2 space-y-2">
+                                        <Textarea
+                                            value={replyText}
+                                            onChange={(e) => setReplyText(e.target.value)}
+                                            placeholder="Write a reply..."
+                                            rows={2}
+                                            className="resize-none text-sm"
+                                            autoFocus
+                                        />
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                size="sm"
+                                                className="h-7 text-xs gap-1"
+                                                onClick={() => handleReply(item.id)}
+                                                disabled={replySaving || !replyText.trim()}
+                                            >
+                                                {replySaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                                                Send Reply
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 text-xs"
+                                                onClick={() => { setReplyingTo(null); setReplyText('') }}
+                                            >
+                                                Cancel
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ) : !item.reply_text ? (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs gap-1 mt-1 text-muted-foreground hover:text-foreground"
+                                        onClick={() => setReplyingTo(item.id)}
+                                    >
+                                        <Reply className="h-3 w-3" />
+                                        Reply
+                                    </Button>
+                                ) : null}
                             </CardContent>
                         </Card>
                     ))}

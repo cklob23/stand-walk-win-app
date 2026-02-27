@@ -117,7 +117,12 @@ export function JournalPageClient({
 
             {/* Shared With Me section */}
             <div data-tour="journal-shared">
-                <SharedWithMe items={sharedItems} autoOpen={initialSection === 'shared'} />
+                <SharedWithMe
+                    items={sharedItems}
+                    autoOpen={initialSection === 'shared'}
+                    pairingId={pairingId}
+                    currentUserName={isLeader ? leaderName : learnerName}
+                />
             </div>
 
             {/* Own journal entries */}

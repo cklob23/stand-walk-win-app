@@ -631,3 +631,57 @@ export async function shareMultipleVersesWithPartner(
     revalidatePath('/dashboard/journal')
     return { success: true }
 }
+
+// Send an AI explanation to partner as a chat message
+export async function sendExplanationToPartner(
+    pairingId: string,
+    reference: string,
+    explanation: string
+): Promise<{ success: boolean }> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false }
+
+    const { data: pairing } = await supabase
+        .from('pairings')
+        .select('leader_id, learner_id')
+        .eq('id', pairingId)
+        .single()
+
+    if (!pairing) return { success: false }
+
+    const partnerId = pairing.leader_id === user.id ? pairing.learner_id : pairing.leader_id
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single()
+
+    const senderName = profile?.full_name || 'Your partner'
+
+    // Clean up markdown for chat: remove # headers, keep text readable
+    const cleanExplanation = explanation
+        .replace(/^#{1,3}\s+/gm, '')
+        .replace(/\*\*/g, '')
+        .trim()
+
+    const messageText = `AI Explanation of ${reference}:\n\n${cleanExplanation}`
+
+    await supabase.from('messages').insert({
+        pairing_id: pairingId,
+        sender_id: user.id,
+        content: messageText,
+    })
+
+    await createNotification({
+        userId: partnerId!,
+        pairingId,
+        type: 'message',
+        title: 'Bible Explanation Shared',
+        message: `${senderName} shared an AI explanation of ${reference} with you.`,
+    })
+
+    revalidatePath('/dashboard/messages')
+    return { success: true }
+}

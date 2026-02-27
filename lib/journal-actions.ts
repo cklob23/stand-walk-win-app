@@ -757,3 +757,106 @@ export async function requestJournalMeeting(
         return { error: 'Failed to send meeting request.' }
     }
 }
+
+// ──────────────────────────────────────────
+// Reply to a shared journal item
+// ──────────────────────────────────────────
+export async function replyToSharedItem(
+    itemId: string,
+    replyText: string,
+    pairingId: string,
+    senderName: string
+): Promise<{ success?: boolean; error?: string }> {
+    try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { error: 'Not authenticated' }
+
+        if (!replyText.trim()) return { error: 'Reply cannot be empty' }
+
+        // Check if this is a DB shared_item (UUID) or a computed journal item (journal-*)
+        const isJournalItem = itemId.startsWith('journal-')
+
+        if (isJournalItem) {
+            // For journal-based shared items, we store the reply on the prayer_journal entry
+            // Format: journal-daily-{entryId}, journal-verse-{entryId}-{idx}, journal-custom-{entryId}-{idx}
+            const parts = itemId.split('-')
+            let entryId: string | null = null
+            if (parts[1] === 'daily') {
+                entryId = parts.slice(2).join('-')
+            } else if (parts[1] === 'verse' || parts[1] === 'custom') {
+                // journal-verse-{uuid}-{idx} or journal-custom-{uuid}-{idx}
+                entryId = parts.slice(2, -1).join('-')
+            }
+
+            if (!entryId) return { error: 'Invalid item reference' }
+
+            // Use admin client to update partner's entry (bypass RLS)
+            const { createAdminClient } = await import('@/lib/supabase/server')
+            const adminSupabase = createAdminClient()
+
+            const { error } = await adminSupabase
+                .from('prayer_journal')
+                .update({
+                    partner_reply: replyText.trim(),
+                    partner_reply_by: user.id,
+                    partner_reply_at: new Date().toISOString(),
+                })
+                .eq('id', entryId)
+
+            if (error) return { error: error.message }
+
+            // Get original entry owner for notification
+            const { data: entry } = await adminSupabase
+                .from('prayer_journal')
+                .select('user_id')
+                .eq('id', entryId)
+                .single()
+
+            if (entry) {
+                await createNotification({
+                    userId: entry.user_id,
+                    pairingId,
+                    type: 'journal_shared',
+                    title: 'Reply to Your Journal',
+                    message: `${senderName} replied to your shared journal entry.`,
+                })
+            }
+        } else {
+            // DB shared_item -- update directly
+            const { error } = await supabase
+                .from('shared_items')
+                .update({
+                    reply_text: replyText.trim(),
+                    reply_sender_id: user.id,
+                    replied_at: new Date().toISOString(),
+                })
+                .eq('id', itemId)
+                .eq('recipient_id', user.id)
+
+            if (error) return { error: error.message }
+
+            // Get the sender for notification
+            const { data: item } = await supabase
+                .from('shared_items')
+                .select('sender_id')
+                .eq('id', itemId)
+                .single()
+
+            if (item) {
+                await createNotification({
+                    userId: item.sender_id,
+                    pairingId,
+                    type: 'journal_shared',
+                    title: 'Reply to Your Shared Item',
+                    message: `${senderName} replied to something you shared.`,
+                })
+            }
+        }
+
+        revalidatePath('/dashboard/journal')
+        return { success: true }
+    } catch {
+        return { error: 'Failed to send reply.' }
+    }
+}

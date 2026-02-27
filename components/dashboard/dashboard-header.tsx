@@ -106,13 +106,16 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
     })
     setUnreadCount(prev => prev + 1)
 
-    toast(newNotif.title, {
-      description: newNotif.message,
-      action: {
-        label: 'View',
-        onClick: () => router.push(getNotificationHref(newNotif)),
-      },
-    })
+    // Only show toast popup if user has in-app notifications enabled
+    if (profile.in_app_notifications !== false) {
+      toast(newNotif.title, {
+        description: newNotif.message,
+        action: {
+          label: 'View',
+          onClick: () => router.push(getNotificationHref(newNotif)),
+        },
+      })
+    }
 
     sendNotification(newNotif.title, {
       body: newNotif.message,

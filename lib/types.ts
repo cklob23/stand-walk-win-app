@@ -10,6 +10,7 @@ export interface Profile {
   phone: string | null
   zoom_link: string | null
   onboarding_complete: boolean
+  in_app_notifications?: boolean
   email_notifications?: boolean
   message_notifications?: boolean
   progress_notifications?: boolean

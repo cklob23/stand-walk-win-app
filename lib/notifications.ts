@@ -251,6 +251,32 @@ export async function notifySharedVerse(
   })
 }
 
+const emojiLabels: Record<string, string> = {
+  thumbsup: 'a thumbs up',
+  heart: 'a heart',
+  pray: 'a prayer',
+  laugh: 'a laugh',
+  sad: 'a sad face',
+  exclamation: 'an exclamation',
+}
+
+export async function notifyMessageReaction(
+  recipientId: string,
+  senderName: string,
+  pairingId: string,
+  emoji: string,
+  messagePreview: string
+) {
+  const label = emojiLabels[emoji] || `a ${emoji}`
+  return createNotification({
+    userId: recipientId,
+    pairingId,
+    type: 'message',
+    title: `${senderName} reacted to your message`,
+    message: `${senderName} reacted with ${label} to "${messagePreview.length > 60 ? messagePreview.slice(0, 60) + '...' : messagePreview}"`,
+  })
+}
+
 export async function advanceToNextWeek(
   pairingId: string,
   currentWeek: number,

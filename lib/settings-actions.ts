@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
 export async function updateNotificationSettings(settings: {
+  in_app_notifications?: boolean
   email_notifications?: boolean
   message_notifications?: boolean
   progress_notifications?: boolean
@@ -18,14 +19,16 @@ export async function updateNotificationSettings(settings: {
       return { error: 'Not authenticated' }
     }
 
+    // Build update object with only defined keys
+    const updateObj: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    if (settings.in_app_notifications !== undefined) updateObj.in_app_notifications = settings.in_app_notifications
+    if (settings.email_notifications !== undefined) updateObj.email_notifications = settings.email_notifications
+    if (settings.message_notifications !== undefined) updateObj.message_notifications = settings.message_notifications
+    if (settings.progress_notifications !== undefined) updateObj.progress_notifications = settings.progress_notifications
+
     const { error } = await supabase
       .from('profiles')
-      .update({
-        email_notifications: settings.email_notifications,
-        message_notifications: settings.message_notifications,
-        progress_notifications: settings.progress_notifications,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateObj)
       .eq('id', user.id)
 
     if (error) {
