@@ -27,27 +27,46 @@ export function AttachmentPreviewModal({ open, onOpenChange, url, type }: Attach
     const mediaType = type === 'image' ? getMediaType(url) : (type === 'file' ? getMediaType(url) : 'other')
     const FileIcon = getFileIcon(fileName)
 
+    const fetchBlob = async () => {
+        const response = await fetch(url)
+        return response.blob()
+    }
+
     const handleDownload = async () => {
         try {
-            const response = await fetch(url)
-            const blob = await response.blob()
+            const blob = await fetchBlob()
             const blobUrl = window.URL.createObjectURL(blob)
             const a = document.createElement('a')
             a.href = blobUrl
             a.download = fileName
+            a.style.display = 'none'
             document.body.appendChild(a)
             a.click()
-            document.body.removeChild(a)
-            window.URL.revokeObjectURL(blobUrl)
+            // Small delay before cleanup so mobile Safari can start the download
+            setTimeout(() => {
+                document.body.removeChild(a)
+                window.URL.revokeObjectURL(blobUrl)
+            }, 200)
         } catch {
             // Fallback: open in new tab
             window.open(url, '_blank')
         }
     }
 
+    const handleOpenInBrowser = async () => {
+        try {
+            const blob = await fetchBlob()
+            const blobUrl = window.URL.createObjectURL(blob)
+            window.open(blobUrl, '_blank')
+        } catch {
+            // Fallback: try direct URL
+            window.open(url, '_blank')
+        }
+    }
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] p-0 overflow-hidden bg-background border-0 gap-0 [&>button]:hidden">
+            <DialogContent className="max-w-4xl w-[calc(100vw-2rem)] sm:w-[95vw] max-h-[90vh] p-0 overflow-hidden bg-background border-0 gap-0 [&>button]:hidden">
                 <VisuallyHidden>
                     <DialogTitle>{fileName}</DialogTitle>
                 </VisuallyHidden>
@@ -72,7 +91,7 @@ export function AttachmentPreviewModal({ open, onOpenChange, url, type }: Attach
                             variant="ghost"
                             size="sm"
                             className="h-8 gap-1.5 text-xs"
-                            onClick={() => window.open(url, '_blank')}
+                            onClick={handleOpenInBrowser}
                         >
                             <ExternalLink className="h-3.5 w-3.5" />
                             Open
@@ -145,7 +164,7 @@ export function AttachmentPreviewModal({ open, onOpenChange, url, type }: Attach
                                     <Download className="h-3.5 w-3.5" />
                                     Download
                                 </Button>
-                                <Button size="sm" variant="outline" onClick={() => window.open(url, '_blank')} className="gap-1.5">
+                                <Button size="sm" variant="outline" onClick={handleOpenInBrowser} className="gap-1.5">
                                     <ExternalLink className="h-3.5 w-3.5" />
                                     Open in Browser
                                 </Button>

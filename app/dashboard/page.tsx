@@ -127,7 +127,8 @@ export default async function DashboardPage() {
       .from('messages')
       .select(`
         *,
-        sender:profiles(id, full_name, avatar_url)
+        sender:profiles(id, full_name, avatar_url),
+        reactions:message_reactions(*)
       `)
       .eq('pairing_id', pairing.id)
       .order('created_at', { ascending: false })
@@ -203,15 +204,17 @@ export default async function DashboardPage() {
     hasWeeklyMeeting = (count ?? 0) >= effectiveCurrentWeek
   }
 
-  // Check if learner has journal entry for today
+  // Check if user has journal entry for today
+  // Note: this uses UTC date on the server; the DailyJournalPopup also checks
+  // via localStorage with the client's local date for accurate dismissal
   let hasJournalEntryToday = false
-  if (profile.role === 'learner' && pairing) {
+  if (pairing) {
     const today = new Date().toISOString().split('T')[0]
     const { data: journalEntry } = await supabase
       .from('prayer_journal')
       .select('id')
       .eq('user_id', user.id)
-      .eq('entry_date', today)
+      .eq('journal_date', today)
       .limit(1)
 
     hasJournalEntryToday = (journalEntry?.length ?? 0) > 0
@@ -247,7 +250,7 @@ export default async function DashboardPage() {
   }
 
   if (profile.role === 'leader') {
-    return <LeaderDashboard {...dashboardProps} sharedJournalEntries={sharedJournalEntries} />
+    return <LeaderDashboard {...dashboardProps} sharedJournalEntries={sharedJournalEntries} hasJournalEntryToday={hasJournalEntryToday} />
   }
 
   return <LearnerDashboard {...dashboardProps} hasJournalEntryToday={hasJournalEntryToday} />

@@ -2039,12 +2039,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         >
                                             {audioLoading ? (
                                                 <>
-                                                    <span className="flex items-end gap-px h-3.5">
-                                                        <span className="w-[3px] h-full bg-primary/80 rounded-sm animate-audio-wave origin-bottom" style={{ animationDelay: '0ms' }} />
-                                                        <span className="w-[3px] h-full bg-primary/80 rounded-sm animate-audio-wave origin-bottom" style={{ animationDelay: '150ms' }} />
-                                                        <span className="w-[3px] h-full bg-primary/80 rounded-sm animate-audio-wave origin-bottom" style={{ animationDelay: '300ms' }} />
-                                                        <span className="w-[3px] h-full bg-primary/80 rounded-sm animate-audio-wave origin-bottom" style={{ animationDelay: '450ms' }} />
-                                                    </span>
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                                     Loading...
                                                 </>
                                             ) : (

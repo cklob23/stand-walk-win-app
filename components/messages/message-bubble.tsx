@@ -195,11 +195,11 @@ export function MessageBubble({
 
                     {/* Image attachment -- standalone, no bubble */}
                     {msg.attachment_url && msg.attachment_type === 'image' && (
-                        <div className={cn('mb-1', isOwn ? 'ml-auto' : 'mr-auto')}>
+                        <div className={cn('mb-1 w-full overflow-hidden', isOwn ? 'ml-auto' : 'mr-auto')}>
                             <img
                                 src={msg.attachment_url}
                                 alt="Shared image"
-                                className="rounded-2xl max-w-full max-h-72 object-cover cursor-pointer shadow-sm hover:opacity-90 transition-opacity"
+                                className="rounded-2xl w-full max-h-72 object-cover cursor-pointer shadow-sm hover:opacity-90 transition-opacity"
                                 onClick={() => setPreviewOpen(true)}
                                 crossOrigin="anonymous"
                             />
@@ -215,12 +215,12 @@ export function MessageBubble({
                                 type="button"
                                 onClick={() => setPreviewOpen(true)}
                                 className={cn(
-                                    'flex items-center gap-2.5 mb-1 px-3 py-2.5 rounded-2xl text-sm transition-colors border shadow-sm cursor-pointer w-full',
+                                    'flex items-center gap-2.5 mb-1 px-3 py-2.5 rounded-2xl text-sm transition-colors border shadow-sm cursor-pointer w-full min-w-0 overflow-hidden',
                                     'bg-card hover:bg-muted text-foreground text-left'
                                 )}
                             >
                                 <IconComponent className="h-5 w-5 shrink-0 text-primary" />
-                                <span className="truncate flex-1">{fileName}</span>
+                                <span className="truncate flex-1 min-w-0">{fileName}</span>
                                 <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             </button>
                         )

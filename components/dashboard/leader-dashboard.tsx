@@ -26,6 +26,7 @@ import { QuickChat } from './quick-chat'
 import { format, parseISO } from 'date-fns'
 import { scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
+import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { leaderDashboardSteps } from '@/lib/tour-steps'
 
@@ -42,6 +43,7 @@ interface LeaderDashboardProps {
   nextMeeting: ScheduledMeeting | null
   hasWeeklyMeeting: boolean
   sharedJournalEntries?: { id: string; entry_date: string; prayer_items: string; god_saying: string }[]
+  hasJournalEntryToday: boolean
 }
 
 export function LeaderDashboard({
@@ -55,6 +57,7 @@ export function LeaderDashboard({
   currentWeek,
   nextMeeting,
   sharedJournalEntries = [],
+  hasJournalEntryToday,
 }: LeaderDashboardProps) {
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
 
@@ -441,6 +444,13 @@ export function LeaderDashboard({
           </Card>
         </div>
       </div>
+
+      {/* Daily Journal Popup */}
+      <DailyJournalPopup
+        pairingId={pairing.id}
+        hasEntryToday={hasJournalEntryToday}
+        leaderName={partner?.full_name || 'your partner'}
+      />
 
       {/* Onboarding Tour */}
       <FeatureTour tourId="leader-dashboard" steps={leaderDashboardSteps} />

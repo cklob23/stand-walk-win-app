@@ -6,12 +6,14 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Send, Loader2, Check, CheckCheck } from 'lucide-react'
+import { Send, Loader2, Check, CheckCheck, ImageIcon, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Message } from '@/lib/types'
 import { formatDistanceToNow } from 'date-fns'
 import { notifyNewMessage } from '@/lib/notifications'
 import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
+import { getFileIcon } from '@/components/messages/message-bubble'
+import { getReactionIcon } from '@/components/messages/reaction-picker'
 
 interface QuickChatProps {
   pairingId: string
@@ -84,7 +86,8 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
               .from('messages')
               .select(`
                 *,
-                sender:profiles(id, full_name, avatar_url)
+                sender:profiles(id, full_name, avatar_url),
+                reactions:message_reactions(*)
               `)
               .eq('id', payload.new.id)
               .single()
@@ -152,7 +155,8 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
         .from('messages')
         .select(`
           *,
-          sender:profiles(id, full_name, avatar_url)
+          sender:profiles(id, full_name, avatar_url),
+          reactions:message_reactions(*)
         `)
         .eq('pairing_id', pairingId)
         .order('created_at', { ascending: false })
@@ -263,14 +267,74 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
                   </AvatarFallback>
                 </Avatar>
                 <div className={`flex-1 min-w-0 ${isOwn ? 'text-right' : 'text-left'}`}>
-                  <div
-                    className={`inline-block rounded-lg px-3 py-2 text-sm max-w-full ${isOwn
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-foreground'
-                      }`}
-                  >
-                    <p className="break-words">{msg.content}</p>
-                  </div>
+                  {/* Image attachment */}
+                  {msg.attachment_url && msg.attachment_type === 'image' && (
+                    <div className={`mb-1 ${isOwn ? 'ml-auto' : 'mr-auto'} max-w-[200px]`}>
+                      <img
+                        src={msg.attachment_url}
+                        alt="Shared image"
+                        className="rounded-lg w-full max-h-32 object-cover shadow-sm"
+                        crossOrigin="anonymous"
+                      />
+                    </div>
+                  )}
+
+                  {/* File attachment */}
+                  {msg.attachment_url && msg.attachment_type === 'file' && (() => {
+                    const fileName = decodeURIComponent(msg.attachment_url!.split('/').pop()?.split('?')[0] || 'File')
+                    const IconComponent = getFileIcon(fileName)
+                    return (
+                      <div
+                        className={`inline-flex items-center gap-2 mb-1 px-3 py-2 rounded-lg text-xs border bg-card text-foreground max-w-full ${isOwn ? 'ml-auto' : 'mr-auto'}`}
+                      >
+                        <IconComponent className="h-4 w-4 shrink-0 text-primary" />
+                        <span className="truncate">{fileName}</span>
+                      </div>
+                    )
+                  })()}
+
+                  {/* Text bubble */}
+                  {msg.content && (
+                    <div className="relative inline-block">
+                      <div
+                        className={`inline-block rounded-lg px-3 py-2 text-sm max-w-full ${isOwn
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-foreground'
+                          }`}
+                      >
+                        <p className="break-words">{msg.content}</p>
+                      </div>
+
+                      {/* Reactions */}
+                      {msg.reactions && msg.reactions.length > 0 && (
+                        <div className={`flex items-center gap-0.5 mt-[-6px] ${isOwn ? 'justify-end mr-1' : 'justify-start ml-1'}`}>
+                          <div className="flex items-center bg-card border rounded-full px-1.5 py-0.5 shadow-sm text-xs">
+                            {Array.from(new Set(msg.reactions.map(r => r.emoji))).map(emoji => (
+                              <span key={emoji} className="text-xs">{getReactionIcon(emoji)}</span>
+                            ))}
+                            {msg.reactions.length > 1 && (
+                              <span className="text-[10px] text-muted-foreground ml-0.5">{msg.reactions.length}</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Reactions for attachment-only messages (no text) */}
+                  {!msg.content && msg.reactions && msg.reactions.length > 0 && (
+                    <div className={`flex items-center gap-0.5 ${isOwn ? 'justify-end mr-1' : 'justify-start ml-1'}`}>
+                      <div className="flex items-center bg-card border rounded-full px-1.5 py-0.5 shadow-sm text-xs">
+                        {Array.from(new Set(msg.reactions.map(r => r.emoji))).map(emoji => (
+                          <span key={emoji} className="text-xs">{getReactionIcon(emoji)}</span>
+                        ))}
+                        {msg.reactions.length > 1 && (
+                          <span className="text-[10px] text-muted-foreground ml-0.5">{msg.reactions.length}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <p className={`text-xs text-muted-foreground mt-1 flex items-center gap-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
                     <span>{formatDistanceToNow(new Date(msg.created_at), { addSuffix: true })}</span>
                     {isOwn && (
