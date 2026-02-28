@@ -3,16 +3,17 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { 
-  BookOpen, 
-  Users, 
-  MessageSquare, 
-  TrendingUp, 
-  Calendar, 
+import {
+  BookOpen,
+  Users,
+  MessageSquare,
+  TrendingUp,
+  Calendar,
   Heart,
   ArrowRight,
   CheckCircle2
 } from 'lucide-react'
+import Image from 'next/image'
 
 export default async function HomePage() {
   const supabase = await createClient()
@@ -71,7 +72,13 @@ export default async function HomePage() {
         <div className="mx-auto max-w-7xl px-4 py-3 sm:py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg bg-primary">
-              <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
+              <Image
+                src="/favicon.ico"
+                alt="Stand Walk Run logo"
+                width={40}
+                height={30}
+                className='rounded-sm'
+              />
             </div>
             <span className="font-semibold text-foreground text-sm sm:text-base">Stand Walk Run</span>
           </Link>
@@ -102,7 +109,7 @@ export default async function HomePage() {
               <span className="text-primary">Faith</span>
             </h1>
             <p className="mt-4 sm:mt-6 text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto text-pretty px-4">
-              A transformative 6-week discipleship journey connecting Leaders and Learners 
+              A transformative 6-week discipleship journey connecting Leaders and Learners
               for meaningful spiritual growth, accountability, and lasting impact.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -152,7 +159,7 @@ export default async function HomePage() {
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Your 6-Week Journey</h2>
               <p className="mt-3 sm:mt-4 text-sm sm:text-base text-muted-foreground">
-                Each week builds upon the last, guiding you through foundational truths 
+                Each week builds upon the last, guiding you through foundational truths
                 and practical applications of faith.
               </p>
               <div className="mt-8 space-y-4">
@@ -215,7 +222,7 @@ export default async function HomePage() {
         <div className="mx-auto max-w-3xl px-4 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Ready to begin?</h2>
           <p className="mt-3 sm:mt-4 text-sm sm:text-base text-muted-foreground">
-            Join thousands of believers who have deepened their faith through 
+            Join thousands of believers who have deepened their faith through
             intentional discipleship relationships.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">

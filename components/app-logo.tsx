@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 import { BookOpen } from 'lucide-react'
-import { Image } from 'next/image'
+import Image from 'next/image'
 
 interface AppLogoProps {
   className?: string
@@ -35,12 +35,15 @@ function CrossIcon({ className }: { className?: string }) {
 
 export function AppLogo({ className, iconClassName, textClassName, showText = true }: AppLogoProps) {
   return (
-        <span className={cn("flex items-center justify-center rounded-lg bg-primary", iconClassName || "h-8 w-8 sm:h-9 sm:w-9")}>
-        <Image
-        src="/icon.jpg"
-        alt="Stand Walk Run logo" 
-        className={cn("text-primary-foreground", getIconSize(iconClassName))} />
-      </span>
+    <span className={cn("inline-flex items-center space-x-2", className)}>
+      <Image
+        src="/favicon.ico"
+        alt="Stand Walk Run logo"
+        width={40} 
+        height={30}
+        className='rounded-sm'
+        />
+
       {showText && (
         <span className={cn("font-semibold text-foreground", textClassName || "text-sm sm:text-base")}>
           Stand Walk Run
