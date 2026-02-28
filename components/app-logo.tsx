@@ -36,7 +36,7 @@ export function AppLogo({ className, iconClassName, textClassName, showText = tr
   return (
     <span className={cn("flex items-center gap-2", className)}>
       <span className={cn("flex items-center justify-center rounded-lg bg-primary", iconClassName || "h-8 w-8 sm:h-9 sm:w-9")}>
-        <BookOpen className={cn("text-primary-foreground", getIconSize(iconClassName))} />
+        <img src="\icon.jpg" className={cn("text-primary-foreground", getIconSize(iconClassName))} />
       </span>
       {showText && (
         <span className={cn("font-semibold text-foreground", textClassName || "text-sm sm:text-base")}>
