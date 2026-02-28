@@ -234,9 +234,7 @@ export async function saveNoteToJournal(
     const versionTag = translationAbbr ? ` (${translationAbbr})` : ''
     const scriptureRef = `${bookName} ${chapter}:${verse}${versionTag}`
     const hasNote = !!highlight.data.note
-    const defaultTitle = hasNote
-        ? `Scripture and notes from ${scriptureRef}`
-        : `Scripture from ${scriptureRef}`
+    const defaultTitle = `Verse from ${scriptureRef}`
     const title = customTitle?.trim() || defaultTitle
     const friendlyTime = new Date(now).toLocaleString('en-US', {
         month: 'short', day: 'numeric', year: 'numeric',
@@ -334,10 +332,7 @@ export async function saveMultipleVersesToJournal(
     const versionTag = translationAbbr ? ` (${translationAbbr})` : ''
     const scriptureRef = `${bookName} ${chapter}:${rangeStr}${versionTag}`
 
-    const hasAnyNotes = sorted.some(v => v.note)
-    const defaultTitle = hasAnyNotes
-        ? `Scripture and notes from ${scriptureRef}`
-        : `Scripture from ${scriptureRef}`
+    const defaultTitle = `Verses from ${scriptureRef}`
     const title = customTitle?.trim() || defaultTitle
 
     // Group consecutive verses together in the display
@@ -404,6 +399,78 @@ export async function saveMultipleVersesToJournal(
         if (error) return { success: false, error: error.message }
     } else {
         // New entry: empty freeText + separator + verse
+        const { error } = await supabase
+            .from('prayer_journal')
+            .insert({
+                user_id: user.id,
+                pairing_id: pairingId,
+                journal_date: today,
+                prayer_items: '',
+                god_speaking: `\n\n---\n\n${noteContent}`,
+                shared_with_leader: false,
+                shared_sections: {},
+                custom_entries: [],
+            })
+
+        if (error) return { success: false, error: error.message }
+    }
+
+    revalidatePath('/dashboard/journal')
+    return { success: true }
+}
+
+// Save AI explanation to prayer journal
+export async function saveExplanationToJournal(
+    pairingId: string,
+    reference: string,
+    explanationText: string,
+    customTitle?: string,
+    customNote?: string
+): Promise<{ success: boolean; error?: string }> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'Not authenticated' }
+
+    const today = new Date().toISOString().split('T')[0]
+    const now = new Date().toISOString()
+
+    const title = customTitle?.trim() || `AI Explanation - ${reference}`
+    const friendlyTime = new Date(now).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+    })
+
+    // Strip markdown formatting for clean journal content
+    const cleanExplanation = explanationText
+        .replace(/^#{1,3}\s+/gm, '')
+        .replace(/\*\*/g, '')
+        .trim()
+
+    const noteLine = customNote?.trim() ? `\nMy notes: ${customNote.trim()}` : ''
+    const noteContent = `@@TITLE: ${title}\n@@TIME: ${friendlyTime}\nAI Explanation for ${reference}:\n${cleanExplanation}${noteLine}`
+
+    const { data: existing } = await supabase
+        .from('prayer_journal')
+        .select('id, god_speaking')
+        .eq('user_id', user.id)
+        .eq('journal_date', today)
+        .single()
+
+    if (existing) {
+        const updatedGodSpeaking = existing.god_speaking
+            ? `${existing.god_speaking}\n\n---\n\n${noteContent}`
+            : `\n\n---\n\n${noteContent}`
+
+        const { error } = await supabase
+            .from('prayer_journal')
+            .update({
+                god_speaking: updatedGodSpeaking,
+                updated_at: now,
+            })
+            .eq('id', existing.id)
+
+        if (error) return { success: false, error: error.message }
+    } else {
         const { error } = await supabase
             .from('prayer_journal')
             .insert({

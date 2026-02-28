@@ -150,11 +150,12 @@ export function JournalHistory({
     const handleSaveVerseEdit = async (entryId: string, sectionIndex: number) => {
         const key = `edit-${entryId}-verse-${sectionIndex}`
         setLoadingKey(key)
-        const result = await updateJournalGodSpeakingSection(entryId, sectionIndex, editText.trim())
+        const result = await updateJournalGodSpeakingSection(entryId, sectionIndex, editText.trim(), editTitle.trim() || undefined)
         if (result.error) toast.error(result.error)
         else { toast.success('Updated!'); router.refresh() }
         setEditingKey(null)
         setEditText('')
+        setEditTitle('')
         setLoadingKey(null)
     }
 
@@ -331,6 +332,7 @@ export function JournalHistory({
                                     onEdit={!isLeaderView && !isEditing ? () => {
                                         setEditingKey(editKey)
                                         setEditText(verse.content)
+                                        setEditTitle(verse.title || '')
                                     } : undefined}
                                     onDelete={!isLeaderView ? () => handleDeleteVerse(entry.id, idx + 1) : undefined}
                                     deleteLoading={loadingKey === `del-${entry.id}-verse-${idx + 1}`}
@@ -347,12 +349,24 @@ export function JournalHistory({
                                 >
                                     {isEditing ? (
                                         <div className="space-y-2">
-                                            <Textarea
-                                                value={editText}
-                                                onChange={(e) => setEditText(e.target.value)}
-                                                rows={4}
-                                                className="resize-none text-sm"
-                                            />
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">Title</label>
+                                                <Input
+                                                    value={editTitle}
+                                                    onChange={(e) => setEditTitle(e.target.value)}
+                                                    placeholder="Entry title..."
+                                                    className="text-sm h-8"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">Content</label>
+                                                <Textarea
+                                                    value={editText}
+                                                    onChange={(e) => setEditText(e.target.value)}
+                                                    rows={4}
+                                                    className="resize-none text-sm"
+                                                />
+                                            </div>
                                             <div className="flex items-center gap-2">
                                                 <Button
                                                     size="sm"
@@ -369,7 +383,7 @@ export function JournalHistory({
                                                     variant="ghost"
                                                     size="sm"
                                                     className="h-7 text-xs gap-1"
-                                                    onClick={() => { setEditingKey(null); setEditText('') }}
+                                                    onClick={() => { setEditingKey(null); setEditText(''); setEditTitle('') }}
                                                 >
                                                     <X className="h-3 w-3" />
                                                     Cancel

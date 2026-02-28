@@ -72,37 +72,37 @@ export function AttachmentPreviewModal({ open, onOpenChange, url, type }: Attach
                 </VisuallyHidden>
 
                 {/* Header bar */}
-                <div className="flex items-center justify-between px-4 py-3 border-b bg-card">
-                    <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-3 border-b bg-card">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <FileIcon className="h-5 w-5 shrink-0 text-primary" />
-                        <span className="text-sm font-medium truncate">{fileName}</span>
+                        <span className="text-sm font-medium truncate min-w-0">{fileName}</span>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 ml-auto sm:ml-0"
+                            onClick={() => onOpenChange(false)}
+                        >
+                            <X className="h-4 w-4" />
+                        </Button>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                         <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="h-8 gap-1.5 text-xs"
+                            className="h-8 gap-1.5 text-xs flex-1 sm:flex-none"
                             onClick={handleDownload}
                         >
                             <Download className="h-3.5 w-3.5" />
                             Download
                         </Button>
                         <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="h-8 gap-1.5 text-xs"
+                            className="h-8 gap-1.5 text-xs flex-1 sm:flex-none"
                             onClick={handleOpenInBrowser}
                         >
                             <ExternalLink className="h-3.5 w-3.5" />
-                            Open
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => onOpenChange(false)}
-                        >
-                            <X className="h-4 w-4" />
+                            Open in Browser
                         </Button>
                     </div>
                 </div>

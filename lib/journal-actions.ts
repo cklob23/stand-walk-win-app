@@ -286,7 +286,8 @@ export async function toggleShareEntry(entryId: string, shared: boolean) {
 export async function updateJournalGodSpeakingSection(
     entryId: string,
     sectionIndex: number,
-    newText: string
+    newText: string,
+    newTitle?: string
 ): Promise<{ success?: boolean; error?: string }> {
     try {
         const supabase = await createClient()
@@ -308,7 +309,23 @@ export async function updateJournalGodSpeakingSection(
         }
 
         if (newText.trim()) {
-            sections[sectionIndex] = newText.trim()
+            // Reconstruct the section preserving @@TITLE: and @@TIME: headers
+            const oldLines = sections[sectionIndex].split('\n')
+            const headerLines: string[] = []
+            let hasTitle = false
+            for (const line of oldLines) {
+                if (line.startsWith('@@TITLE: ')) {
+                    hasTitle = true
+                    headerLines.push(newTitle !== undefined ? `@@TITLE: ${newTitle.trim()}` : line)
+                } else if (line.startsWith('@@TIME: ')) {
+                    headerLines.push(line)
+                }
+            }
+            // If a new title was provided but there was no existing @@TITLE header, add one
+            if (newTitle !== undefined && !hasTitle) {
+                headerLines.unshift(`@@TITLE: ${newTitle.trim()}`)
+            }
+            sections[sectionIndex] = [...headerLines, newText.trim()].join('\n')
         } else {
             sections.splice(sectionIndex, 1)
         }

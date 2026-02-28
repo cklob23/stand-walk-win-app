@@ -33,6 +33,7 @@ import {
     sendMultipleVersesToPartner,
     shareMultipleVersesWithPartner,
     sendExplanationToPartner,
+    saveExplanationToJournal,
 } from '@/lib/bible-highlight-actions'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
@@ -208,6 +209,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [explainError, setExplainError] = useState(false)
     const [explainSharing, setExplainSharing] = useState(false)
     const [selectedExplainLines, setSelectedExplainLines] = useState<Set<number>>(new Set())
+    const [showExplainJournalDialog, setShowExplainJournalDialog] = useState(false)
+    const [explainJournalTitle, setExplainJournalTitle] = useState('')
+    const [explainJournalNote, setExplainJournalNote] = useState('')
+    const [explainJournalSaving, setExplainJournalSaving] = useState(false)
     const explainAbortRef = useRef<AbortController | null>(null)
     const isMobile = useIsMobile()
     // Detect Apple platforms (iOS, iPadOS, macOS) to prefer cloud voices
@@ -498,8 +503,17 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const handleOpenNote = (verseNum: number) => {
         const h = getVerseHighlight(verseNum)
         if (h) {
+            // For groups, collect all existing notes from the group
+            const group = getHighlightGroup(verseNum)
+            const groupNotes: string[] = []
+            for (const gv of group) {
+                const gh = getVerseHighlight(gv)
+                if (gh?.note) groupNotes.push(gh.note)
+            }
             setEditingNote(h.id)
-            setNoteText(h.note || '')
+            // Pre-populate with all collected group notes (deduplicated)
+            const uniqueNotes = [...new Set(groupNotes)]
+            setNoteText(uniqueNotes.length > 0 ? uniqueNotes.join('\n\n') : '')
             setSelectedVerse(verseNum)
         }
     }
@@ -508,15 +522,33 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         if (!editingNote) return
         setSavingNote(true)
         try {
-            const updated = await updateHighlightNote(editingNote, noteText)
-            if (updated) {
-                setHighlights(prev => prev.map(h => h.id === editingNote ? updated : h))
+            // Find which verse this highlight belongs to
+            const editingHl = highlights.find(h => h.id === editingNote)
+            if (editingHl) {
+                const verseNum = Number(editingHl.verse)
+                const group = getHighlightGroup(verseNum)
+                // Save the note to all verses in the group
+                for (const gv of group) {
+                    const gh = getVerseHighlight(gv)
+                    if (gh) {
+                        const updated = await updateHighlightNote(gh.id, noteText)
+                        if (updated) {
+                            setHighlights(prev => prev.map(h => h.id === gh.id ? updated : h))
+                        }
+                    }
+                }
+            } else {
+                // Fallback: just update the single highlight
+                const updated = await updateHighlightNote(editingNote, noteText)
+                if (updated) {
+                    setHighlights(prev => prev.map(h => h.id === editingNote ? updated : h))
+                }
             }
         } catch { /* silent */ }
         setSavingNote(false)
         setEditingNote(null)
-        setSelectedVerse(null)
         setNoteText('')
+        // Keep the action popup open so users can do other actions (send, journal, etc.)
     }
 
     const handleDeleteHighlight = async (highlightId: string, verseNum: number, removeGroup = false) => {
@@ -762,16 +794,18 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     const [singleJournalVerse, setSingleJournalVerse] = useState<{ hl: BibleHighlight; v: BibleVerse } | null>(null)
     const [singleJournalTitle, setSingleJournalTitle] = useState('')
+    const [singleJournalNote, setSingleJournalNote] = useState('')
 
     const handleSaveToJournal = async (hl: BibleHighlight, v: BibleVerse) => {
         if (!pairingId) return
-        // Open title dialog for single verse
+        // Close the popover first so the dialog is fully visible
+        setSelectedVerse(null)
+        // Pre-populate with defaults
         const bookName = books.find(b => b.id === selectedBook)?.name || selectedBook || ''
         const scriptureRef = `${bookName} ${v.chapter}:${v.verse}`
-        const defaultTitle = hl.note
-            ? `Scripture and notes from ${scriptureRef}`
-            : `Scripture from ${scriptureRef}`
+        const defaultTitle = `Verse from ${scriptureRef}`
         setSingleJournalTitle(defaultTitle)
+        setSingleJournalNote(hl.note || '')
         setSingleJournalVerse({ hl, v })
     }
 
@@ -782,6 +816,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         try {
             const bookName = books.find(b => b.id === selectedBook)?.name || selectedBook || ''
             const { hl, v } = singleJournalVerse
+            // If user edited the note, update the highlight first
+            if (singleJournalNote !== (hl.note || '')) {
+                const updated = await updateHighlightNote(hl.id, singleJournalNote)
+                if (updated) {
+                    setHighlights(prev => prev.map(h => h.id === hl.id ? updated : h))
+                }
+            }
             const result = await saveNoteToJournal(
                 hl.id, pairingId, bookName, v.chapter, v.verse, v.text, false, singleJournalTitle || undefined, translation
             )
@@ -790,6 +831,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 toast.success('Saved to your prayer journal!')
                 setSingleJournalVerse(null)
                 setSingleJournalTitle('')
+                setSingleJournalNote('')
             } else {
                 toast.error(result.error || 'Failed to save to journal.')
             }
@@ -1989,7 +2031,17 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             {/* Audio controls */}
                             {!highlightMode && (
                                 <div className="flex items-center gap-1 ml-auto">
-                                    {isPlaying ? (
+                                    {audioLoading ? (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-8 gap-1.5 text-xs bg-card"
+                                            disabled
+                                        >
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            Loading...
+                                        </Button>
+                                    ) : isPlaying ? (
                                         <>
                                             <Button
                                                 variant="outline"
@@ -2035,19 +2087,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             size="sm"
                                             className="h-8 gap-1.5 text-xs bg-card"
                                             onClick={() => handlePlayChapter()}
-                                            disabled={versesLoading || verses.length === 0 || audioLoading}
+                                            disabled={versesLoading || verses.length === 0}
                                         >
-                                            {audioLoading ? (
-                                                <>
-                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                    Loading...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Volume2 className="h-3.5 w-3.5" />
-                                                    Listen
-                                                </>
-                                            )}
+                                            <Volume2 className="h-3.5 w-3.5" />
+                                            Listen
                                         </Button>
                                     )}
                                 </div>
@@ -2364,12 +2407,23 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                         </div>
                                                                     ) : (
                                                                         <>
-                                                                            {/* Show existing note */}
-                                                                            {hl?.note && (
-                                                                                <p className="text-sm text-muted-foreground italic bg-muted/50 rounded p-2 font-sans">
-                                                                                    {hl.note}
-                                                                                </p>
-                                                                            )}
+                                                                            {/* Show existing notes from group */}
+                                                                            {(() => {
+                                                                                const groupNotes: string[] = []
+                                                                                for (const gv of highlightGroup) {
+                                                                                    const gh = getVerseHighlight(gv)
+                                                                                    if (gh?.note) groupNotes.push(gh.note)
+                                                                                }
+                                                                                const uniqueNotes = [...new Set(groupNotes)]
+                                                                                if (uniqueNotes.length > 0) {
+                                                                                    return (
+                                                                                        <p className="text-sm text-muted-foreground italic bg-muted/50 rounded p-2 font-sans whitespace-pre-line">
+                                                                                            {uniqueNotes.join('\n\n')}
+                                                                                        </p>
+                                                                                    )
+                                                                                }
+                                                                                return null
+                                                                            })()}
 
                                                                             {/* Action buttons -- available for ALL verses */}
                                                                             <div className="flex flex-wrap items-center gap-1.5">
@@ -2382,7 +2436,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                                         onClick={() => handleOpenNote(v.verse)}
                                                                                     >
                                                                                         <PenLine className="h-3 w-3" />
-                                                                                        {hl.note ? 'Edit Note' : 'Add Note'}
+                                                                                        {(() => {
+                                                                                            const hasAnyNote = highlightGroup.some(gv => getVerseHighlight(gv)?.note)
+                                                                                            return hasAnyNote ? 'Edit Note' : 'Add Note'
+                                                                                        })()}
                                                                                     </Button>
                                                                                 )}
 
@@ -2433,18 +2490,18 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                                             size="sm"
                                                                                             className="h-7 text-xs gap-1 bg-transparent font-sans"
                                                                                             onClick={() => {
+                                                                                                // Close popover first so dialog is fully visible
+                                                                                                setSelectedVerse(null)
                                                                                                 // Pre-populate selectedVerses with the group and open journal dialog
                                                                                                 const groupSet = new Set(highlightGroup)
                                                                                                 setSelectedVerses(groupSet)
                                                                                                 setJournalTitle((() => {
                                                                                                     const bookName = books.find(b => b.id === selectedBook)?.name || selectedBook || ''
                                                                                                     const rangeLabel = `${bookName} ${selectedChapter}:${buildRangeStr(highlightGroup)}`
-                                                                                                    const hasNotes = highlightGroup.some(vn => getVerseHighlight(vn)?.note)
-                                                                                                    return hasNotes ? `Scripture and notes from ${rangeLabel}` : `Scripture from ${rangeLabel}`
+                                                                                                    return `Verses from ${rangeLabel}`
                                                                                                 })())
                                                                                                 setMultiNote(getSelectedNotesText(groupSet))
                                                                                                 setShowJournalDialog(true)
-                                                                                                setSelectedVerse(null)
                                                                                             }}
                                                                                         >
                                                                                             <BookHeart className="h-3 w-3" />
@@ -2621,8 +2678,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
                         {/* Journal title dialog for multi-verse save */}
                         {showJournalDialog && (
-                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                                <div className="bg-card rounded-lg border border-border shadow-lg w-full max-w-md p-5 space-y-4">
+                            <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
+                                <div className="bg-card rounded-t-xl sm:rounded-lg border border-border shadow-lg w-full sm:max-w-md p-5 space-y-4 max-h-[85vh] overflow-y-auto">
                                     <h3 className="text-base font-semibold font-sans text-foreground">Save to Journal</h3>
                                     <p className="text-sm text-muted-foreground">{getSelectedRangeLabel()}</p>
                                     <div className="space-y-2">
@@ -2709,27 +2766,38 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
                         {/* Single verse journal title dialog */}
                         {singleJournalVerse && (
-                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                                <div className="bg-card rounded-lg border border-border shadow-lg w-full max-w-md p-5 space-y-4">
+                            <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
+                                <div className="bg-card rounded-t-xl sm:rounded-lg border border-border shadow-lg w-full sm:max-w-md p-5 space-y-4 max-h-[85vh] overflow-y-auto">
                                     <h3 className="text-base font-semibold font-sans text-foreground">Save to Journal</h3>
-                                    <p className="text-sm text-muted-foreground">
-                                        {books.find(b => b.id === selectedBook)?.name} {singleJournalVerse.v.chapter}:{singleJournalVerse.v.verse}
+                                    <p className="text-sm text-muted-foreground italic bg-muted/50 rounded p-2.5 font-serif leading-relaxed">
+                                        {books.find(b => b.id === selectedBook)?.name} {singleJournalVerse.v.chapter}:{singleJournalVerse.v.verse} - {'"'}{singleJournalVerse.v.text.slice(0, 120)}{singleJournalVerse.v.text.length > 120 ? '...' : ''}{'"'}
                                     </p>
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium text-foreground" htmlFor="single-journal-title">Entry Title</label>
+                                        <label className="text-sm font-medium text-foreground" htmlFor="single-journal-title">Title</label>
                                         <Input
                                             id="single-journal-title"
                                             value={singleJournalTitle}
                                             onChange={(e) => setSingleJournalTitle(e.target.value)}
-                                            placeholder="Enter a title..."
+                                            placeholder="Enter a title for this journal entry..."
                                             className="text-sm"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-foreground" htmlFor="single-journal-note">Notes (optional)</label>
+                                        <Textarea
+                                            id="single-journal-note"
+                                            value={singleJournalNote}
+                                            onChange={(e) => setSingleJournalNote(e.target.value)}
+                                            placeholder="Add your thoughts or notes about this verse..."
+                                            className="text-sm resize-none"
+                                            rows={3}
                                         />
                                     </div>
                                     <div className="flex items-center gap-2 justify-end">
                                         <Button
                                             variant="ghost"
                                             size="sm"
-                                            onClick={() => { setSingleJournalVerse(null); setSingleJournalTitle('') }}
+                                            onClick={() => { setSingleJournalVerse(null); setSingleJournalTitle(''); setSingleJournalNote('') }}
                                             disabled={savingJournal}
                                         >
                                             Cancel
@@ -3008,9 +3076,98 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         <><Send className="h-3 w-3" /> Send All to Partner</>
                                     )}
                                 </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full h-8 text-xs gap-1.5 font-sans"
+                                    onClick={() => {
+                                        setExplainJournalTitle(`AI Explanation - ${explainReference}`)
+                                        setExplainJournalNote('')
+                                        setShowExplainJournalDialog(true)
+                                    }}
+                                >
+                                    <BookHeart className="h-3 w-3" /> Save to Journal
+                                </Button>
                             </div>
                         )
                     })()}
+
+                    {/* AI Explanation Journal Save Dialog */}
+                    {showExplainJournalDialog && (
+                        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) { setShowExplainJournalDialog(false) } }}>
+                            <div className="bg-card rounded-t-xl sm:rounded-lg border border-border shadow-lg w-full sm:max-w-md p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+                                <h3 className="text-base font-semibold font-sans text-foreground">Save Explanation to Journal</h3>
+                                <p className="text-xs text-muted-foreground font-sans">{explainReference}</p>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-foreground" htmlFor="explain-journal-title">Title</label>
+                                    <Input
+                                        id="explain-journal-title"
+                                        value={explainJournalTitle}
+                                        onChange={(e) => setExplainJournalTitle(e.target.value)}
+                                        placeholder="Entry title..."
+                                        className="text-sm"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-foreground" htmlFor="explain-journal-note">Notes (optional)</label>
+                                    <Textarea
+                                        id="explain-journal-note"
+                                        value={explainJournalNote}
+                                        onChange={(e) => setExplainJournalNote(e.target.value)}
+                                        placeholder="Add your thoughts or reflections..."
+                                        className="text-sm resize-none"
+                                        rows={3}
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2 justify-end">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setShowExplainJournalDialog(false)}
+                                        disabled={explainJournalSaving}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        onClick={async () => {
+                                            if (!pairingId) return
+                                            setExplainJournalSaving(true)
+                                            const hasSelection = selectedExplainLines.size > 0
+                                            const lines = explainContent.split('\n')
+                                            const textToSave = hasSelection
+                                                ? Array.from(selectedExplainLines).sort((a, b) => a - b).map(i => lines[i]?.trim()).filter(Boolean).join('\n\n')
+                                                : explainContent
+                                            const result = await saveExplanationToJournal(
+                                                pairingId,
+                                                explainReference,
+                                                textToSave,
+                                                explainJournalTitle.trim() || undefined,
+                                                explainJournalNote.trim() || undefined
+                                            )
+                                            if (result.success) {
+                                                toast.success('Saved to your prayer journal!', {
+                                                    action: {
+                                                        label: 'View Journal',
+                                                        onClick: () => router.push('/dashboard/journal'),
+                                                    },
+                                                })
+                                                setShowExplainJournalDialog(false)
+                                                setSelectedExplainLines(new Set())
+                                            } else {
+                                                toast.error(result.error || 'Failed to save to journal')
+                                            }
+                                            setExplainJournalSaving(false)
+                                        }}
+                                        disabled={explainJournalSaving}
+                                    >
+                                        {explainJournalSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <BookHeart className="h-3.5 w-3.5 mr-1" />}
+                                        {explainJournalSaving ? 'Saving...' : 'Save'}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </DialogContent>
             </Dialog>
 
