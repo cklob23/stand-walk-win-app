@@ -35,17 +35,11 @@ function CrossIcon({ className }: { className?: string }) {
 
 export function AppLogo({ className, iconClassName, textClassName, showText = true }: AppLogoProps) {
   return (
-      <span className={cn("flex items-center gap-2", <span
-      className={cn(
-      "relative flex items-center justify-center rounded-lg overflow-hidden bg-primary",
-       iconClassName || "h-8 w-8 sm:h-9 sm:w-9"
-     )}
-     >
-      <Image
-       src="/icon.jpg"
-       alt="Stand Walk Run logo"
-       className="h-full w-full object-cover"
-         />
+        <span className={cn("flex items-center justify-center rounded-lg bg-primary", iconClassName || "h-8 w-8 sm:h-9 sm:w-9")}>
+        <Image
+        src="/icon.jpg"
+        alt="Stand Walk Run logo" 
+        className={cn("text-primary-foreground", getIconSize(iconClassName))} />
       </span>
       {showText && (
         <span className={cn("font-semibold text-foreground", textClassName || "text-sm sm:text-base")}>
