@@ -12,6 +12,7 @@ import { BookOpen, Users, GraduationCap, ArrowRight, ArrowLeft, Loader2, CheckCi
 import { toast } from 'sonner'
 import type { Profile, UserRole } from '@/lib/types'
 import { joinPairing } from '@/lib/auth-actions'
+import Image from 'next/image'
 
 interface OnboardingWizardProps {
   userId: string
@@ -63,7 +64,7 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
     }
 
     setIsLoading(true)
-    
+
     const { error } = await supabase
       .from('profiles')
       .update({
@@ -83,7 +84,7 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
     // For leaders: auto-create pairing code, complete onboarding, go to dashboard
     if (formData.role === 'leader') {
       const code = generatePairingCode()
-      
+
       const { error: pairingError } = await supabase
         .from('pairings')
         .insert({
@@ -151,7 +152,7 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
 
   const handleSkipForNow = async () => {
     setIsLoading(true)
-    
+
     await supabase
       .from('profiles')
       .update({ onboarding_complete: true })
@@ -169,13 +170,12 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
             {steps.map((step, index) => (
               <div key={step.id} className="flex items-center">
                 <div
-                  className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-medium transition-colors ${
-                    index < currentStep
+                  className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs sm:text-sm font-medium transition-colors ${index < currentStep
                       ? 'bg-primary text-primary-foreground'
                       : index === currentStep
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground'
-                  }`}
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground'
+                    }`}
                 >
                   {index < currentStep ? (
                     <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -185,9 +185,8 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
                 </div>
                 {index < steps.length - 1 && (
                   <div
-                    className={`ml-1 sm:ml-2 h-0.5 w-8 sm:w-16 md:w-24 transition-colors ${
-                      index < currentStep ? 'bg-primary' : 'bg-muted'
-                    }`}
+                    className={`ml-1 sm:ml-2 h-0.5 w-8 sm:w-16 md:w-24 transition-colors ${index < currentStep ? 'bg-primary' : 'bg-muted'
+                      }`}
                   />
                 )}
               </div>
@@ -207,7 +206,13 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
             <div className="text-center space-y-4 sm:space-y-6">
               <div className="flex justify-center">
                 <div className="flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-2xl bg-primary">
-                  <BookOpen className="h-8 w-8 sm:h-10 sm:w-10 text-primary-foreground" />
+                  <Image
+                    src="/favicon.ico"
+                    alt="Stand Walk Run logo"
+                    width={40}
+                    height={30}
+                    className='rounded-sm'
+                  />
                 </div>
               </div>
               <div className="space-y-2">
@@ -257,7 +262,7 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
                 </p>
               </div>
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-                <Card 
+                <Card
                   className="cursor-pointer transition-all hover:border-primary hover:shadow-md"
                   onClick={() => handleRoleSelect('leader')}
                 >
@@ -278,7 +283,7 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
                     </ul>
                   </CardContent>
                 </Card>
-                <Card 
+                <Card
                   className="cursor-pointer transition-all hover:border-primary hover:shadow-md"
                   onClick={() => handleRoleSelect('learner')}
                 >
@@ -406,8 +411,8 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
                       className="h-12 text-center text-lg font-mono tracking-widest"
                     />
                   </div>
-                  <Button 
-                    onClick={handleJoinPairing} 
+                  <Button
+                    onClick={handleJoinPairing}
                     disabled={isLoading || formData.pairingCode.length < 6}
                     className="w-full"
                     size="lg"

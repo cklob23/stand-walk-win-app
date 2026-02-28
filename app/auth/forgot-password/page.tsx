@@ -11,13 +11,14 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import Link from 'next/link'
 import { BookOpen, Loader2, ArrowLeft, Mail, Eye, EyeOff, Lock } from 'lucide-react'
+import Image from "next/image"
 
 export default function ForgotPasswordPage() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
-  
+
   // OTP state
   const [step, setStep] = useState<'email' | 'otp' | 'newPassword'>('email')
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
@@ -45,12 +46,12 @@ export default function ForgotPasswordPage() {
 
   const handleOtpChange = (index: number, value: string) => {
     if (value && !/^\d$/.test(value)) return
-    
+
     const newValues = [...otpValues]
     newValues[index] = value
     setOtpValues(newValues)
     setError(null)
-    
+
     if (value && index < 7) {
       inputRefs.current[index + 1]?.focus()
     }
@@ -81,9 +82,9 @@ export default function ForgotPasswordPage() {
 
     setIsVerifying(true)
     setError(null)
-    
+
     const result = await verifyPasswordResetOtp(pendingEmail, code)
-    
+
     if (result.error) {
       setError(result.error)
       setIsVerifying(false)
@@ -97,12 +98,12 @@ export default function ForgotPasswordPage() {
 
   const handleResendCode = async () => {
     if (!pendingEmail) return
-    
+
     setIsResending(true)
     setError(null)
-    
+
     const result = await resendPasswordResetOtp(pendingEmail)
-    
+
     setIsResending(false)
     if (result.error) {
       setError(result.error)
@@ -116,9 +117,9 @@ export default function ForgotPasswordPage() {
   const handleUpdatePassword = async (formData: FormData) => {
     setIsUpdating(true)
     setError(null)
-    
+
     const result = await updatePassword(formData)
-    
+
     if (result?.error) {
       setError(result.error)
       setIsUpdating(false)
@@ -132,7 +133,13 @@ export default function ForgotPasswordPage() {
         <div className="text-center">
           <Link href="/" className="inline-flex items-center gap-2 mb-4 sm:mb-6">
             <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-primary">
-              <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-primary-foreground" />
+              <Image
+                src="/favicon.ico"
+                alt="Stand Walk Run logo"
+                width={40}
+                height={30}
+                className='rounded-sm'
+              />
             </div>
             <span className="text-lg sm:text-xl font-semibold text-foreground">Stand Walk Run</span>
           </Link>
@@ -222,9 +229,9 @@ export default function ForgotPasswordPage() {
                   </div>
                 )}
 
-                <Button 
-                  onClick={handleVerifyOtp} 
-                  className="w-full h-11" 
+                <Button
+                  onClick={handleVerifyOtp}
+                  className="w-full h-11"
                   disabled={isVerifying || otpValues.join('').length !== 8}
                 >
                   {isVerifying ? (

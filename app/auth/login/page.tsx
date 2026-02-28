@@ -1,6 +1,7 @@
 import { LoginForm } from '@/components/auth/login-form'
 import Link from 'next/link'
 import { BookOpen } from 'lucide-react'
+import Image from 'next/image'
 
 export default function LoginPage() {
   return (
@@ -9,7 +10,13 @@ export default function LoginPage() {
         <div className="text-center">
           <Link href="/" className="inline-flex items-center gap-2 mb-4 sm:mb-6">
             <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-primary">
-              <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-primary-foreground" />
+              <Image
+                src="/favicon.ico"
+                alt="Stand Walk Run logo"
+                width={40}
+                height={30}
+                className='rounded-sm'
+              />
             </div>
             <span className="text-lg sm:text-xl font-semibold text-foreground">Stand Walk Run</span>
           </Link>
@@ -18,9 +25,9 @@ export default function LoginPage() {
             Sign in to continue your discipleship journey
           </p>
         </div>
-        
+
         <LoginForm />
-        
+
         <p className="text-center text-sm text-muted-foreground">
           {"Don't have an account? "}
           <Link href="/auth/signup" className="font-medium text-primary hover:underline">
