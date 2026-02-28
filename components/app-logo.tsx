@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
 import { BookOpen } from 'lucide-react'
+import { Image } from 'next/image'
 
 interface AppLogoProps {
   className?: string
@@ -40,7 +41,7 @@ export function AppLogo({ className, iconClassName, textClassName, showText = tr
        iconClassName || "h-8 w-8 sm:h-9 sm:w-9"
      )}
      >
-      <img
+      <Image
        src="/icon.jpg"
        alt="Stand Walk Run logo"
        className="h-full w-full object-cover"
