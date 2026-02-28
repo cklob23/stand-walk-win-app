@@ -703,14 +703,15 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     // Collect existing notes from selected/highlighted verses for pre-populating the journal dialog
     const getSelectedNotesText = (verseSet?: Set<number>): string => {
         const versesToCheck = verseSet || selectedVerses
-        return Array.from(versesToCheck)
+        const notes = Array.from(versesToCheck)
             .sort((a, b) => a - b)
             .map(vn => {
                 const hl = getVerseHighlight(vn)
                 return hl?.note ? hl.note : null
             })
-            .filter(Boolean)
-            .join('\n')
+            .filter(Boolean) as string[]
+        // Deduplicate notes (group verses share the same note text)
+        return [...new Set(notes)].join('\n')
     }
 
     const handleMultiSaveToJournal = async () => {
