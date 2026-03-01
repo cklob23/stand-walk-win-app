@@ -2249,17 +2249,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                 if (highlightMode) {
                                                                     const existingHighlight = getVerseHighlight(v.verse)
                                                                     if (existingHighlight) {
-                                                                        if (selectedVerses.has(v.verse)) {
-                                                                            // Verse is in selection: always unhighlight and remove from both boxes
-                                                                            handleDeleteHighlight(existingHighlight.id, v.verse, false)
-                                                                        } else {
-                                                                            // Verse is highlighted but not in selection: load entire group into selection and show popover
-                                                                            const group = getHighlightGroup(v.verse)
-                                                                            setSelectedVerses(new Set(group))
-                                                                            setSelectedVerse(v.verse)
-                                                                            setJournalSaved(false)
-                                                                            setVerseSent(false)
-                                                                        }
+                                                                        // Already highlighted: load group into selection and show/toggle popover
+                                                                        const group = getHighlightGroup(v.verse)
+                                                                        setSelectedVerses(new Set(group))
+                                                                        setSelectedVerse(selectedVerse === v.verse ? null : v.verse)
+                                                                        setJournalSaved(false)
+                                                                        setVerseSent(false)
                                                                     } else {
                                                                         // Not highlighted: highlight it and add to selection
                                                                         handleVerseClick(v.verse)
@@ -2270,6 +2265,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                         })
                                                                     }
                                                                 } else {
+                                                                    // Normal mode: toggle popover, load group if highlighted
+                                                                    const existingHighlight = getVerseHighlight(v.verse)
+                                                                    if (existingHighlight) {
+                                                                        const group = getHighlightGroup(v.verse)
+                                                                        setSelectedVerses(new Set(group))
+                                                                    }
                                                                     setSelectedVerse(selectedVerse === v.verse ? null : v.verse)
                                                                     setJournalSaved(false)
                                                                     setVerseSent(false)
@@ -2281,15 +2282,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                     if (highlightMode) {
                                                                         const existingHighlight = getVerseHighlight(v.verse)
                                                                         if (existingHighlight) {
-                                                                            if (selectedVerses.has(v.verse)) {
-                                                                                handleDeleteHighlight(existingHighlight.id, v.verse, false)
-                                                                            } else {
-                                                                                const group = getHighlightGroup(v.verse)
-                                                                                setSelectedVerses(new Set(group))
-                                                                                setSelectedVerse(v.verse)
-                                                                                setJournalSaved(false)
-                                                                                setVerseSent(false)
-                                                                            }
+                                                                            const group = getHighlightGroup(v.verse)
+                                                                            setSelectedVerses(new Set(group))
+                                                                            setSelectedVerse(selectedVerse === v.verse ? null : v.verse)
+                                                                            setJournalSaved(false)
+                                                                            setVerseSent(false)
                                                                         } else {
                                                                             handleVerseClick(v.verse)
                                                                             setSelectedVerses(prev => {
@@ -2299,6 +2296,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                                             })
                                                                         }
                                                                     } else {
+                                                                        const existingHighlight = getVerseHighlight(v.verse)
+                                                                        if (existingHighlight) {
+                                                                            const group = getHighlightGroup(v.verse)
+                                                                            setSelectedVerses(new Set(group))
+                                                                        }
                                                                         setSelectedVerse(selectedVerse === v.verse ? null : v.verse)
                                                                         setJournalSaved(false)
                                                                         setVerseSent(false)
