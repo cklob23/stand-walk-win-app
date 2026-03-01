@@ -40,6 +40,7 @@ interface WeekDetailViewProps {
   reflections: (Reflection & { user: { id: string; full_name: string | null; avatar_url: string | null } | null })[]
   hasWeeklyMeeting?: boolean
   bibleTranslation?: string
+  bibleTextSize?: string
 }
 
 export function WeekDetailView({
@@ -53,8 +54,10 @@ export function WeekDetailView({
   reflections,
   hasWeeklyMeeting = false,
   bibleTranslation = 'KJV',
+  bibleTextSize = 'base',
 }: WeekDetailViewProps) {
   const router = useRouter()
+  const scriptureTextClass = { sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-xl', '2xl': 'text-2xl' }[bibleTextSize] || 'text-base'
   const [reflectionText, setReflectionText] = useState('')
   const [isShared, setIsShared] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -164,7 +167,7 @@ export function WeekDetailView({
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <p className="font-serif italic text-lg text-foreground break-words">
+                <p className={`font-serif italic text-foreground break-words leading-relaxed ${scriptureTextClass}`}>
                   <ScriptureText
                     reference={weekContent.scripture_reference!}
                     translation={bibleTranslation}

@@ -154,6 +154,7 @@ export default async function WeekPage({ params }: WeekPageProps) {
       reflections={reflections || []}
       hasWeeklyMeeting={hasWeeklyMeeting}
       bibleTranslation={profile.bible_translation_preference || 'KJV'}
+      bibleTextSize={profile.bible_text_size || 'base'}
     />
   )
 }

@@ -1905,13 +1905,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             {/* This Week's Scripture Banner */}
             {weekScripture && (
                 <Card className="border-primary/30 bg-primary/15 cursor-pointer hover:bg-primary/20 transition-colors" onClick={handleWeekScripture}>
-                    <CardContent className="py-3 px-4 flex items-center gap-3">
-                        <BookMarked className="h-5 w-5 text-primary shrink-0" />
+                    <CardContent className="py-2 px-3 flex items-center gap-2.5">
+                        <BookMarked className="h-4 w-4 text-primary shrink-0" />
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground">
+                            <p className="text-xs font-medium text-foreground">
                                 {weekNumber ? `Week ${weekNumber} Scripture` : "This Week's Scripture"}
                             </p>
-                            <p className={`text-muted-foreground font-serif italic line-clamp-2 ${textSizeClass === 'text-sm' ? 'text-xs' : textSizeClass === 'text-base' ? 'text-sm' : textSizeClass === 'text-lg' ? 'text-base' : textSizeClass === 'text-xl' ? 'text-lg' : 'text-xl'}`}>
+                            <p className={`text-muted-foreground font-serif italic line-clamp-3 ${textSizeClass}`}>
                                 <ScriptureText reference={weekScripture} translation={translation} />
                             </p>
                         </div>
