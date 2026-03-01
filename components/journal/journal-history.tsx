@@ -81,11 +81,15 @@ function parseGodSpeakingSections(godSpeaking: string): { freeText: string; vers
     if (!godSpeaking?.trim()) return { freeText: '', verses: [] }
     const parts = godSpeaking.split('\n\n---\n\n')
 
-    // The first part is the daily reflection free-text (may be empty)
-    const freeText = (parts[0] || '').trim()
+    // The first part is usually the daily reflection free-text (may be empty)
+    // But if it contains @@TITLE: headers, it's a corrupted verse entry that got moved to index 0
+    const firstPart = (parts[0] || '').trim()
+    const firstPartIsVerse = firstPart.startsWith('@@TITLE: ') || firstPart.startsWith('@@TIME: ')
 
-    // All subsequent parts are verse entries
-    const verses: ParsedVerseSection[] = parts.slice(1)
+    const freeText = firstPartIsVerse ? '' : firstPart
+
+    // All subsequent parts are verse entries; if first part is also a verse, include it
+    const verses: ParsedVerseSection[] = (firstPartIsVerse ? parts : parts.slice(1))
         .map(s => s.trim())
         .filter(Boolean)
         .map(parseVerseSection)
@@ -648,13 +652,13 @@ function SectionCard({
     return (
         <Card>
             <CardContent className="py-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                <div className="flex items-start justify-between gap-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide min-w-0 break-words leading-relaxed flex-1">
                         {label}
                     </p>
                     {timestamp && (
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
-                            <Clock className="h-3 w-3" />
+                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 pt-0.5">
+                            <Clock className="h-3 w-3 shrink-0" />
                             {timestamp}
                         </span>
                     )}

@@ -36,7 +36,8 @@ export async function saveJournalEntry(data: {
             // Preserve verse entries (sections after the first ---) when updating daily questions
             const sections = (existing.god_speaking || '').split('\n\n---\n\n')
             const verseSections = sections.slice(1) // keep verse entries
-            const newGodSpeaking = [data.godSaying.trim(), ...verseSections].filter(Boolean).join('\n\n---\n\n')
+            // Always keep freeText at index 0 (may be empty) so verse entries stay at index 1+
+            const newGodSpeaking = [data.godSaying.trim(), ...verseSections].join('\n\n---\n\n')
 
             const { error } = await supabase
                 .from('prayer_journal')
@@ -330,7 +331,9 @@ export async function updateJournalGodSpeakingSection(
             sections.splice(sectionIndex, 1)
         }
 
-        const updatedGodSpeaking = sections.filter(Boolean).join('\n\n---\n\n')
+        // Preserve the structure: sections[0] is freeText (may be empty), rest are verse entries
+        // Don't filter(Boolean) because that removes the empty freeText slot, breaking the format
+        const updatedGodSpeaking = sections.join('\n\n---\n\n')
 
         const { error } = await supabase
             .from('prayer_journal')
@@ -642,9 +645,9 @@ export async function deleteVerseEntry(
         const verseIdx = sectionIndex - 1 // verse_0 corresponds to section index 1
         const wasShared = sharedSections[`verse_${verseIdx}`]
 
-        // Remove the section
+        // Remove the section (preserve empty freeText slot at index 0)
         sections.splice(sectionIndex, 1)
-        const updatedGodSpeaking = sections.filter(Boolean).join('\n\n---\n\n')
+        const updatedGodSpeaking = sections.join('\n\n---\n\n')
 
         // Re-index verse shared_sections
         const newSections: Record<string, boolean> = {}
