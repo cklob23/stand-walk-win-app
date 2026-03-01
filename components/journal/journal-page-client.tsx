@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { BookHeart, Plus, PenLine } from 'lucide-react'
+import { BookHeart, Plus, PenLine, ArrowLeft } from 'lucide-react'
 import { JournalHistory, AddCustomEntryButton, type JournalEntry } from '@/components/journal/journal-history'
 import { JournalEntryEditor } from '@/components/journal/journal-entry-editor'
 import { SharedWithMe, type SharedItem } from '@/components/journal/shared-with-me'
@@ -73,6 +73,15 @@ export function JournalPageClient({
 
     return (
         <div className="mx-auto max-w-3xl px-4 py-6 space-y-6">
+            {/* Back navigation */}
+            <button
+                onClick={() => router.back()}
+                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors -mb-3"
+            >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+            </button>
+
             {/* Header */}
             <div className="flex items-start justify-between gap-4">
                 <div>

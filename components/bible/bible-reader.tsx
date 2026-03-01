@@ -1540,23 +1540,53 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             {/* Header Bar */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                    {view !== 'books' && (
-                        <Button data-tour="bible-back" variant="ghost" size="sm" onClick={handleBack} className="gap-1">
-                            <ArrowLeft className="h-4 w-4" />
-                            <span className="sr-only sm:not-sr-only">Back</span>
-                        </Button>
+                    {view === 'reading' ? (
+                        <>
+                            <Button variant="ghost" size="sm" onClick={() => router.back()} className="gap-1 shrink-0">
+                                <ArrowLeft className="h-4 w-4" />
+                                <span className="sr-only sm:not-sr-only">Back</span>
+                            </Button>
+                            <div className="min-w-0">
+                                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                                    <BookOpen className="h-5 w-5 text-primary shrink-0" />
+                                    {selectedBookName} {selectedChapter}
+                                </h2>
+                                <button
+                                    onClick={handleBack}
+                                    className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                                >
+                                    <ChevronLeft className="h-3 w-3" />
+                                    Books & Chapters
+                                </button>
+                            </div>
+                        </>
+                    ) : view === 'chapters' ? (
+                        <>
+                            <Button data-tour="bible-back" variant="ghost" size="sm" onClick={handleBack} className="gap-1">
+                                <ArrowLeft className="h-4 w-4" />
+                                <span className="sr-only sm:not-sr-only">Back</span>
+                            </Button>
+                            <div>
+                                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                                    <BookOpen className="h-5 w-5 text-primary" />
+                                    {selectedBookName}
+                                </h2>
+                                <p className="text-xs text-muted-foreground">
+                                    {translationName} ({translation})
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <div>
+                            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                                <BookOpen className="h-5 w-5 text-primary" />
+                                Bible
+                            </h2>
+                            <p className="text-xs text-muted-foreground">
+                                {translationName} ({translation})
+                            </p>
+                        </div>
                     )}
-                    <div>
-                        <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                            <BookOpen className="h-5 w-5 text-primary" />
-                            {view === 'books' && 'Bible'}
-                            {view === 'chapters' && selectedBookName}
-                            {view === 'reading' && `${selectedBookName} ${selectedChapter}`}
-                        </h2>
-                        <p className="text-xs text-muted-foreground">
-                            {translationName} ({translation})
-                        </p>
-                    </div>
                 </div>
 
                 <div data-tour="bible-settings" className="flex items-center gap-2 flex-wrap">
