@@ -106,7 +106,7 @@ export function MessageBubble({
                 </AvatarFallback>
             </Avatar>
 
-            <div className={cn('flex-1 max-w-[85%] sm:max-w-[75%]', isOwn ? 'text-right' : 'text-left')}>
+            <div className={cn('flex-1 max-w-[85%] sm:max-w-[75%] text-left', isOwn && 'flex flex-col items-end')}>
                 {/* Reply preview */}
                 {msg.reply_to && (
                     <button
