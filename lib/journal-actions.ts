@@ -779,6 +779,74 @@ export async function requestJournalMeeting(
 }
 
 // ──────────────────────────────────────────
+// Save assignment response to prayer journal
+// ──────────────────────────────────────────
+export async function saveAssignmentToJournal(
+    pairingId: string,
+    assignmentTitle: string,
+    assignmentType: string,
+    responseText: string,
+    customTitle?: string
+): Promise<{ success: boolean; error?: string }> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'Not authenticated' }
+
+    const today = new Date().toISOString().split('T')[0]
+    const now = new Date().toISOString()
+
+    const typeLabel = assignmentType.charAt(0).toUpperCase() + assignmentType.slice(1)
+    const title = customTitle?.trim() || `${typeLabel}: ${assignmentTitle}`
+    const friendlyTime = new Date(now).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+    })
+
+    const noteContent = `@@TITLE: ${title}\n@@TIME: ${friendlyTime}\n${responseText.trim()}`
+
+    const { data: existing } = await supabase
+        .from('prayer_journal')
+        .select('id, god_speaking')
+        .eq('user_id', user.id)
+        .eq('journal_date', today)
+        .single()
+
+    if (existing) {
+        const updatedGodSpeaking = existing.god_speaking
+            ? `${existing.god_speaking}\n\n---\n\n${noteContent}`
+            : `\n\n---\n\n${noteContent}`
+
+        const { error } = await supabase
+            .from('prayer_journal')
+            .update({
+                god_speaking: updatedGodSpeaking,
+                updated_at: now,
+            })
+            .eq('id', existing.id)
+
+        if (error) return { success: false, error: error.message }
+    } else {
+        const { error } = await supabase
+            .from('prayer_journal')
+            .insert({
+                user_id: user.id,
+                pairing_id: pairingId,
+                journal_date: today,
+                prayer_items: '',
+                god_speaking: `\n\n---\n\n${noteContent}`,
+                shared_with_leader: false,
+                shared_sections: {},
+                custom_entries: [],
+            })
+
+        if (error) return { success: false, error: error.message }
+    }
+
+    revalidatePath('/dashboard/journal')
+    return { success: true }
+}
+
+// ──────────────────────────────────────────
 // Reply to a shared journal item
 // ──────────────────────────────────────────
 export async function replyToSharedItem(

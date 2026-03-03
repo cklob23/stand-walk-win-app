@@ -215,6 +215,7 @@ export function WeekDetailView({
                   totalWeekAssignments={assignments.length}
                   completedWeekAssignments={completedCount}
                   hasWeeklyMeeting={hasWeeklyMeeting}
+                  weekTitle={weekContent.title}
                 />
               ))}
               {assignments.length === 0 && (

@@ -238,9 +238,35 @@ export function JournalHistory({
         )
     }
 
+    // Filter out entries that have no visible content
+    const visibleEntries = entries.filter((entry) => {
+        const { freeText, verses } = parseGodSpeakingSections(entry.god_speaking)
+        const customs = (entry.custom_entries as { title: string; content: string; created_at: string }[]) || []
+        const hasDailyContent = !!entry.prayer_items?.trim() || !!freeText
+        return hasDailyContent || verses.length > 0 || customs.length > 0
+    })
+
+    if (visibleEntries.length === 0) {
+        return (
+            <Card>
+                <CardContent className="py-12 text-center">
+                    <BookHeart className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                    <h3 className="text-base font-semibold text-foreground mb-1">
+                        {isLeaderView ? 'No shared entries yet' : 'No journal entries yet'}
+                    </h3>
+                    <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                        {isLeaderView
+                            ? `${learnerName || 'Your learner'} hasn't shared any journal entries with you yet.`
+                            : 'Your daily prayer journal entries will appear here. Tap "New Reflection" above to write your first one!'}
+                    </p>
+                </CardContent>
+            </Card>
+        )
+    }
+
     return (
         <div className="space-y-6">
-            {entries.map((entry) => {
+            {visibleEntries.map((entry) => {
                 const { freeText, verses } = parseGodSpeakingSections(entry.god_speaking)
                 const customs = (entry.custom_entries as { title: string; content: string; created_at: string }[]) || []
                 const hasDailyContent = !!entry.prayer_items?.trim() || !!freeText

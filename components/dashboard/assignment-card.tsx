@@ -31,7 +31,8 @@ import {
   HandHeart,
   Send,
   CalendarHeart,
-  Cross
+  Cross,
+  BookHeart,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
@@ -39,6 +40,7 @@ import type { Assignment } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { notifyAssignmentCompleted, advanceToNextWeek } from '@/lib/notifications'
 import { extractScriptureReferences, extractBookReferences } from '@/lib/bible-utils'
+import { saveAssignmentToJournal } from '@/lib/journal-actions'
 
 interface AssignmentCardProps {
   assignment: Assignment
@@ -66,6 +68,7 @@ interface AssignmentCardProps {
   totalWeekAssignments?: number
   completedWeekAssignments?: number
   hasWeeklyMeeting?: boolean
+  weekTitle?: string
 }
 
 const typeIcons: Record<string, typeof BookOpen> = {
@@ -116,7 +119,8 @@ export function AssignmentCard({
   currentWeek,
   totalWeekAssignments,
   completedWeekAssignments,
-  hasWeeklyMeeting
+  hasWeeklyMeeting,
+  weekTitle
 }: AssignmentCardProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
@@ -126,6 +130,9 @@ export function AssignmentCard({
   const supabase = createClient()
 
   const [isEditing, setIsEditing] = useState(false)
+  const [journalSaving, setJournalSaving] = useState(false)
+  const [journalSaved, setJournalSaved] = useState(false)
+  const [showResponseBox, setShowResponseBox] = useState(!!progress?.notes)
 
   // Prayer timer state
   const isPrayerType = assignment.assignment_type === 'prayer'
@@ -772,7 +779,7 @@ export function AssignmentCard({
                         className="flex-1 h-10 gap-2"
                         asChild
                       >
-                        <Link href={`/dashboard/messages?draft=${encodeURIComponent(`Hey ${leaderName?.substring(0, leaderName?.indexOf(" ")) || ''}, I'm going through the second assignment on week one about salvation and accepting Jesus as my Lord and Savior and I'd love to talk with you more about faith and what it means to have a relationship with Jesus. Would you be free to meet up sometime soon?`)}`}>
+                        <Link href={`/dashboard/messages?draft=${encodeURIComponent(`Hey ${leaderName || 'there'}, I'm going through the Stand Walk Run program and I'd love to talk with you more about faith and what it means to have a relationship with Jesus. Would you be free to meet up sometime soon?`)}`}>
                           <Send className="h-4 w-4" />
                           Message {leaderName || 'Your Leader'}
                         </Link>
@@ -816,17 +823,19 @@ export function AssignmentCard({
                               ? 'Your Thoughts & Questions'
                               : 'Your Response'}
                         </label>
-                        {isCompleted && !isEditing && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
-                            onClick={() => setIsEditing(true)}
-                          >
-                            <PenLine className="h-3 w-3" />
-                            Edit Response
-                          </Button>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {isCompleted && !isEditing && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                              onClick={() => setIsEditing(true)}
+                            >
+                              <PenLine className="h-3 w-3" />
+                              Edit Response
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <Textarea
                         value={isSalvationStory ? stripSalvationPrefix(response) : response}
@@ -848,8 +857,149 @@ export function AssignmentCard({
                         disabled={isCompleted && !isEditing}
                         className={cn(isCompleted && !isEditing && "opacity-60")}
                       />
-                      {isEditing && (
-                        <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        {isEditing && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="h-8 text-xs"
+                              disabled={isLoading}
+                              onClick={async () => {
+                                setIsLoading(true)
+                                const { error } = await supabase
+                                  .from('assignment_progress')
+                                  .upsert({
+                                    pairing_id: pairingId,
+                                    assignment_id: assignment.id,
+                                    user_id: userId,
+                                    status: 'completed',
+                                    notes: response || null,
+                                    completed_at: progress?.completed_at || new Date().toISOString(),
+                                  }, {
+                                    onConflict: 'pairing_id,assignment_id,user_id',
+                                    ignoreDuplicates: false
+                                  })
+                                setIsLoading(false)
+                                if (error) {
+                                  toast.error('Failed to update response')
+                                } else {
+                                  toast.success('Response updated!')
+                                  setIsEditing(false)
+                                  router.refresh()
+                                }
+                              }}
+                            >
+                              {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                              Save Changes
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 text-xs"
+                              onClick={() => {
+                                setResponse(progress?.notes || '')
+                                setIsEditing(false)
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </>
+                        )}
+                        {/* Save to Journal button */}
+                        {(response.trim() || progress?.notes) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs gap-1.5"
+                            disabled={journalSaving}
+                            onClick={async () => {
+                              const textToSave = (isSalvationStory ? stripSalvationPrefix(response) : response).trim() || progress?.notes?.trim() || ''
+                              if (!textToSave) return
+                              setJournalSaving(true)
+                              const wLabel = weekTitle
+                                ? `Week ${assignment.week_number} - ${weekTitle}`
+                                : `Week ${assignment.week_number}`
+                              const aNum = assignment.order_index + 1
+                              const jTitle = `${wLabel}: Assignment ${aNum} - ${assignment.title}`
+                              const result = await saveAssignmentToJournal(
+                                pairingId,
+                                assignment.title,
+                                assignment.assignment_type,
+                                textToSave,
+                                jTitle
+                              )
+                              if (result.success) {
+                                setJournalSaved(true)
+                                toast.success('Saved to your prayer journal!', {
+                                  action: {
+                                    label: 'View Journal',
+                                    onClick: () => router.push('/dashboard/journal'),
+                                  },
+                                })
+                              } else {
+                                toast.error(result.error || 'Failed to save to journal')
+                              }
+                              setJournalSaving(false)
+                            }}
+                          >
+                            {journalSaving ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : journalSaved ? (
+                              <CheckCircle2 className="h-3 w-3 text-green-600" />
+                            ) : (
+                              <BookHeart className="h-3 w-3" />
+                            )}
+                            {journalSaved ? 'Saved to Journal' : 'Save to Journal'}
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+            {/* Learner view: Optional response for reading/action types */}
+            {!isLeader && !isMeetingType && !isPrayerType &&
+              assignment.assignment_type !== 'reflection' &&
+              assignment.assignment_type !== 'discussion' && (
+                <div className="space-y-2">
+                  {!showResponseBox && !progress?.notes ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground -ml-2"
+                      onClick={() => setShowResponseBox(true)}
+                    >
+                      <PenLine className="h-3 w-3" />
+                      Write a response
+                    </Button>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-foreground">Your Response</label>
+                        {isCompleted && !isEditing && progress?.notes && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                            onClick={() => setIsEditing(true)}
+                          >
+                            <PenLine className="h-3 w-3" />
+                            Edit
+                          </Button>
+                        )}
+                      </div>
+                      <Textarea
+                        value={response}
+                        onChange={(e) => setResponse(e.target.value)}
+                        placeholder="Write your thoughts, learnings, or reflections..."
+                        rows={3}
+                        disabled={isCompleted && !isEditing && !!progress?.notes}
+                        className={cn(isCompleted && !isEditing && progress?.notes && "opacity-60")}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        {response.trim() && response !== (progress?.notes || '') && (
                           <Button
                             size="sm"
                             variant="default"
@@ -863,26 +1013,28 @@ export function AssignmentCard({
                                   pairing_id: pairingId,
                                   assignment_id: assignment.id,
                                   user_id: userId,
-                                  status: 'completed',
+                                  status: progress?.status || 'in_progress',
                                   notes: response || null,
-                                  completed_at: progress?.completed_at || new Date().toISOString(),
+                                  completed_at: progress?.completed_at || null,
                                 }, {
                                   onConflict: 'pairing_id,assignment_id,user_id',
                                   ignoreDuplicates: false
                                 })
                               setIsLoading(false)
                               if (error) {
-                                toast.error('Failed to update response')
+                                toast.error('Failed to save response')
                               } else {
-                                toast.success('Response updated!')
+                                toast.success('Response saved!')
                                 setIsEditing(false)
                                 router.refresh()
                               }
                             }}
                           >
                             {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                            Save Changes
+                            Save Response
                           </Button>
+                        )}
+                        {isEditing && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -894,8 +1046,55 @@ export function AssignmentCard({
                           >
                             Cancel
                           </Button>
-                        </div>
-                      )}
+                        )}
+                        {/* Save to Journal button */}
+                        {(response.trim() || progress?.notes) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs gap-1.5"
+                            disabled={journalSaving}
+                            onClick={async () => {
+                              const textToSave = response.trim() || progress?.notes?.trim() || ''
+                              if (!textToSave) return
+                              setJournalSaving(true)
+                              const wLabel = weekTitle
+                                ? `Week ${assignment.week_number} - ${weekTitle}`
+                                : `Week ${assignment.week_number}`
+                              const aNum = assignment.order_index + 1
+                              const jTitle = `${wLabel}: Assignment ${aNum} - ${assignment.title}`
+                              const result = await saveAssignmentToJournal(
+                                pairingId,
+                                assignment.title,
+                                assignment.assignment_type,
+                                textToSave,
+                                jTitle
+                              )
+                              if (result.success) {
+                                setJournalSaved(true)
+                                toast.success('Saved to your prayer journal!', {
+                                  action: {
+                                    label: 'View Journal',
+                                    onClick: () => router.push('/dashboard/journal'),
+                                  },
+                                })
+                              } else {
+                                toast.error(result.error || 'Failed to save to journal')
+                              }
+                              setJournalSaving(false)
+                            }}
+                          >
+                            {journalSaving ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : journalSaved ? (
+                              <CheckCircle2 className="h-3 w-3 text-green-600" />
+                            ) : (
+                              <BookHeart className="h-3 w-3" />
+                            )}
+                            {journalSaved ? 'Saved to Journal' : 'Save to Journal'}
+                          </Button>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
