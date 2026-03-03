@@ -66,43 +66,41 @@ export function AttachmentPreviewModal({ open, onOpenChange, url, type }: Attach
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl w-[calc(100vw-2rem)] sm:w-[95vw] max-h-[90vh] p-0 overflow-hidden bg-background border-0 gap-0 [&>button]:hidden">
+            <DialogContent className="max-w-4xl w-[calc(100vw-2rem)] sm:w-[min(95vw,56rem)] max-h-[90vh] p-0 overflow-hidden bg-background border-0 gap-0 [&>button]:hidden">
                 <VisuallyHidden>
                     <DialogTitle>{fileName}</DialogTitle>
                 </VisuallyHidden>
 
                 {/* Header bar */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-3 border-b bg-card">
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <FileIcon className="h-5 w-5 shrink-0 text-primary" />
-                        <span className="text-sm font-medium truncate min-w-0">{fileName}</span>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 shrink-0 ml-auto sm:ml-0"
-                            onClick={() => onOpenChange(false)}
-                        >
-                            <X className="h-4 w-4" />
-                        </Button>
-                    </div>
+                <div className="flex items-center gap-2 px-3 sm:px-4 py-2.5 border-b bg-card overflow-hidden">
+                    <FileIcon className="h-5 w-5 shrink-0 text-primary" />
+                    <span className="text-sm font-medium truncate min-w-0 flex-1">{fileName}</span>
                     <div className="flex items-center gap-1.5 shrink-0">
                         <Button
                             variant="outline"
                             size="sm"
-                            className="h-8 gap-1.5 text-xs flex-1 sm:flex-none"
+                            className="h-8 gap-1.5 text-xs"
                             onClick={handleDownload}
                         >
                             <Download className="h-3.5 w-3.5" />
-                            Download
+                            <span className="hidden sm:inline">Download</span>
                         </Button>
                         <Button
                             variant="outline"
                             size="sm"
-                            className="h-8 gap-1.5 text-xs flex-1 sm:flex-none"
+                            className="h-8 gap-1.5 text-xs"
                             onClick={handleOpenInBrowser}
                         >
                             <ExternalLink className="h-3.5 w-3.5" />
-                            Open in Browser
+                            <span className="hidden sm:inline">Open in Browser</span>
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
+                            onClick={() => onOpenChange(false)}
+                        >
+                            <X className="h-4 w-4" />
                         </Button>
                     </div>
                 </div>
