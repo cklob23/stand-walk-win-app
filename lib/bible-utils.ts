@@ -1,6 +1,6 @@
 // Maps common Bible book names to Bolls.life numeric book IDs
 // Standard Protestant canon: Genesis=1 ... Revelation=66
-const BOOK_MAP: Record<string, string> = {
+export const BOOK_MAP: Record<string, string> = {
     'genesis': '1', 'gen': '1',
     'exodus': '2', 'exo': '2', 'ex': '2',
     'leviticus': '3', 'lev': '3',
@@ -111,8 +111,8 @@ export function extractScriptureReferences(text: string): { reference: string; u
     return results
 }
 
-// Reverse lookup: book ID -> display name
-const BOOK_ID_TO_NAME: Record<string, string> = {
+// Reverse lookup: book ID -> display name (exported for consistent book name display)
+export const BOOK_ID_TO_NAME: Record<string, string> = {
     '1': 'Genesis', '2': 'Exodus', '3': 'Leviticus', '4': 'Numbers', '5': 'Deuteronomy',
     '6': 'Joshua', '7': 'Judges', '8': 'Ruth', '9': '1 Samuel', '10': '2 Samuel',
     '11': '1 Kings', '12': '2 Kings', '13': '1 Chronicles', '14': '2 Chronicles',

@@ -495,7 +495,8 @@ export async function saveBiblePreference(
     translationPref: string,
     textSize: string,
     skipVerseNumbers?: boolean,
-    voiceURI?: string
+    voiceURI?: string,
+    readingSpeed?: number
 ): Promise<void> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -508,6 +509,7 @@ export async function saveBiblePreference(
             bible_text_size: textSize,
             bible_skip_verse_numbers: skipVerseNumbers ?? false,
             bible_voice_uri: voiceURI ?? null,
+            bible_reading_speed: readingSpeed ?? 0.85,
         })
         .eq('id', user.id)
 }

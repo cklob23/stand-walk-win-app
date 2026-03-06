@@ -41,6 +41,7 @@ import { bibleSteps, bibleReadingSteps } from '@/lib/tour-steps'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
+import { BOOK_ID_TO_NAME, BOOK_MAP } from '@/lib/bible-utils'
 
 interface BibleBook {
     id: string
@@ -64,14 +65,14 @@ interface TranslationInfo {
 }
 
 const ENGLISH_TRANSLATIONS: TranslationInfo[] = [
+    { identifier: 'NIV', name: 'New International Version' },
+    { identifier: 'ESV', name: 'English Standard Version' },
+    { identifier: 'NLT', name: 'New Living Translation' },
     { identifier: 'KJV', name: 'King James Version' },
     { identifier: 'NKJV', name: 'New King James Version' },
-    { identifier: 'ASV', name: 'American Standard Version' },
-    { identifier: 'ESV', name: 'English Standard Version' },
-    { identifier: 'NIV', name: 'New International Version' },
-    { identifier: 'NLT', name: 'New Living Translation' },
     { identifier: 'NASB', name: 'New American Standard' },
     { identifier: 'CSB17', name: 'Christian Standard Bible' },
+    { identifier: 'ASV', name: 'American Standard Version' },
     { identifier: 'MSG', name: 'The Message' },
     { identifier: 'AMP', name: 'Amplified Bible' },
 ]
@@ -108,10 +109,11 @@ interface BibleReaderProps {
     savedChapter?: number | null
     savedSkipVerseNumbers?: boolean
     savedVoiceURI?: string | null
+    savedReadingSpeed?: number | null
     userRole?: string | null
 }
 
-export function BibleReader({ weekScripture, weekNumber, pairingId, savedTranslation, savedTextSize, savedBook, savedChapter, savedSkipVerseNumbers = false, savedVoiceURI, userRole }: BibleReaderProps) {
+export function BibleReader({ weekScripture, weekNumber, pairingId, savedTranslation, savedTextSize, savedBook, savedChapter, savedSkipVerseNumbers = false, savedVoiceURI, savedReadingSpeed, userRole }: BibleReaderProps) {
     const searchParams = useSearchParams()
     const router = useRouter()
 
@@ -142,7 +144,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     // State
     const [translation, setTranslation] = useState(
-        searchParams.get('v') || savedTranslation || 'KJV'
+        searchParams.get('v') || savedTranslation || 'NIV'
     )
     const [textSize, setTextSize] = useState(savedTextSize || 'base')
     const [selectedBook, setSelectedBook] = useState<string | null>(initialBook)
@@ -279,8 +281,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     const [skipVerseNumbers, setSkipVerseNumbers] = useState(savedSkipVerseNumbers)
     const skipVerseNumbersRef = useRef(savedSkipVerseNumbers)
-    const [speechRate, setSpeechRate] = useState(0.85)
-    const speechRateRef = useRef(0.85)
+    const [speechRate, setSpeechRate] = useState(savedReadingSpeed ?? 0.85)
+    const speechRateRef = useRef(savedReadingSpeed ?? 0.85)
 
     // Data fetching
     const { data: booksData, isLoading: booksLoading } = useSWR(
@@ -378,10 +380,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     // Preference save debounce
     const prefTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    const savePrefs = useCallback((trans: string, size: string, skip?: boolean, voice?: string) => {
+    const savePrefs = useCallback((trans: string, size: string, skip?: boolean, voice?: string, speed?: number) => {
         if (prefTimeoutRef.current) clearTimeout(prefTimeoutRef.current)
         prefTimeoutRef.current = setTimeout(() => {
-            saveBiblePreference(trans, size, skip, voice)
+            saveBiblePreference(trans, size, skip, voice, speed)
         }, 1000)
     }, [])
 
@@ -1373,7 +1375,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         const params = new URLSearchParams()
         if (book) params.set('book', book)
         if (chapter) params.set('chapter', String(chapter))
-        if (v !== 'KJV') params.set('v', v)
+        if (v !== 'NIV') params.set('v', v)
         const query = params.toString()
         router.replace(`/dashboard/bible${query ? `?${query}` : ''}`, { scroll: false })
     }, [router])
@@ -1434,13 +1436,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const handleTranslationChange = (v: string) => {
         setTranslation(v)
         updateURL(selectedBook, selectedChapter, v)
-        savePrefs(v, textSize, skipVerseNumbers, useCloudVoices ? selectedCloudVoice : selectedVoiceURI)
+        savePrefs(v, textSize, skipVerseNumbers, useCloudVoices ? selectedCloudVoice : selectedVoiceURI, speechRate)
         handleStopAudio()
     }
 
     const handleTextSizeChange = (size: string) => {
         setTextSize(size)
-        savePrefs(translation, size, skipVerseNumbers, useCloudVoices ? selectedCloudVoice : selectedVoiceURI)
+            > savePrefs(translation, size, skipVerseNumbers, useCloudVoices ? selectedCloudVoice : selectedVoiceURI, speechRate)
     }
 
     const handleBack = () => {
@@ -1484,7 +1486,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     // Parse "John 3:16" or "John 3:3-7 - "text..."" style scripture references
     const parseScriptureRef = useCallback((ref: string): { bookId: string; chapter: number; verseRange: { start: number; end: number } | null } | null => {
-        if (!ref || books.length === 0) return null
+        if (!ref) return null
         // Strip any embedded quote text after ' - "'
         const cleanRef = ref.split(/\s*-\s*\u201C|\s*-\s*"/)[0].trim()
         const match = cleanRef.match(/^(.+?)\s+(\d+)(?::(\d+(?:\s*-\s*\d+)?))?$/)
@@ -1492,13 +1494,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         const bookName = match[1].trim().toLowerCase()
         const chapter = parseInt(match[2], 10)
         const verseStr = match[3]?.replace(/\s/g, '') || null
-        const book = books.find(b =>
-            b.name.toLowerCase() === bookName ||
-            b.name.toLowerCase().startsWith(bookName)
-        )
-        if (!book) return null
-        return { bookId: book.id, chapter, verseRange: parseVerseRange(verseStr) }
-    }, [books])
+        // Use BOOK_MAP for reliable lookup regardless of translation's verbose names
+        const bookId = BOOK_MAP[bookName]
+        if (!bookId) return null
+        return { bookId, chapter, verseRange: parseVerseRange(verseStr) }
+    }, [])
 
     // Handle "This Week's Scripture" click
     const handleWeekScripture = useCallback(() => {
@@ -1527,7 +1527,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     // URL params are handled via initial state, no effect needed
 
-    const selectedBookName = books.find(b => b.id === selectedBook)?.name || selectedBook
+    const selectedBookName = selectedBook ? (BOOK_ID_TO_NAME[selectedBook] || books.find(b => b.id === selectedBook)?.name || selectedBook) : ''
     const translationName = ENGLISH_TRANSLATIONS.find(t => t.identifier === translation)?.name || translation
     const textSizeClass = TEXT_SIZES.find(s => s.value === textSize)?.class || 'text-base'
 
@@ -1679,7 +1679,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             setPausedAtVerse(resumeVerse)
                                         }
                                         setSelectedCloudVoice(v)
-                                        savePrefs(translation, textSize, skipVerseNumbers, v)
+                                        savePrefs(translation, textSize, skipVerseNumbers, v, speechRate)
                                     }}>
                                         <SelectTrigger className="w-full sm:w-[320px] h-9 text-sm bg-card">
                                             <SelectValue placeholder="Select a voice..." />
@@ -1720,7 +1720,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                 setPausedAtVerse(resumeVerse)
                                             }
                                             setSelectedVoiceURI(v)
-                                            savePrefs(translation, textSize, skipVerseNumbers, v)
+                                            savePrefs(translation, textSize, skipVerseNumbers, v, speechRate)
                                         }}>
                                             <SelectTrigger className="w-full sm:w-[320px] h-9 text-sm bg-card">
                                                 <SelectValue placeholder="Select a voice..." />
@@ -1797,7 +1797,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     id="skip-verse-numbers"
                                     role="switch"
                                     aria-checked={skipVerseNumbers}
-                                    onClick={() => { const next = !skipVerseNumbers; setSkipVerseNumbers(next); savePrefs(translation, textSize, next, useCloudVoices ? selectedCloudVoice : selectedVoiceURI) }}
+                                    onClick={() => { const next = !skipVerseNumbers; setSkipVerseNumbers(next); savePrefs(translation, textSize, next, useCloudVoices ? selectedCloudVoice : selectedVoiceURI, speechRate) }}
                                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors ${skipVerseNumbers ? 'bg-primary' : 'bg-muted'
                                         }`}
                                 >
@@ -1825,6 +1825,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     onChange={(e) => {
                                         const val = parseFloat(e.target.value)
                                         setSpeechRate(val)
+                                        savePrefs(translation, textSize, skipVerseNumbers, useCloudVoices ? selectedCloudVoice : selectedVoiceURI, val)
                                     }}
                                     className="w-full h-1.5 bg-muted rounded-full appearance-none cursor-pointer accent-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-sm"
                                 />
@@ -1940,10 +1941,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             key={book.id}
                                             variant="outline"
                                             size="sm"
-                                            className="justify-start text-sm h-9 bg-card"
+                                            className="justify-start text-sm h-9 bg-card truncate"
                                             onClick={() => handleSelectBook(book.id)}
                                         >
-                                            {book.name}
+                                            {BOOK_ID_TO_NAME[book.id] || book.name}
                                         </Button>
                                     ))}
                                 </div>
@@ -1957,10 +1958,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             key={book.id}
                                             variant="outline"
                                             size="sm"
-                                            className="justify-start text-sm h-9 bg-card"
+                                            className="justify-start text-sm h-9 bg-card truncate"
                                             onClick={() => handleSelectBook(book.id)}
                                         >
-                                            {book.name}
+                                            {BOOK_ID_TO_NAME[book.id] || book.name}
                                         </Button>
                                     ))}
                                 </div>

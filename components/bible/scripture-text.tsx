@@ -100,7 +100,7 @@ function parseReference(ref: string): { bookId: string; chapter: number; startVe
  * Fetches and displays the actual text of a Bible verse/passage
  * in the user's preferred translation.
  */
-export function ScriptureText({ reference, translation = 'KJV', className = '' }: ScriptureTextProps) {
+export function ScriptureText({ reference, translation = 'NIV', className = '' }: ScriptureTextProps) {
     const [text, setText] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
     const parsed = parseReference(reference)
