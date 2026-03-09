@@ -256,17 +256,17 @@ export function JournalHistory({
                             </div>
                             <Eye className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                         </button>
-                        {/* Delete button - only show for entry owner, not in leader view */}
+                        {/* Delete button - always visible on mobile, hover on desktop */}
                         {!isLeaderView && (
                             <button
                                 onClick={(e) => { e.stopPropagation(); handleDeleteAttachment(att.id) }}
-                                className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="absolute -top-1.5 -right-1.5 h-6 w-6 md:h-5 md:w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center md:opacity-0 md:group-hover:opacity-100 transition-opacity shadow-sm"
                                 title="Remove attachment"
                             >
                                 {loadingKey === `delete-att-${att.id}` ? (
                                     <Loader2 className="h-3 w-3 animate-spin" />
                                 ) : (
-                                    <X className="h-3 w-3" />
+                                    <X className="h-3.5 w-3.5 md:h-3 md:w-3" />
                                 )}
                             </button>
                         )}
