@@ -117,7 +117,7 @@ export interface Notification {
   id: string
   user_id: string
   pairing_id: string | null
-  type: 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing' | 'journal_shared'
+  type: 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing'
   title: string
   message: string
   read: boolean

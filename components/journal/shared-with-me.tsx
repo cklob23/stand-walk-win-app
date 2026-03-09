@@ -6,12 +6,13 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { BookOpen, MessageSquare, PenLine, ChevronDown, ChevronUp, ExternalLink, Reply, Loader2, Send } from 'lucide-react'
+import { BookOpen, MessageSquare, PenLine, ChevronDown, ChevronUp, ExternalLink, Reply, Loader2, Send, Smile } from 'lucide-react'
 import { format } from 'date-fns'
 import { scriptureToUrl } from '@/lib/bible-utils'
-import { replyToSharedItem } from '@/lib/journal-actions'
+import { replyToSharedItem, toggleJournalReaction, type JournalReaction } from '@/lib/journal-actions'
 import { toast } from 'sonner'
 import Link from 'next/link'
+import { ReactionPicker, ReactionDisplay, getReactionIcon } from '@/components/messages/reaction-picker'
 
 export interface SharedItem {
     id: string
@@ -23,6 +24,9 @@ export interface SharedItem {
     created_at: string
     reply_text?: string | null
     replied_at?: string | null
+    journal_entry_id?: string | null
+    section_key?: string | null
+    reactions?: JournalReaction[]
 }
 
 interface SharedWithMeProps {
@@ -30,15 +34,62 @@ interface SharedWithMeProps {
     autoOpen?: boolean
     pairingId: string
     currentUserName: string
+    currentUserId: string
 }
 
-export function SharedWithMe({ items, autoOpen = false, pairingId, currentUserName }: SharedWithMeProps) {
+export function SharedWithMe({ items, autoOpen = false, pairingId, currentUserName, currentUserId }: SharedWithMeProps) {
     const router = useRouter()
     const [expanded, setExpanded] = useState(autoOpen)
     const sectionRef = useRef<HTMLDivElement>(null)
     const [replyingTo, setReplyingTo] = useState<string | null>(null)
     const [replyText, setReplyText] = useState('')
     const [replySaving, setReplySaving] = useState(false)
+    const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null)
+    const [localReactions, setLocalReactions] = useState<Record<string, JournalReaction[]>>({})
+
+    // Initialize local reactions from items
+    useEffect(() => {
+        const reactionMap: Record<string, JournalReaction[]> = {}
+        items.forEach(item => {
+            if (item.reactions) {
+                reactionMap[item.id] = item.reactions
+            }
+        })
+        setLocalReactions(reactionMap)
+    }, [items])
+
+    const handleToggleReaction = async (itemId: string, journalEntryId: string | null | undefined, sectionKey: string | null | undefined, emoji: string) => {
+        if (!journalEntryId) return
+
+        const resolvedSectionKey = sectionKey || 'daily'
+
+        // Optimistic update
+        const currentReactions = localReactions[itemId] || []
+        const existingIdx = currentReactions.findIndex(r => r.user_id === currentUserId && r.emoji === emoji)
+
+        if (existingIdx >= 0) {
+            // Remove reaction
+            setLocalReactions(prev => ({
+                ...prev,
+                [itemId]: currentReactions.filter((_, i) => i !== existingIdx)
+            }))
+        } else {
+            // Add reaction
+            setLocalReactions(prev => ({
+                ...prev,
+                [itemId]: [...currentReactions, { id: `temp-${Date.now()}`, journal_entry_id: journalEntryId, user_id: currentUserId, emoji, section_key: resolvedSectionKey, created_at: new Date().toISOString() }]
+            }))
+        }
+
+        setShowReactionPicker(null)
+
+        const result = await toggleJournalReaction(journalEntryId, emoji, resolvedSectionKey)
+        if (!result.success) {
+            toast.error(result.error || 'Failed to react')
+            // Revert on error
+            setLocalReactions(prev => ({ ...prev, [itemId]: currentReactions }))
+        }
+    }
 
     const handleReply = async (itemId: string) => {
         if (!replyText.trim()) return
@@ -185,6 +236,61 @@ export function SharedWithMe({ items, autoOpen = false, pairingId, currentUserNa
                                                 {format(new Date(item.replied_at), 'MMM d, h:mm a')}
                                             </p>
                                         )}
+                                    </div>
+                                )}
+
+                                {/* Reactions section */}
+                                {item.journal_entry_id && (
+                                    <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/50">
+                                        {/* Existing reactions */}
+                                        {(localReactions[item.id] || []).length > 0 && (
+                                            <div className="flex items-center gap-1">
+                                                {(() => {
+                                                    const reactions = localReactions[item.id] || []
+                                                    const seen = new Set<string>()
+                                                    const uniqueEmojis: { emoji: string; hasOwn: boolean }[] = []
+                                                    for (const r of reactions) {
+                                                        if (!seen.has(r.emoji)) {
+                                                            seen.add(r.emoji)
+                                                            uniqueEmojis.push({
+                                                                emoji: r.emoji,
+                                                                hasOwn: reactions.some(rx => rx.emoji === r.emoji && rx.user_id === currentUserId),
+                                                            })
+                                                        }
+                                                    }
+                                                    return uniqueEmojis.map(({ emoji, hasOwn }) => (
+                                                        <button
+                                                            key={emoji}
+                                                            onClick={() => handleToggleReaction(item.id, item.journal_entry_id, item.section_key, emoji)}
+                                                            className={`inline-flex items-center justify-center rounded-full w-7 h-7 text-base transition-all hover:scale-110 active:scale-95 bg-muted border ${hasOwn ? 'ring-1 ring-primary/40' : ''}`}
+                                                            title={`${getReactionIcon(emoji)} reaction`}
+                                                        >
+                                                            {getReactionIcon(emoji)}
+                                                        </button>
+                                                    ))
+                                                })()}
+                                            </div>
+                                        )}
+
+                                        {/* Add reaction button */}
+                                        <div className="relative">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                                onClick={() => setShowReactionPicker(showReactionPicker === item.id ? null : item.id)}
+                                            >
+                                                <Smile className="h-4 w-4" />
+                                            </Button>
+                                            {showReactionPicker === item.id && (
+                                                <div className="absolute left-0 bottom-full mb-1 z-20">
+                                                    <ReactionPicker
+                                                        onSelect={(emoji) => handleToggleReaction(item.id, item.journal_entry_id, item.section_key, emoji)}
+                                                        side="left"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 

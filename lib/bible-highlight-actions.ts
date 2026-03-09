@@ -41,6 +41,20 @@ export async function getHighlightsForChapter(
     return data || []
 }
 
+export async function getAllHighlights(): Promise<BibleHighlight[]> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return []
+
+    const { data } = await supabase
+        .from('bible_highlights')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+    return data || []
+}
+
 export async function toggleHighlight(
     bookId: string,
     chapter: number,
@@ -491,16 +505,40 @@ export async function saveExplanationToJournal(
     return { success: true }
 }
 
+interface VoicePreference {
+    type: 'openai' | 'google' | 'browser'
+    uri: string
+}
+
 export async function saveBiblePreference(
     translationPref: string,
     textSize: string,
     skipVerseNumbers?: boolean,
     voiceURI?: string,
-    readingSpeed?: number
+    readingSpeed?: number,
+    voicePreference?: VoicePreference
 ): Promise<void> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+
+    // If a voice preference is provided, merge it into the existing array
+    let voicePrefsUpdate: VoicePreference[] | undefined
+    if (voicePreference) {
+        // First fetch existing preferences
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('bible_voice_preferences')
+            .eq('id', user.id)
+            .single()
+
+        const existingPrefs = (profile?.bible_voice_preferences as VoicePreference[]) || []
+        // Remove any existing preference of the same type, then add the new one
+        voicePrefsUpdate = [
+            ...existingPrefs.filter(p => p.type !== voicePreference.type),
+            voicePreference
+        ]
+    }
 
     await supabase
         .from('profiles')
@@ -510,6 +548,7 @@ export async function saveBiblePreference(
             bible_skip_verse_numbers: skipVerseNumbers ?? false,
             bible_voice_uri: voiceURI ?? null,
             bible_reading_speed: readingSpeed ?? 0.85,
+            ...(voicePrefsUpdate && { bible_voice_preferences: voicePrefsUpdate }),
         })
         .eq('id', user.id)
 }

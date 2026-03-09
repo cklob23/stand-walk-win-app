@@ -367,7 +367,7 @@ export async function addCustomEntry(
     entryId: string,
     title: string,
     content: string
-): Promise<{ success?: boolean; error?: string }> {
+): Promise<{ success?: boolean; error?: string; createdAt?: string }> {
     try {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -382,11 +382,12 @@ export async function addCustomEntry(
 
         if (!entry) return { error: 'Entry not found' }
 
+        const createdAt = new Date().toISOString()
         const customs: CustomEntry[] = (entry.custom_entries as CustomEntry[]) || []
         customs.push({
             title: title.trim() || 'My Reflection',
             content: content.trim(),
-            created_at: new Date().toISOString(),
+            created_at: createdAt,
         })
 
         const { error } = await supabase
@@ -401,7 +402,7 @@ export async function addCustomEntry(
         if (error) return { error: error.message }
 
         revalidatePath('/dashboard/journal')
-        return { success: true }
+        return { success: true, createdAt }
     } catch {
         return { error: 'Failed to add custom entry.' }
     }
@@ -457,7 +458,8 @@ export async function updateCustomEntry(
 export async function deleteCustomEntry(
     entryId: string,
     customIndex: number,
-    pairingId?: string
+    pairingId?: string,
+    customCreatedAt?: string // Use created_at as stable identifier
 ): Promise<{ success?: boolean; error?: string }> {
     try {
         const supabase = await createClient()
@@ -476,35 +478,28 @@ export async function deleteCustomEntry(
         const customs: CustomEntry[] = (entry.custom_entries as CustomEntry[]) || []
         if (customIndex < 0 || customIndex >= customs.length) return { error: 'Entry not found' }
 
+        // Get the created_at of the entry being deleted (use provided or from array)
+        const deletedCreatedAt = customCreatedAt || customs[customIndex]?.created_at
+
         customs.splice(customIndex, 1)
 
-        // Check if this custom entry was shared
+        // Check if this custom entry was shared (try both timestamp and index-based keys for backward compat)
         const sections: Record<string, boolean> = (entry.shared_sections as Record<string, boolean>) || {}
-        const wasShared = sections[`custom_${customIndex}`]
+        const wasShared = sections[`custom_${deletedCreatedAt}`] || sections[`custom_${customIndex}`]
 
+        // Remove both possible keys (timestamp-based and legacy index-based)
+        delete sections[`custom_${deletedCreatedAt}`]
         delete sections[`custom_${customIndex}`]
-        // Re-index remaining custom entries
-        const newSections: Record<string, boolean> = {}
-        for (const [key, val] of Object.entries(sections)) {
-            if (key.startsWith('custom_')) {
-                const idx = parseInt(key.split('_')[1])
-                if (idx > customIndex) {
-                    newSections[`custom_${idx - 1}`] = val
-                } else {
-                    newSections[key] = val
-                }
-            } else {
-                newSections[key] = val
-            }
-        }
 
-        const anyShared = Object.values(newSections).some(v => v === true)
+        // No re-indexing needed for timestamp-based keys
+
+        const anyShared = Object.values(sections).some(v => v === true)
 
         const { error } = await supabase
             .from('prayer_journal')
             .update({
                 custom_entries: customs,
-                shared_sections: newSections,
+                shared_sections: sections,
                 shared_with_leader: anyShared,
                 updated_at: new Date().toISOString(),
             })
@@ -512,6 +507,22 @@ export async function deleteCustomEntry(
             .eq('user_id', user.id)
 
         if (error) return { error: error.message }
+
+        // Delete attachments for the deleted custom entry using timestamp-based key
+        if (deletedCreatedAt) {
+            await supabase
+                .from('journal_attachments')
+                .delete()
+                .eq('journal_entry_id', entryId)
+                .eq('section_key', `custom_${deletedCreatedAt}`)
+        }
+
+        // Also try to delete any legacy index-based attachments
+        await supabase
+            .from('journal_attachments')
+            .delete()
+            .eq('journal_entry_id', entryId)
+            .eq('section_key', `custom_${customIndex}`)
 
         // Notify partner if the deleted entry was shared
         const resolvedPairingId = pairingId || entry.pairing_id
@@ -570,6 +581,12 @@ export async function deleteJournalEntry(
         if (!entry) return { error: 'Entry not found' }
 
         const wasShared = entry.shared_with_leader
+
+        // Delete all attachments for this journal entry first
+        await supabase
+            .from('journal_attachments')
+            .delete()
+            .eq('journal_entry_id', entryId)
 
         const { error } = await supabase
             .from('prayer_journal')
@@ -680,6 +697,40 @@ export async function deleteVerseEntry(
 
         if (error) return { error: error.message }
 
+        // Handle attachments: delete attachments for the deleted verse entry
+        // and re-index remaining verse attachments' section_keys
+        const deletedSectionKey = `verse_${verseIdx}`
+
+        // Delete attachments for the deleted verse entry
+        await supabase
+            .from('journal_attachments')
+            .delete()
+            .eq('journal_entry_id', entryId)
+            .eq('section_key', deletedSectionKey)
+
+        // Get all remaining verse attachments that need re-indexing
+        const { data: attachmentsToReindex } = await supabase
+            .from('journal_attachments')
+            .select('id, section_key')
+            .eq('journal_entry_id', entryId)
+            .like('section_key', 'verse_%')
+
+        // Re-index attachments with higher indices
+        if (attachmentsToReindex) {
+            for (const att of attachmentsToReindex) {
+                const match = att.section_key.match(/^verse_(\d+)$/)
+                if (match) {
+                    const idx = parseInt(match[1])
+                    if (idx > verseIdx) {
+                        await supabase
+                            .from('journal_attachments')
+                            .update({ section_key: `verse_${idx - 1}` })
+                            .eq('id', att.id)
+                    }
+                }
+            }
+        }
+
         // Notify partner if was shared
         if (wasShared) {
             const { data: pairing } = await supabase
@@ -738,7 +789,19 @@ export async function getTodayEntry(userId: string, localDate?: string) {
         .eq('user_id', userId)
         .eq('journal_date', today)
         .single()
-    return data
+
+    if (!data) return null
+
+    // Fetch attachments for this entry
+    const { data: attachments } = await supabase
+        .from('journal_attachments')
+        .select('*')
+        .eq('journal_entry_id', data.id)
+
+    return {
+        ...data,
+        attachments: attachments || [],
+    }
 }
 
 export async function requestJournalMeeting(
@@ -947,4 +1010,137 @@ export async function replyToSharedItem(
     } catch {
         return { error: 'Failed to send reply.' }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Journal Attachments
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface JournalAttachment {
+    id: string
+    journal_entry_id: string
+    user_id: string
+    url: string
+    filename: string
+    file_type: 'image' | 'audio' | 'file'
+    file_size: number
+    section_key: string
+    created_at: string
+}
+
+export async function getAttachmentsForEntry(entryId: string): Promise<JournalAttachment[]> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return []
+
+    const { data } = await supabase
+        .from('journal_attachments')
+        .select('*')
+        .eq('journal_entry_id', entryId)
+        .order('created_at', { ascending: true })
+
+    return data || []
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Journal Reactions (for shared entries)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface JournalReaction {
+    id: string
+    journal_entry_id: string
+    user_id: string
+    emoji: string
+    section_key: string
+    created_at: string
+}
+
+export async function toggleJournalReaction(
+    entryId: string,
+    emoji: string,
+    sectionKey: string = 'daily'
+): Promise<{ success: boolean; error?: string }> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'Not authenticated' }
+
+    try {
+        // Check if reaction already exists for this section
+        const { data: existing } = await supabase
+            .from('journal_reactions')
+            .select('id')
+            .eq('journal_entry_id', entryId)
+            .eq('user_id', user.id)
+            .eq('emoji', emoji)
+            .eq('section_key', sectionKey)
+            .single()
+
+        if (existing) {
+            // Remove reaction
+            await supabase
+                .from('journal_reactions')
+                .delete()
+                .eq('id', existing.id)
+        } else {
+            // Add reaction
+            const { error: insertError } = await supabase
+                .from('journal_reactions')
+                .insert({
+                    journal_entry_id: entryId,
+                    user_id: user.id,
+                    emoji,
+                    section_key: sectionKey,
+                })
+
+            if (insertError) {
+                return { success: false, error: 'Failed to add reaction' }
+            }
+
+            // Send notification to the journal entry owner
+            const { data: entry } = await supabase
+                .from('prayer_journal')
+                .select('user_id, pairing_id')
+                .eq('id', entryId)
+                .single()
+
+            if (entry && entry.user_id !== user.id) {
+                // Get current user's name
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('id', user.id)
+                    .single()
+
+                const { notifyJournalReaction } = await import('@/lib/notifications')
+                await notifyJournalReaction(
+                    entry.user_id,
+                    profile?.full_name || 'Your partner',
+                    entry.pairing_id,
+                    emoji
+                )
+            }
+        }
+
+        revalidatePath('/dashboard/journal')
+        return { success: true }
+    } catch {
+        return { success: false, error: 'Failed to toggle reaction' }
+    }
+}
+
+export async function getReactionsForEntry(entryId: string, sectionKey?: string): Promise<JournalReaction[]> {
+    const supabase = await createClient()
+
+    let query = supabase
+        .from('journal_reactions')
+        .select('*')
+        .eq('journal_entry_id', entryId)
+
+    if (sectionKey) {
+        query = query.eq('section_key', sectionKey)
+    }
+
+    const { data } = await query.order('created_at', { ascending: true })
+
+    return data || []
 }

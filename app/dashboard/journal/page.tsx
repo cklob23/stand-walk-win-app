@@ -69,12 +69,34 @@ export default async function JournalPage({
     const partnerName = isLeader ? learnerName : leaderName
 
     // Fetch OWN journal entries (both leaders and learners have their own journals now)
-    const { data: myEntries } = await supabase
+    const { data: myEntriesData } = await supabase
         .from('prayer_journal')
         .select('*')
         .eq('user_id', user.id)
         .eq('pairing_id', pairing.id)
         .order('journal_date', { ascending: false })
+
+    // Fetch attachments for my entries
+    const myEntryIds = myEntriesData?.map(e => e.id) || []
+    let attachmentsMap: Record<string, { id: string; journal_entry_id: string; user_id: string; url: string; filename: string; file_type: string; file_size: number; created_at: string }[]> = {}
+    if (myEntryIds.length > 0) {
+        const { data: attachments } = await supabase
+            .from('journal_attachments')
+            .select('*')
+            .in('journal_entry_id', myEntryIds)
+        if (attachments) {
+            for (const att of attachments) {
+                if (!attachmentsMap[att.journal_entry_id]) attachmentsMap[att.journal_entry_id] = []
+                attachmentsMap[att.journal_entry_id].push(att as typeof attachmentsMap[string][number])
+            }
+        }
+    }
+
+    // Attach attachments to entries
+    const myEntries = myEntriesData?.map(entry => ({
+        ...entry,
+        attachments: attachmentsMap[entry.id] || [],
+    })) || []
 
     // Fetch partner's shared entries using admin client to bypass RLS
     // (RLS only allows leaders to SELECT shared entries, but we need bidirectional sharing)
@@ -105,7 +127,29 @@ export default async function JournalPage({
         note: item.note || '',
         sender_name: partnerName,
         created_at: item.created_at,
+        reply_text: (item as Record<string, unknown>).reply_text as string | null,
+        replied_at: (item as Record<string, unknown>).replied_at as string | null,
+        journal_entry_id: null as string | null,
+        section_key: null as string | null,
+        reactions: [] as { id: string; journal_entry_id: string; user_id: string; emoji: string; section_key: string; created_at: string }[],
     }))
+
+    // Fetch reactions for journal entries - keyed by entryId:sectionKey
+    const journalEntryIds = partnerSharedEntries?.map(e => e.id) || []
+    let reactionsMap: Record<string, { id: string; journal_entry_id: string; user_id: string; emoji: string; section_key: string; created_at: string }[]> = {}
+    if (journalEntryIds.length > 0) {
+        const { data: reactions } = await supabase
+            .from('journal_reactions')
+            .select('*')
+            .in('journal_entry_id', journalEntryIds)
+        if (reactions) {
+            for (const r of reactions) {
+                const key = `${r.journal_entry_id}:${r.section_key || 'daily'}`
+                if (!reactionsMap[key]) reactionsMap[key] = []
+                reactionsMap[key].push(r)
+            }
+        }
+    }
 
     // Convert partner's shared journal entries into SharedItem format
     const journalSharedItems: typeof verseSharedItems = []
@@ -135,6 +179,11 @@ export default async function JournalPage({
                 note: `${partnerName}'s Daily Reflections`,
                 sender_name: partnerName,
                 created_at: entry.created_at,
+                reply_text: entry.partner_reply as string | null,
+                replied_at: entry.partner_reply_at as string | null,
+                journal_entry_id: entry.id,
+                section_key: 'daily',
+                reactions: reactionsMap[`${entry.id}:daily`] || [],
             })
         }
 
@@ -153,6 +202,7 @@ export default async function JournalPage({
                     contentLines.push(line)
                 }
             }
+            const verseSectionKey = `verse_${idx}`
             journalSharedItems.push({
                 id: `journal-verse-${entry.id}-${idx}`,
                 type: 'journal' as const,
@@ -161,6 +211,11 @@ export default async function JournalPage({
                 note: title || 'Shared Scripture',
                 sender_name: partnerName,
                 created_at: entry.created_at,
+                reply_text: null,
+                replied_at: null,
+                journal_entry_id: entry.id,
+                section_key: verseSectionKey,
+                reactions: reactionsMap[`${entry.id}:${verseSectionKey}`] || [],
             })
         })
 
@@ -169,6 +224,7 @@ export default async function JournalPage({
         if (customs) {
             customs.forEach((c, idx) => {
                 if (!sections[`custom_${idx}`]) return
+                const customSectionKey = `custom_${idx}`
                 journalSharedItems.push({
                     id: `journal-custom-${entry.id}-${idx}`,
                     type: 'journal' as const,
@@ -177,6 +233,11 @@ export default async function JournalPage({
                     note: c.title || 'Custom Entry',
                     sender_name: partnerName,
                     created_at: entry.created_at,
+                    reply_text: null,
+                    replied_at: null,
+                    journal_entry_id: entry.id,
+                    section_key: customSectionKey,
+                    reactions: reactionsMap[`${entry.id}:${customSectionKey}`] || [],
                 })
             })
         }
@@ -199,6 +260,8 @@ export default async function JournalPage({
             sharedItems={sharedItems}
             todayEntry={todayEntry}
             initialSection={params.section || null}
+            currentUserId={user.id}
+            currentUserName={profile.full_name || 'You'}
         />
     )
 }

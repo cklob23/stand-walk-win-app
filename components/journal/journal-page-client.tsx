@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { BookHeart, Plus, PenLine, ArrowLeft } from 'lucide-react'
 import { JournalHistory, AddCustomEntryButton, type JournalEntry } from '@/components/journal/journal-history'
+import type { JournalAttachment } from '@/lib/journal-actions'
 import { JournalEntryEditor } from '@/components/journal/journal-entry-editor'
 import { SharedWithMe, type SharedItem } from '@/components/journal/shared-with-me'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
@@ -21,6 +22,8 @@ interface JournalPageClientProps {
     sharedItems: SharedItem[]
     todayEntry: JournalEntry | null
     initialSection?: string | null
+    currentUserId: string
+    currentUserName: string
 }
 
 export function JournalPageClient({
@@ -32,6 +35,8 @@ export function JournalPageClient({
     sharedItems,
     todayEntry,
     initialSection,
+    currentUserId,
+    currentUserName,
 }: JournalPageClientProps) {
     const router = useRouter()
     const searchParamsHook = useSearchParams()
@@ -120,6 +125,7 @@ export function JournalPageClient({
                         prayer_items: editingEntry.prayer_items,
                         god_speaking: editingEntry.god_speaking,
                     } : null}
+                    existingAttachments={editingEntry?.attachments || todayEntry?.attachments || []}
                     onClose={handleCloseEditor}
                 />
             )}
@@ -130,7 +136,8 @@ export function JournalPageClient({
                     items={sharedItems}
                     autoOpen={initialSection === 'shared'}
                     pairingId={pairingId}
-                    currentUserName={isLeader ? leaderName : learnerName}
+                    currentUserName={currentUserName}
+                    currentUserId={currentUserId}
                 />
             </div>
 

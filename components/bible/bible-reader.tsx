@@ -21,6 +21,7 @@ import {
     type BibleHighlight,
     type HighlightColor,
     getHighlightsForChapter,
+    getAllHighlights,
     toggleHighlight,
     updateHighlightNote,
     deleteHighlight,
@@ -99,6 +100,11 @@ function getHighlightBg(color: string): string {
     return HIGHLIGHT_COLORS.find(c => c.color === color)?.bg || ''
 }
 
+interface VoicePreference {
+    type: 'openai' | 'google' | 'browser'
+    uri: string
+}
+
 interface BibleReaderProps {
     weekScripture?: string | null
     weekNumber?: number | null
@@ -110,10 +116,11 @@ interface BibleReaderProps {
     savedSkipVerseNumbers?: boolean
     savedVoiceURI?: string | null
     savedReadingSpeed?: number | null
+    savedVoicePreferences?: VoicePreference[] | null
     userRole?: string | null
 }
 
-export function BibleReader({ weekScripture, weekNumber, pairingId, savedTranslation, savedTextSize, savedBook, savedChapter, savedSkipVerseNumbers = false, savedVoiceURI, savedReadingSpeed, userRole }: BibleReaderProps) {
+export function BibleReader({ weekScripture, weekNumber, pairingId, savedTranslation, savedTextSize, savedBook, savedChapter, savedSkipVerseNumbers = false, savedVoiceURI, savedReadingSpeed, savedVoicePreferences, userRole }: BibleReaderProps) {
     const searchParams = useSearchParams()
     const router = useRouter()
 
@@ -151,6 +158,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [selectedChapter, setSelectedChapter] = useState<number | null>(initialChapter)
     const [view, setView] = useState<'books' | 'chapters' | 'reading'>(initialView)
     const [showSettings, setShowSettings] = useState(false)
+    const [showHighlightsModal, setShowHighlightsModal] = useState(false)
+    const [allHighlights, setAllHighlights] = useState<BibleHighlight[]>([])
+    const [loadingHighlights, setLoadingHighlights] = useState(false)
     const [weekVerseRange, setWeekVerseRange] = useState<{ start: number; end: number } | null>(
         parseVerseRange(urlVerses)
     )
@@ -235,12 +245,24 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const speechSupportedRef = useRef(typeof window !== 'undefined' && 'speechSynthesis' in window)
     const ttsSessionRef = useRef(0) // Incremented on each new play session to ignore stale callbacks
     const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
-    const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(savedVoiceURI || '')
+    // Helper to get voice from preferences by type
+    const getVoiceFromPreferences = (type: 'openai' | 'google' | 'browser'): string | null => {
+        if (!savedVoicePreferences) return null
+        const pref = savedVoicePreferences.find(p => p.type === type)
+        return pref?.uri || null
+    }
+
+    // Initialize browser voice from preferences (for desktop) or fall back to savedVoiceURI
+    const browserVoicePref = getVoiceFromPreferences('browser')
+    const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(browserVoicePref || savedVoiceURI || '')
+
+    // Initialize cloud voice from preferences (for mobile) - prefer OpenAI, then Google
+    const cloudVoicePref = getVoiceFromPreferences('openai') || getVoiceFromPreferences('google')
+    const initialCloudVoice = cloudVoicePref ||
+        (savedVoiceURI?.startsWith('en-') || savedVoiceURI?.startsWith('openai-') ? savedVoiceURI : 'openai-nova')
 
     // Mobile: Cloud TTS verse-by-verse with pre-buffering
-    const [selectedCloudVoice, setSelectedCloudVoice] = useState<string>(
-        savedVoiceURI?.startsWith('en-') || savedVoiceURI?.startsWith('openai-') ? savedVoiceURI : 'openai-nova'
-    )
+    const [selectedCloudVoice, setSelectedCloudVoice] = useState<string>(initialCloudVoice)
     const [audioLoading, setAudioLoading] = useState(false)
     const mobileAudioRef = useRef<HTMLAudioElement | null>(null)
     type MobileQueueItem = {
@@ -380,10 +402,19 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     // Preference save debounce
     const prefTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+    // Determine voice type from voice URI
+    const getVoiceType = (voiceUri: string): 'openai' | 'google' | 'browser' => {
+        if (voiceUri.startsWith('openai-')) return 'openai'
+        if (voiceUri.startsWith('en-') && voiceUri.includes('Wavenet')) return 'google'
+        return 'browser'
+    }
+
     const savePrefs = useCallback((trans: string, size: string, skip?: boolean, voice?: string, speed?: number) => {
         if (prefTimeoutRef.current) clearTimeout(prefTimeoutRef.current)
         prefTimeoutRef.current = setTimeout(() => {
-            saveBiblePreference(trans, size, skip, voice, speed)
+            const voiceType = voice ? getVoiceType(voice) : undefined
+            const voicePref = voice && voiceType ? { type: voiceType, uri: voice } : undefined
+            saveBiblePreference(trans, size, skip, voice, speed, voicePref)
         }, 1000)
     }, [])
 
@@ -1408,7 +1439,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     // Auto-play when new chapter verses load after auto-advance
     useEffect(() => {
-        if (autoPlayNextChapter && verses.length > 0) {
+        // Wait until verses are fully loaded (not loading) and we have content
+        if (autoPlayNextChapter && verses.length > 0 && !versesLoading) {
             setAutoPlayNextChapter(false)
             setTtsProgress(0)
             // Small delay to let the new chapter render
@@ -1417,13 +1449,42 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             }, 300)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [autoPlayNextChapter, verses])
+    }, [autoPlayNextChapter, verses, versesLoading])
 
     const handleSelectBook = (bookId: string) => {
         setSelectedBook(bookId)
         setSelectedChapter(null)
         setView('chapters')
         updateURL(bookId, null, translation)
+    }
+
+    // Load all highlights for the modal
+    const handleOpenHighlightsModal = async () => {
+        setShowHighlightsModal(true)
+        setLoadingHighlights(true)
+        try {
+            const highlights = await getAllHighlights()
+            setAllHighlights(highlights)
+        } catch {
+            toast.error('Failed to load highlights')
+        } finally {
+            setLoadingHighlights(false)
+        }
+    }
+
+    // Navigate to a highlight and trigger the verse selection
+    const handleGoToHighlight = (highlight: BibleHighlight) => {
+        setShowHighlightsModal(false)
+        // Navigate to the book and chapter
+        setSelectedBook(highlight.book_id)
+        setSelectedChapter(highlight.chapter)
+        setView('reading')
+        updateURL(highlight.book_id, highlight.chapter, highlight.translation || translation)
+        // Set the verse selection to trigger the action popover
+        setTimeout(() => {
+            setSelectedVerses(new Set([highlight.verse]))
+            setSelectedVerse(highlight.verse)
+        }, 500)
     }
 
     const handleSelectChapter = (chapter: number) => {
@@ -1590,6 +1651,17 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 </div>
 
                 <div data-tour="bible-settings" className="flex items-center gap-2 flex-wrap">
+                    {/* My Highlights button */}
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 gap-1.5 bg-card"
+                        onClick={handleOpenHighlightsModal}
+                    >
+                        <Highlighter className="h-4 w-4" />
+                        <span className="sr-only sm:not-sr-only text-xs">Highlights</span>
+                    </Button>
+
                     {/* Text size toggle */}
                     <Button
                         variant={showSettings ? 'default' : 'outline'}
@@ -2063,7 +2135,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             {/* Audio controls */}
                             {!highlightMode && (
                                 <div className="flex items-center gap-1 ml-auto">
-                                    {audioLoading ? (
+                                    {audioLoading || (autoPlayNextChapter && versesLoading) ? (
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -2905,6 +2977,127 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     </CardContent>
                 </Card>
             )}
+            {/* My Highlights Modal */}
+            <Dialog open={showHighlightsModal} onOpenChange={setShowHighlightsModal}>
+                <DialogContent className="max-w-lg max-h-[80vh] flex flex-col gap-0 p-0 overflow-hidden">
+                    <div className="px-5 pt-5 pb-3 border-b border-border/50">
+                        <DialogHeader className="space-y-1">
+                            <DialogTitle className="text-base font-semibold text-foreground font-sans flex items-center gap-2">
+                                <Highlighter className="h-4 w-4 text-primary" />
+                                My Highlights
+                            </DialogTitle>
+                            <p className="text-sm text-muted-foreground">
+                                All your highlighted verses across the Bible
+                            </p>
+                        </DialogHeader>
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2 min-h-0">
+                        {loadingHighlights ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                            </div>
+                        ) : allHighlights.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                                <Highlighter className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                <p className="text-sm">No highlights yet</p>
+                                <p className="text-xs mt-1">Select text in the Bible to create highlights</p>
+                            </div>
+                        ) : (
+                            (() => {
+                                // Group consecutive verses together
+                                type HighlightGroup = {
+                                    bookId: string
+                                    chapter: number
+                                    startVerse: number
+                                    endVerse: number
+                                    color: string
+                                    translation: string | null
+                                    notes: string[]
+                                    highlights: BibleHighlight[]
+                                }
+
+                                // Sort highlights by book, chapter, verse for grouping
+                                const sorted = [...allHighlights].sort((a, b) => {
+                                    if (a.book_id !== b.book_id) return a.book_id.localeCompare(b.book_id)
+                                    if (a.chapter !== b.chapter) return a.chapter - b.chapter
+                                    return a.verse - b.verse
+                                })
+
+                                const groups: HighlightGroup[] = []
+
+                                for (const h of sorted) {
+                                    const lastGroup = groups[groups.length - 1]
+                                    // Check if this highlight can be merged with the last group
+                                    if (
+                                        lastGroup &&
+                                        lastGroup.bookId === h.book_id &&
+                                        lastGroup.chapter === h.chapter &&
+                                        lastGroup.color === h.color &&
+                                        lastGroup.translation === (h.translation || null) &&
+                                        h.verse === lastGroup.endVerse + 1
+                                    ) {
+                                        // Extend the existing group
+                                        lastGroup.endVerse = h.verse
+                                        lastGroup.highlights.push(h)
+                                        if (h.note) lastGroup.notes.push(h.note)
+                                    } else {
+                                        // Start a new group
+                                        groups.push({
+                                            bookId: h.book_id,
+                                            chapter: h.chapter,
+                                            startVerse: h.verse,
+                                            endVerse: h.verse,
+                                            color: h.color,
+                                            translation: h.translation || null,
+                                            notes: h.note ? [h.note] : [],
+                                            highlights: [h],
+                                        })
+                                    }
+                                }
+
+                                const colorClasses: Record<string, string> = {
+                                    yellow: 'bg-yellow-200/60 border-yellow-300',
+                                    green: 'bg-green-200/60 border-green-300',
+                                    blue: 'bg-blue-200/60 border-blue-300',
+                                    pink: 'bg-pink-200/60 border-pink-300',
+                                    orange: 'bg-orange-200/60 border-orange-300',
+                                }
+
+                                return groups.map((group, idx) => {
+                                    const bookName = BOOK_ID_TO_NAME[group.bookId] || group.bookId
+                                    const verseRange = group.startVerse === group.endVerse
+                                        ? `${group.startVerse}`
+                                        : `${group.startVerse}-${group.endVerse}`
+                                    const combinedNotes = group.notes.filter((n, i, arr) => arr.indexOf(n) === i).join(' • ')
+
+                                    return (
+                                        <button
+                                            key={`${group.bookId}-${group.chapter}-${group.startVerse}-${idx}`}
+                                            onClick={() => handleGoToHighlight(group.highlights[0])}
+                                            className={`w-full text-left p-3 rounded-lg border transition-colors hover:bg-accent/50 ${colorClasses[group.color] || 'bg-muted border-border'}`}
+                                        >
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="text-sm font-medium text-foreground">
+                                                    {bookName} {group.chapter}:{verseRange}
+                                                </span>
+                                                <Badge variant="outline" className="text-xs">
+                                                    {group.translation || 'NIV'}
+                                                </Badge>
+                                            </div>
+                                            {combinedNotes && (
+                                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                                                    {combinedNotes}
+                                                </p>
+                                            )}
+                                        </button>
+                                    )
+                                })
+                            })()
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             {/* AI Explain Dialog */}
             <Dialog open={showExplainDialog} onOpenChange={(open) => {
                 if (!open && explainAbortRef.current) explainAbortRef.current.abort()

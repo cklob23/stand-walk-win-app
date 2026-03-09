@@ -12,7 +12,7 @@ async function getWebPush() {
     try {
       if (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
         _webpush!.setVapidDetails(
-          'mailto:support@standwalkrun.com',
+          'mailto:support@gatekeeperio.com',
           process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
           process.env.VAPID_PRIVATE_KEY
         )
@@ -274,6 +274,37 @@ export async function notifyMessageReaction(
     type: 'message',
     title: `${senderName} reacted to your message`,
     message: `${senderName} reacted with ${label} to "${messagePreview.length > 60 ? messagePreview.slice(0, 60) + '...' : messagePreview}"`,
+  })
+}
+
+export async function notifyJournalReaction(
+  recipientId: string,
+  senderName: string,
+  pairingId: string,
+  emoji: string
+) {
+  const label = emojiLabels[emoji] || `a ${emoji}`
+  return createNotification({
+    userId: recipientId,
+    pairingId,
+    type: 'journal_shared',
+    title: `${senderName} reacted to your journal`,
+    message: `${senderName} reacted with ${label} to your shared journal entry.`,
+  })
+}
+
+export async function notifyJournalReply(
+  recipientId: string,
+  senderName: string,
+  pairingId: string,
+  replyPreview: string
+) {
+  return createNotification({
+    userId: recipientId,
+    pairingId,
+    type: 'journal_shared',
+    title: `${senderName} replied to your journal`,
+    message: replyPreview.length > 100 ? replyPreview.slice(0, 100) + '...' : replyPreview,
   })
 }
 

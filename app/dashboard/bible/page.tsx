@@ -16,7 +16,7 @@ export default async function BiblePage() {
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('id, role, bible_translation_preference, bible_text_size, bible_last_book, bible_last_chapter, bible_skip_verse_numbers, bible_voice_uri')
+        .select('id, role, bible_translation_preference, bible_text_size, bible_last_book, bible_last_chapter, bible_skip_verse_numbers, bible_voice_uri, bible_reading_speed, bible_voice_preferences')
         .eq('id', user.id)
         .single()
 
@@ -66,6 +66,8 @@ export default async function BiblePage() {
                     savedChapter={profile.bible_last_chapter || null}
                     savedSkipVerseNumbers={profile.bible_skip_verse_numbers || false}
                     savedVoiceURI={profile.bible_voice_uri || null}
+                    savedReadingSpeed={profile.bible_reading_speed ?? null}
+                    savedVoicePreferences={(profile.bible_voice_preferences as Array<{ type: 'openai' | 'google' | 'browser'; uri: string }>) || null}
                     userRole={profile.role || null}
                 />
             </Suspense>

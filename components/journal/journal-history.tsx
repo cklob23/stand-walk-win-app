@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import {
     BookHeart, Calendar, Loader2, CalendarPlus, Pencil,
-    Check, X, Plus, Trash2, Clock,
+    Check, X, Plus, Trash2, Clock, Paperclip, Image, FileText, Music, Eye,
 } from 'lucide-react'
 import {
     toggleSectionShare,
@@ -20,10 +20,12 @@ import {
     deleteJournalEntry,
     deleteVerseEntry,
     saveJournalEntry,
+    type JournalAttachment,
 } from '@/lib/journal-actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { format, parseISO } from 'date-fns'
+import { AttachmentPreviewModal } from '@/components/messages/attachment-preview-modal'
 
 export interface JournalEntry {
     id: string
@@ -35,6 +37,7 @@ export interface JournalEntry {
     custom_entries: { title: string; content: string; created_at: string }[] | null
     pairing_id: string
     created_at: string
+    attachments?: JournalAttachment[]
 }
 
 interface JournalHistoryProps {
@@ -134,6 +137,145 @@ export function JournalHistory({
     const [newTitle, setNewTitle] = useState('')
     const [newContent, setNewContent] = useState('')
 
+    // Attachment preview state
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+    const [previewType, setPreviewType] = useState<'image' | 'file'>('file')
+    const [previewFilename, setPreviewFilename] = useState<string>('')
+
+    // Edit mode attachment state
+    const editFileInputRef = useRef<HTMLInputElement>(null)
+    const [editPendingFiles, setEditPendingFiles] = useState<File[]>([])
+    const [uploadingEditFiles, setUploadingEditFiles] = useState(false)
+
+    const handlePreviewAttachment = (attachment: JournalAttachment) => {
+        setPreviewUrl(`/api/journal/file?id=${attachment.id}`)
+        setPreviewType(attachment.file_type === 'image' ? 'image' : 'file')
+        setPreviewFilename(attachment.filename)
+    }
+
+    const handleEditFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || [])
+        const validFiles = files.filter(file => {
+            if (file.size > 10 * 1024 * 1024) {
+                toast.error(`${file.name} is too large. Maximum size is 10MB.`)
+                return false
+            }
+            return true
+        })
+        setEditPendingFiles(prev => [...prev, ...validFiles])
+        if (editFileInputRef.current) editFileInputRef.current.value = ''
+    }
+
+    const removeEditPendingFile = (index: number) => {
+        setEditPendingFiles(prev => prev.filter((_, i) => i !== index))
+    }
+
+    const uploadEditFiles = async (entryId: string, sectionKey: string) => {
+        if (editPendingFiles.length === 0) return
+        setUploadingEditFiles(true)
+        for (const file of editPendingFiles) {
+            const formData = new FormData()
+            formData.append('file', file)
+            formData.append('journalEntryId', entryId)
+            formData.append('sectionKey', sectionKey)
+            try {
+                const res = await fetch('/api/journal/upload', { method: 'POST', body: formData })
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({}))
+                    toast.error(`Failed to upload ${file.name}: ${errorData.error || 'Unknown error'}`)
+                }
+            } catch {
+                toast.error(`Failed to upload ${file.name}`)
+            }
+        }
+        setUploadingEditFiles(false)
+        setEditPendingFiles([])
+    }
+
+    const getEditFileIcon = (file: File) => {
+        if (file.type.startsWith('image/')) return <Image className="h-4 w-4" />
+        if (file.type.startsWith('audio/')) return <Music className="h-4 w-4" />
+        return <FileText className="h-4 w-4" />
+    }
+
+    // Handler to delete an attachment
+    const handleDeleteAttachment = async (attachmentId: string) => {
+        if (!confirm('Remove this attachment?')) return
+        setLoadingKey(`delete-att-${attachmentId}`)
+        try {
+            const res = await fetch(`/api/journal/upload?attachmentId=${attachmentId}`, { method: 'DELETE' })
+            if (res.ok) {
+                toast.success('Attachment removed')
+                router.refresh()
+            } else {
+                const data = await res.json().catch(() => ({}))
+                toast.error(data.error || 'Failed to remove attachment')
+            }
+        } catch {
+            toast.error('Failed to remove attachment')
+        }
+        setLoadingKey(null)
+    }
+
+    // Helper to render inline attachments for a specific section
+    const renderSectionAttachments = (attachments: JournalAttachment[] | undefined, sectionKey: string) => {
+        const sectionAttachments = attachments?.filter(att => att.section_key === sectionKey) || []
+        if (sectionAttachments.length === 0) return null
+
+        return (
+            <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border/50">
+                {sectionAttachments.map((att) => (
+                    <div
+                        key={att.id}
+                        className="group relative flex items-center gap-2 p-2 bg-muted/50 rounded-lg border border-border hover:border-primary/50 transition-colors"
+                    >
+                        <button
+                            onClick={() => handlePreviewAttachment(att)}
+                            className="flex items-center gap-2"
+                        >
+                            {att.file_type === 'image' ? (
+                                <img
+                                    src={`/api/journal/file?id=${att.id}`}
+                                    alt={att.filename}
+                                    className="h-10 w-10 object-cover rounded"
+                                />
+                            ) : (
+                                <div className="h-10 w-10 flex items-center justify-center bg-background rounded">
+                                    {att.file_type === 'audio' ? (
+                                        <Music className="h-4 w-4 text-muted-foreground" />
+                                    ) : (
+                                        <FileText className="h-4 w-4 text-muted-foreground" />
+                                    )}
+                                </div>
+                            )}
+                            <div className="text-left max-w-[100px]">
+                                <p className="text-xs font-medium truncate">{att.filename}</p>
+                                <p className="text-[10px] text-muted-foreground">
+                                    {(att.file_size / 1024).toFixed(0)} KB
+                                </p>
+                            </div>
+                            <Eye className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
+                        {/* Delete button - only show for entry owner, not in leader view */}
+                        {!isLeaderView && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteAttachment(att.id) }}
+                                className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Remove attachment"
+                            >
+                                {loadingKey === `delete-att-${att.id}` ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                    <X className="h-3 w-3" />
+                                )}
+                            </button>
+                        )}
+                    </div>
+                ))}
+            </div>
+        )
+    }
+
     const handleToggleSectionShare = async (entryId: string, sectionKey: string, currentShared: boolean) => {
         const key = `${entryId}-${sectionKey}`
         setLoadingKey(key)
@@ -176,11 +318,11 @@ export function JournalHistory({
         setLoadingKey(null)
     }
 
-    const handleDeleteCustom = async (entryId: string, customIndex: number) => {
+    const handleDeleteCustom = async (entryId: string, customIndex: number, customCreatedAt?: string) => {
         if (!confirm('Delete this custom entry? This cannot be undone.')) return
         const key = `del-${entryId}-custom-${customIndex}`
         setLoadingKey(key)
-        const result = await deleteCustomEntry(entryId, customIndex, pairingId)
+        const result = await deleteCustomEntry(entryId, customIndex, pairingId, customCreatedAt)
         if (result.error) toast.error(result.error)
         else { toast.success('Deleted'); router.refresh() }
         setLoadingKey(null)
@@ -264,23 +406,31 @@ export function JournalHistory({
         )
     }
 
+    // Group entries by date for proper date headers
+    const entriesByDate: Record<string, typeof visibleEntries> = {}
+    for (const entry of visibleEntries) {
+        const dateKey = entry.journal_date
+        if (!entriesByDate[dateKey]) entriesByDate[dateKey] = []
+        entriesByDate[dateKey].push(entry)
+    }
+
+    // Get sorted dates (newest first)
+    const sortedDates = Object.keys(entriesByDate).sort((a, b) =>
+        new Date(b).getTime() - new Date(a).getTime()
+    )
+
     return (
         <div className="space-y-6">
-            {visibleEntries.map((entry) => {
-                const { freeText, verses } = parseGodSpeakingSections(entry.god_speaking)
-                const customs = (entry.custom_entries as { title: string; content: string; created_at: string }[]) || []
-                const hasDailyContent = !!entry.prayer_items?.trim() || !!freeText
-
-                // For leader view: only show sections that are shared
-                const dailyShared = isSectionShared(entry, 'daily')
+            {sortedDates.map((dateKey) => {
+                const dateEntries = entriesByDate[dateKey]
 
                 return (
-                    <div key={entry.id} className="space-y-3">
-                        {/* ── Date header ── */}
+                    <div key={dateKey} className="space-y-3">
+                        {/* ── Date header (shown once per date) ── */}
                         <div className="flex items-center gap-2 pt-1">
                             <Calendar className="h-4 w-4 text-primary shrink-0" />
                             <span className="text-sm font-medium text-foreground">
-                                {format(parseISO(entry.journal_date), 'EEEE, MMMM d, yyyy')}
+                                {format(parseISO(dateKey), 'EEEE, MMMM d, yyyy')}
                             </span>
                             {isLeaderView && (
                                 <Badge variant="secondary" className="text-xs gap-1 ml-auto">
@@ -289,234 +439,327 @@ export function JournalHistory({
                             )}
                         </div>
 
-                        {/* ── Daily Questions Card ── */}
-                        {hasDailyContent && (!isLeaderView || dailyShared) && (
-                            <SectionCard
-                                label="Daily Reflection"
-                                timestamp={formatFriendlyTime(entry.created_at)}
-                                isLeaderView={isLeaderView}
-                                shared={dailyShared}
-                                loadingKey={loadingKey}
-                                sectionLoadKey={`${entry.id}-daily`}
-                                leaderName={leaderName}
-                                learnerName={learnerName}
-                                onToggleShare={() => handleToggleSectionShare(entry.id, 'daily', dailyShared)}
-                                onEdit={!isLeaderView && onEditDaily ? () => onEditDaily(entry) : undefined}
-                                onDelete={!isLeaderView ? () => handleDeleteEntry(entry.id) : undefined}
-                                deleteLoading={loadingKey === `del-entry-${entry.id}`}
-                                onScheduleMeeting={isLeaderView ? async () => {
-                                    setLoadingKey(`meet-${entry.id}`)
-                                    const result = await import('@/lib/journal-actions').then(m =>
-                                        m.requestJournalMeeting(entry.id, format(parseISO(entry.journal_date), 'MMM d'))
-                                    )
-                                    if (result.error) toast.error(result.error)
-                                    else { toast.success('Meeting request sent!'); router.push('/dashboard/schedule') }
-                                    setLoadingKey(null)
-                                } : undefined}
-                                meetingLoading={loadingKey === `meet-${entry.id}`}
-                            >
-                                {entry.prayer_items?.trim() && (
-                                    <div className="space-y-1">
-                                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                                            Praying About
-                                        </p>
-                                        <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">
-                                            {entry.prayer_items}
-                                        </p>
-                                    </div>
-                                )}
-                                {freeText && (
-                                    <div className="space-y-1">
-                                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                                            Learning
-                                        </p>
-                                        <p className="text-sm text-foreground whitespace-pre-line leading-relaxed font-serif italic">
-                                            {freeText}
-                                        </p>
-                                    </div>
-                                )}
-                            </SectionCard>
-                        )}
+                        {/* Entries for this date */}
+                        {dateEntries.map((entry) => {
+                            const { freeText, verses } = parseGodSpeakingSections(entry.god_speaking)
+                            const customs = (entry.custom_entries as { title: string; content: string; created_at: string }[]) || []
+                            const hasDailyContent = !!entry.prayer_items?.trim() || !!freeText
 
-                        {/* ── Verse Entry Cards ── */}
-                        {verses.map((verse, idx) => {
-                            const sectionKey = `verse_${idx}`
-                            const verseShared = isSectionShared(entry, sectionKey)
-                            const editKey = `verse-${entry.id}-${idx}`
-                            const isEditing = editingKey === editKey
-
-                            if (isLeaderView && !verseShared) return null
+                            // For leader view: only show sections that are shared
+                            const dailyShared = isSectionShared(entry, 'daily')
 
                             return (
-                                <SectionCard
-                                    key={editKey}
-                                    label={verse.title || 'Learning'}
-                                    timestamp={verse.time || undefined}
-                                    isLeaderView={isLeaderView}
-                                    shared={verseShared}
-                                    loadingKey={loadingKey}
-                                    sectionLoadKey={`${entry.id}-${sectionKey}`}
-                                    leaderName={leaderName}
-                                    learnerName={learnerName}
-                                    onToggleShare={() => handleToggleSectionShare(entry.id, sectionKey, verseShared)}
-                                    onEdit={!isLeaderView && !isEditing ? () => {
-                                        setEditingKey(editKey)
-                                        setEditText(verse.content)
-                                        setEditTitle(verse.title || '')
-                                    } : undefined}
-                                    onDelete={!isLeaderView ? () => handleDeleteVerse(entry.id, idx + 1) : undefined}
-                                    deleteLoading={loadingKey === `del-${entry.id}-verse-${idx + 1}`}
-                                    onScheduleMeeting={isLeaderView ? async () => {
-                                        setLoadingKey(`meet-${entry.id}`)
-                                        const result = await import('@/lib/journal-actions').then(m =>
-                                            m.requestJournalMeeting(entry.id, format(parseISO(entry.journal_date), 'MMM d'))
-                                        )
-                                        if (result.error) toast.error(result.error)
-                                        else { toast.success('Meeting request sent!'); router.push('/dashboard/schedule') }
-                                        setLoadingKey(null)
-                                    } : undefined}
-                                    meetingLoading={loadingKey === `meet-${entry.id}`}
-                                >
-                                    {isEditing ? (
-                                        <div className="space-y-2">
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-medium text-muted-foreground">Title</label>
-                                                <Input
-                                                    value={editTitle}
-                                                    onChange={(e) => setEditTitle(e.target.value)}
-                                                    placeholder="Entry title..."
-                                                    className="text-sm h-8"
-                                                />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-medium text-muted-foreground">Content</label>
-                                                <Textarea
-                                                    value={editText}
-                                                    onChange={(e) => setEditText(e.target.value)}
-                                                    rows={4}
-                                                    className="resize-none text-sm"
-                                                />
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <Button
-                                                    size="sm"
-                                                    className="h-7 text-xs gap-1"
-                                                    onClick={() => handleSaveVerseEdit(entry.id, idx + 1)}
-                                                    disabled={loadingKey === `edit-${entry.id}-verse-${idx + 1}`}
-                                                >
-                                                    {loadingKey === `edit-${entry.id}-verse-${idx + 1}`
-                                                        ? <Loader2 className="h-3 w-3 animate-spin" />
-                                                        : <Check className="h-3 w-3" />}
-                                                    Save
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-7 text-xs gap-1"
-                                                    onClick={() => { setEditingKey(null); setEditText(''); setEditTitle('') }}
-                                                >
-                                                    <X className="h-3 w-3" />
-                                                    Cancel
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-foreground whitespace-pre-line leading-relaxed font-serif italic">
-                                            {verse.content}
-                                        </p>
+                                <div key={entry.id} className="space-y-3">
+
+                                    {/* ── Daily Questions Card ── */}
+                                    {hasDailyContent && (!isLeaderView || dailyShared) && (
+                                        <SectionCard
+                                            label="Daily Reflection"
+                                            timestamp={formatFriendlyTime(entry.created_at)}
+                                            isLeaderView={isLeaderView}
+                                            shared={dailyShared}
+                                            loadingKey={loadingKey}
+                                            sectionLoadKey={`${entry.id}-daily`}
+                                            leaderName={leaderName}
+                                            learnerName={learnerName}
+                                            onToggleShare={() => handleToggleSectionShare(entry.id, 'daily', dailyShared)}
+                                            onEdit={!isLeaderView && onEditDaily ? () => onEditDaily(entry) : undefined}
+                                            onDelete={!isLeaderView ? () => handleDeleteEntry(entry.id) : undefined}
+                                            deleteLoading={loadingKey === `del-entry-${entry.id}`}
+                                            onScheduleMeeting={isLeaderView ? async () => {
+                                                setLoadingKey(`meet-${entry.id}`)
+                                                const result = await import('@/lib/journal-actions').then(m =>
+                                                    m.requestJournalMeeting(entry.id, format(parseISO(entry.journal_date), 'MMM d'))
+                                                )
+                                                if (result.error) toast.error(result.error)
+                                                else { toast.success('Meeting request sent!'); router.push('/dashboard/schedule') }
+                                                setLoadingKey(null)
+                                            } : undefined}
+                                            meetingLoading={loadingKey === `meet-${entry.id}`}
+                                        >
+                                            {entry.prayer_items?.trim() && (
+                                                <div className="space-y-1">
+                                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                        Praying About
+                                                    </p>
+                                                    <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">
+                                                        {entry.prayer_items}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {freeText && (
+                                                <div className="space-y-1">
+                                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                        Learning
+                                                    </p>
+                                                    <p className="text-sm text-foreground whitespace-pre-line leading-relaxed font-serif italic">
+                                                        {freeText}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </SectionCard>
                                     )}
-                                </SectionCard>
+
+                                    {/* ── Verse Entry Cards ── */}
+                                    {verses.map((verse, idx) => {
+                                        const sectionKey = `verse_${idx}`
+                                        const verseShared = isSectionShared(entry, sectionKey)
+                                        const editKey = `verse-${entry.id}-${idx}`
+                                        const isEditing = editingKey === editKey
+
+                                        if (isLeaderView && !verseShared) return null
+
+                                        return (
+                                            <SectionCard
+                                                key={editKey}
+                                                label={verse.title || 'Learning'}
+                                                timestamp={verse.time || undefined}
+                                                isLeaderView={isLeaderView}
+                                                shared={verseShared}
+                                                loadingKey={loadingKey}
+                                                sectionLoadKey={`${entry.id}-${sectionKey}`}
+                                                leaderName={leaderName}
+                                                learnerName={learnerName}
+                                                onToggleShare={() => handleToggleSectionShare(entry.id, sectionKey, verseShared)}
+                                                onEdit={!isLeaderView && !isEditing ? () => {
+                                                    setEditingKey(editKey)
+                                                    setEditText(verse.content)
+                                                    setEditTitle(verse.title || '')
+                                                } : undefined}
+                                                onDelete={!isLeaderView ? () => handleDeleteVerse(entry.id, idx + 1) : undefined}
+                                                deleteLoading={loadingKey === `del-${entry.id}-verse-${idx + 1}`}
+                                                onScheduleMeeting={isLeaderView ? async () => {
+                                                    setLoadingKey(`meet-${entry.id}`)
+                                                    const result = await import('@/lib/journal-actions').then(m =>
+                                                        m.requestJournalMeeting(entry.id, format(parseISO(entry.journal_date), 'MMM d'))
+                                                    )
+                                                    if (result.error) toast.error(result.error)
+                                                    else { toast.success('Meeting request sent!'); router.push('/dashboard/schedule') }
+                                                    setLoadingKey(null)
+                                                } : undefined}
+                                                meetingLoading={loadingKey === `meet-${entry.id}`}
+                                            >
+                                                {isEditing ? (
+                                                    <div className="space-y-2">
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-muted-foreground">Title</label>
+                                                            <Input
+                                                                value={editTitle}
+                                                                onChange={(e) => setEditTitle(e.target.value)}
+                                                                placeholder="Entry title..."
+                                                                className="text-sm h-8"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-muted-foreground">Content</label>
+                                                            <Textarea
+                                                                value={editText}
+                                                                onChange={(e) => setEditText(e.target.value)}
+                                                                rows={4}
+                                                                className="resize-none text-sm"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Button
+                                                                size="sm"
+                                                                className="h-7 text-xs gap-1"
+                                                                onClick={() => handleSaveVerseEdit(entry.id, idx + 1)}
+                                                                disabled={loadingKey === `edit-${entry.id}-verse-${idx + 1}`}
+                                                            >
+                                                                {loadingKey === `edit-${entry.id}-verse-${idx + 1}`
+                                                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                                                    : <Check className="h-3 w-3" />}
+                                                                Save
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-7 text-xs gap-1"
+                                                                onClick={() => { setEditingKey(null); setEditText(''); setEditTitle('') }}
+                                                            >
+                                                                <X className="h-3 w-3" />
+                                                                Cancel
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-foreground whitespace-pre-line leading-relaxed font-serif italic">
+                                                        {verse.content}
+                                                    </p>
+                                                )}
+                                            </SectionCard>
+                                        )
+                                    })}
+
+                                    {/* ── Custom Entry Cards ── */}
+                                    {customs.map((custom, idx) => {
+                                        // Use created_at as stable section key (falls back to index for legacy entries)
+                                        const sectionKey = custom.created_at ? `custom_${custom.created_at}` : `custom_${idx}`
+                                        const customShared = isSectionShared(entry, sectionKey)
+                                        const editKey = `custom-${entry.id}-${idx}`
+                                        const isEditing = editingKey === editKey
+
+                                        if (isLeaderView && !customShared) return null
+
+                                        return (
+                                            <SectionCard
+                                                key={editKey}
+                                                label={custom.title || 'My Reflection'}
+                                                timestamp={custom.created_at ? formatFriendlyTime(custom.created_at) : undefined}
+                                                isLeaderView={isLeaderView}
+                                                shared={customShared}
+                                                loadingKey={loadingKey}
+                                                sectionLoadKey={`${entry.id}-${sectionKey}`}
+                                                leaderName={leaderName}
+                                                learnerName={learnerName}
+                                                onToggleShare={() => handleToggleSectionShare(entry.id, sectionKey, customShared)}
+                                                onEdit={!isLeaderView && !isEditing ? () => {
+                                                    setEditingKey(editKey)
+                                                    setEditTitle(custom.title)
+                                                    setEditText(custom.content)
+                                                } : undefined}
+                                                onDelete={!isLeaderView ? () => handleDeleteCustom(entry.id, idx, custom.created_at) : undefined}
+                                                deleteLoading={loadingKey === `del-${entry.id}-custom-${idx}`}
+                                                onScheduleMeeting={isLeaderView ? async () => {
+                                                    setLoadingKey(`meet-${entry.id}`)
+                                                    const result = await import('@/lib/journal-actions').then(m =>
+                                                        m.requestJournalMeeting(entry.id, format(parseISO(entry.journal_date), 'MMM d'))
+                                                    )
+                                                    if (result.error) toast.error(result.error)
+                                                    else { toast.success('Meeting request sent!'); router.push('/dashboard/schedule') }
+                                                    setLoadingKey(null)
+                                                } : undefined}
+                                                meetingLoading={loadingKey === `meet-${entry.id}`}
+                                            >
+                                                {isEditing ? (
+                                                    <div className="space-y-2">
+                                                        <Input
+                                                            value={editTitle}
+                                                            onChange={(e) => setEditTitle(e.target.value)}
+                                                            placeholder="Title"
+                                                            className="text-sm"
+                                                        />
+                                                        <Textarea
+                                                            value={editText}
+                                                            onChange={(e) => setEditText(e.target.value)}
+                                                            rows={4}
+                                                            className="resize-none text-sm"
+                                                        />
+
+                                                        {/* Attachment Section for Edit */}
+                                                        <div className="space-y-2">
+                                                            <input
+                                                                ref={editFileInputRef}
+                                                                type="file"
+                                                                multiple
+                                                                accept="image/*,audio/*,.pdf,.doc,.docx,.txt"
+                                                                onChange={handleEditFileSelect}
+                                                                className="hidden"
+                                                            />
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => editFileInputRef.current?.click()}
+                                                                className="w-full border-dashed h-8 text-xs"
+                                                            >
+                                                                <Paperclip className="h-3.5 w-3.5 mr-1.5" />
+                                                                Add attachment
+                                                            </Button>
+
+                                                            {/* Pending Files */}
+                                                            {editPendingFiles.length > 0 && (
+                                                                <div className="space-y-1.5">
+                                                                    {editPendingFiles.map((file, fileIdx) => (
+                                                                        <div
+                                                                            key={`pending-edit-${fileIdx}`}
+                                                                            className="flex items-center gap-2 p-2 bg-primary/5 border border-primary/20 rounded-md"
+                                                                        >
+                                                                            {file.type.startsWith('image/') ? (
+                                                                                <img
+                                                                                    src={URL.createObjectURL(file)}
+                                                                                    alt={file.name}
+                                                                                    className="h-8 w-8 object-cover rounded"
+                                                                                />
+                                                                            ) : (
+                                                                                <div className="h-8 w-8 flex items-center justify-center bg-background rounded">
+                                                                                    {getEditFileIcon(file)}
+                                                                                </div>
+                                                                            )}
+                                                                            <span className="flex-1 text-xs truncate">{file.name}</span>
+                                                                            <Button
+                                                                                type="button"
+                                                                                variant="ghost"
+                                                                                size="icon"
+                                                                                className="h-6 w-6"
+                                                                                onClick={() => removeEditPendingFile(fileIdx)}
+                                                                            >
+                                                                                <X className="h-3 w-3" />
+                                                                            </Button>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="flex items-center gap-2">
+                                                            <Button
+                                                                size="sm"
+                                                                className="h-7 text-xs gap-1"
+                                                                onClick={async () => {
+                                                                    await handleSaveCustomEdit(entry.id, idx)
+                                                                    if (editPendingFiles.length > 0) {
+                                                                        // Use timestamp-based section key
+                                                                        const editSectionKey = custom.created_at ? `custom_${custom.created_at}` : `custom_${idx}`
+                                                                        await uploadEditFiles(entry.id, editSectionKey)
+                                                                        router.refresh()
+                                                                    }
+                                                                }}
+                                                                disabled={loadingKey === `edit-${entry.id}-custom-${idx}` || uploadingEditFiles}
+                                                            >
+                                                                {(loadingKey === `edit-${entry.id}-custom-${idx}` || uploadingEditFiles)
+                                                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                                                    : <Check className="h-3 w-3" />}
+                                                                Save
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-7 text-xs gap-1"
+                                                                onClick={() => { setEditingKey(null); setEditText(''); setEditTitle(''); setEditPendingFiles([]) }}
+                                                            >
+                                                                <X className="h-3 w-3" />
+                                                                Cancel
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">
+                                                            {custom.content}
+                                                        </p>
+                                                        {renderSectionAttachments(entry.attachments, sectionKey)}
+                                                    </>
+                                                )}
+                                            </SectionCard>
+                                        )
+                                    })}
+
+                                </div>
                             )
                         })}
-
-                        {/* ── Custom Entry Cards ── */}
-                        {customs.map((custom, idx) => {
-                            const sectionKey = `custom_${idx}`
-                            const customShared = isSectionShared(entry, sectionKey)
-                            const editKey = `custom-${entry.id}-${idx}`
-                            const isEditing = editingKey === editKey
-
-                            if (isLeaderView && !customShared) return null
-
-                            return (
-                                <SectionCard
-                                    key={editKey}
-                                    label={custom.title || 'My Reflection'}
-                                    timestamp={custom.created_at ? formatFriendlyTime(custom.created_at) : undefined}
-                                    isLeaderView={isLeaderView}
-                                    shared={customShared}
-                                    loadingKey={loadingKey}
-                                    sectionLoadKey={`${entry.id}-${sectionKey}`}
-                                    leaderName={leaderName}
-                                    learnerName={learnerName}
-                                    onToggleShare={() => handleToggleSectionShare(entry.id, sectionKey, customShared)}
-                                    onEdit={!isLeaderView && !isEditing ? () => {
-                                        setEditingKey(editKey)
-                                        setEditTitle(custom.title)
-                                        setEditText(custom.content)
-                                    } : undefined}
-                                    onDelete={!isLeaderView ? () => handleDeleteCustom(entry.id, idx) : undefined}
-                                    deleteLoading={loadingKey === `del-${entry.id}-custom-${idx}`}
-                                    onScheduleMeeting={isLeaderView ? async () => {
-                                        setLoadingKey(`meet-${entry.id}`)
-                                        const result = await import('@/lib/journal-actions').then(m =>
-                                            m.requestJournalMeeting(entry.id, format(parseISO(entry.journal_date), 'MMM d'))
-                                        )
-                                        if (result.error) toast.error(result.error)
-                                        else { toast.success('Meeting request sent!'); router.push('/dashboard/schedule') }
-                                        setLoadingKey(null)
-                                    } : undefined}
-                                    meetingLoading={loadingKey === `meet-${entry.id}`}
-                                >
-                                    {isEditing ? (
-                                        <div className="space-y-2">
-                                            <Input
-                                                value={editTitle}
-                                                onChange={(e) => setEditTitle(e.target.value)}
-                                                placeholder="Title"
-                                                className="text-sm"
-                                            />
-                                            <Textarea
-                                                value={editText}
-                                                onChange={(e) => setEditText(e.target.value)}
-                                                rows={4}
-                                                className="resize-none text-sm"
-                                            />
-                                            <div className="flex items-center gap-2">
-                                                <Button
-                                                    size="sm"
-                                                    className="h-7 text-xs gap-1"
-                                                    onClick={() => handleSaveCustomEdit(entry.id, idx)}
-                                                    disabled={loadingKey === `edit-${entry.id}-custom-${idx}`}
-                                                >
-                                                    {loadingKey === `edit-${entry.id}-custom-${idx}`
-                                                        ? <Loader2 className="h-3 w-3 animate-spin" />
-                                                        : <Check className="h-3 w-3" />}
-                                                    Save
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-7 text-xs gap-1"
-                                                    onClick={() => { setEditingKey(null); setEditText(''); setEditTitle('') }}
-                                                >
-                                                    <X className="h-3 w-3" />
-                                                    Cancel
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">
-                                            {custom.content}
-                                        </p>
-                                    )}
-                                </SectionCard>
-                            )
-                        })}
-
                     </div>
                 )
             })}
+
+            {/* Attachment Preview Modal */}
+            <AttachmentPreviewModal
+                open={!!previewUrl}
+                onOpenChange={(open) => { if (!open) setPreviewUrl(null) }}
+                url={previewUrl || ''}
+                type={previewType}
+                filename={previewFilename}
+            />
         </div>
     )
 }
@@ -533,20 +776,69 @@ export function AddCustomEntryButton({
     isLeaderView: boolean
 }) {
     const router = useRouter()
+    const fileInputRef = useRef<HTMLInputElement>(null)
     const [adding, setAdding] = useState(false)
     const [newTitle, setNewTitle] = useState('')
     const [newContent, setNewContent] = useState('')
     const [saving, setSaving] = useState(false)
+    const [pendingFiles, setPendingFiles] = useState<File[]>([])
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || [])
+        const validFiles = files.filter(file => {
+            if (file.size > 10 * 1024 * 1024) {
+                toast.error(`${file.name} is too large. Maximum size is 10MB.`)
+                return false
+            }
+            return true
+        })
+        setPendingFiles(prev => [...prev, ...validFiles])
+        if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+
+    const removePendingFile = (index: number) => {
+        setPendingFiles(prev => prev.filter((_, i) => i !== index))
+    }
+
+    const getFileIcon = (file: File) => {
+        if (file.type.startsWith('image/')) return <Image className="h-4 w-4" />
+        if (file.type.startsWith('audio/')) return <Music className="h-4 w-4" />
+        return <FileText className="h-4 w-4" />
+    }
+
+    const uploadFiles = async (entryId: string, sectionKey: string) => {
+        for (const file of pendingFiles) {
+            const formData = new FormData()
+            formData.append('file', file)
+            formData.append('journalEntryId', entryId)
+            formData.append('sectionKey', sectionKey)
+
+            try {
+                const res = await fetch('/api/journal/upload', {
+                    method: 'POST',
+                    body: formData,
+                })
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({}))
+                    toast.error(`Failed to upload ${file.name}: ${errorData.error || 'Unknown error'}`)
+                }
+            } catch {
+                toast.error(`Failed to upload ${file.name}`)
+            }
+        }
+    }
 
     const handleSave = async () => {
         if (!newContent.trim()) { toast.error('Please write something.'); return }
         setSaving(true)
 
-        let targetEntryId: string | null = entries.length > 0 ? entries[0].id : null
+        const localDate = new Date().toLocaleDateString('en-CA')
 
-        // If no entries exist, create a blank journal entry for today first
+        // Find an existing entry for TODAY's date, or create one
+        let targetEntryId: string | null = entries.find(e => e.journal_date === localDate)?.id || null
+
+        // If no entry for today exists, create a blank journal entry for today
         if (!targetEntryId) {
-            const localDate = new Date().toLocaleDateString('en-CA')
             const createResult = await saveJournalEntry({
                 prayerItems: '',
                 godSaying: '',
@@ -568,11 +860,23 @@ export function AddCustomEntryButton({
         }
 
         const result = await addCustomEntry(targetEntryId, newTitle.trim(), newContent.trim())
-        if (result.error) toast.error(result.error)
-        else { toast.success('Entry added!'); router.refresh() }
+        if (result.error) {
+            toast.error(result.error)
+            setSaving(false)
+            return
+        }
+
+        // Upload any pending files with timestamp-based section_key (stable identifier)
+        if (pendingFiles.length > 0 && result.createdAt) {
+            await uploadFiles(targetEntryId, `custom_${result.createdAt}`)
+        }
+
+        toast.success('Entry added!')
+        router.refresh()
         setAdding(false)
         setNewTitle('')
         setNewContent('')
+        setPendingFiles([])
         setSaving(false)
     }
 
@@ -596,6 +900,67 @@ export function AddCustomEntryButton({
                         rows={4}
                         className="resize-none text-sm"
                     />
+
+                    {/* Attachment Section */}
+                    <div className="space-y-2">
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            multiple
+                            accept="image/*,audio/*,.pdf,.doc,.docx,.txt"
+                            onChange={handleFileSelect}
+                            className="hidden"
+                        />
+
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full border-dashed h-8 text-xs"
+                        >
+                            <Paperclip className="h-3.5 w-3.5 mr-1.5" />
+                            Add photos, audio, or files
+                        </Button>
+
+                        {/* Pending Files */}
+                        {pendingFiles.length > 0 && (
+                            <div className="space-y-1.5">
+                                {pendingFiles.map((file, index) => (
+                                    <div
+                                        key={`pending-${index}`}
+                                        className="flex items-center gap-2 p-2 bg-primary/5 border border-primary/20 rounded-md"
+                                    >
+                                        {file.type.startsWith('image/') ? (
+                                            <img
+                                                src={URL.createObjectURL(file)}
+                                                alt={file.name}
+                                                className="h-8 w-8 object-cover rounded"
+                                            />
+                                        ) : (
+                                            <div className="h-8 w-8 flex items-center justify-center bg-background rounded">
+                                                {getFileIcon(file)}
+                                            </div>
+                                        )}
+                                        <span className="flex-1 text-xs truncate">{file.name}</span>
+                                        <span className="text-[10px] text-muted-foreground">
+                                            {(file.size / 1024).toFixed(0)}KB
+                                        </span>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6"
+                                            onClick={() => removePendingFile(index)}
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     <div className="flex items-center gap-2">
                         <Button
                             size="sm"
@@ -612,7 +977,7 @@ export function AddCustomEntryButton({
                             variant="ghost"
                             size="sm"
                             className="h-7 text-xs gap-1"
-                            onClick={() => { setAdding(false); setNewTitle(''); setNewContent('') }}
+                            onClick={() => { setAdding(false); setNewTitle(''); setNewContent(''); setPendingFiles([]) }}
                         >
                             <X className="h-3 w-3" />
                             Cancel

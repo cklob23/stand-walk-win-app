@@ -40,8 +40,8 @@ export async function POST(req: Request) {
                 role: 'user',
                 content: `Explain this passage in a clear, practical way. Start with what it means, weave in any helpful background or context, and wrap up with something practical to reflect on or discuss.
 
-${reference} (${translation || 'ESV'})
-"${verseText}"`,
+                ${reference} (${translation || 'ESV'})
+                "${verseText}"`,
             },
         ],
         abortSignal: req.signal,
