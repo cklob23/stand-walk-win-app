@@ -65,14 +65,23 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
     }
 
     const uploadFiles = async (entryId: string) => {
+        console.log('[v0] uploadFiles called with entryId:', entryId, 'pendingFiles:', pendingFiles.length)
         for (const file of pendingFiles) {
             const formData = new FormData()
             formData.append('file', file)
             formData.append('journalEntryId', entryId)
             formData.append('sectionKey', 'daily')
             try {
-                await fetch('/api/journal/upload', { method: 'POST', body: formData })
-            } catch {
+                console.log('[v0] Uploading file:', file.name, 'to entry:', entryId)
+                const res = await fetch('/api/journal/upload', { method: 'POST', body: formData })
+                console.log('[v0] Upload response:', res.status, res.ok)
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}))
+                    console.log('[v0] Upload error data:', errData)
+                    toast.error(`Failed to upload ${file.name}: ${errData.error || 'Unknown error'}`)
+                }
+            } catch (err) {
+                console.log('[v0] Upload exception:', err)
                 toast.error(`Failed to upload ${file.name}`)
             }
         }
@@ -145,10 +154,12 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
             shareWithLeader,
         })
 
+        console.log('[v0] saveJournalEntry result:', result)
         if (result.error) {
             toast.error(result.error)
         } else {
             // Upload any pending files
+            console.log('[v0] Checking for files to upload - entryId:', result.entryId, 'pendingFiles:', pendingFiles.length)
             if (result.entryId && pendingFiles.length > 0) {
                 await uploadFiles(result.entryId)
             }

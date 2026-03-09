@@ -497,6 +497,8 @@ export function JournalHistory({
                                                     </p>
                                                 </div>
                                             )}
+                                            {/* Render attachments for daily section */}
+                                            {renderSectionAttachments(entry.attachments, 'daily')}
                                         </SectionCard>
                                     )}
 
