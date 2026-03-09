@@ -81,10 +81,27 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
     }
   }, [isPartnerTyping])
 
-  // Scroll to bottom on initial mount
+  // Scroll to bottom on initial mount and when initialMessages changes
   useEffect(() => {
+    // Immediate scroll attempt
     messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
-  }, [])
+
+    // Delayed scroll to ensure content is fully rendered (especially on mobile)
+    const timeoutId = setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+    }, 100)
+
+    // Additional delayed scroll for slower devices/connections
+    const timeoutId2 = setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+    }, 300)
+
+    return () => {
+      clearTimeout(timeoutId)
+      clearTimeout(timeoutId2)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMessages.length])
 
   // Channel ref for typing broadcasts
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
