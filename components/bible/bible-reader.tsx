@@ -1473,7 +1473,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }
 
     // Navigate to a highlight and trigger the verse selection
-    const handleGoToHighlight = (highlight: BibleHighlight) => {
+    // Accepts optional startVerse/endVerse to select a range of verses
+    const handleGoToHighlight = (highlight: BibleHighlight, startVerse?: number, endVerse?: number) => {
         setShowHighlightsModal(false)
         // Navigate to the book and chapter
         setSelectedBook(highlight.book_id)
@@ -1481,9 +1482,16 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setView('reading')
         updateURL(highlight.book_id, highlight.chapter, highlight.translation || translation)
         // Set the verse selection to trigger the action popover
+        // If startVerse/endVerse provided, select the entire range
+        const start = startVerse ?? highlight.verse
+        const end = endVerse ?? highlight.verse
         setTimeout(() => {
-            setSelectedVerses(new Set([highlight.verse]))
-            setSelectedVerse(highlight.verse)
+            const versesToSelect = new Set<number>()
+            for (let v = start; v <= end; v++) {
+                versesToSelect.add(v)
+            }
+            setSelectedVerses(versesToSelect)
+            setSelectedVerse(start)
         }, 500)
     }
 
@@ -3073,7 +3081,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     return (
                                         <button
                                             key={`${group.bookId}-${group.chapter}-${group.startVerse}-${idx}`}
-                                            onClick={() => handleGoToHighlight(group.highlights[0])}
+                                            onClick={() => handleGoToHighlight(group.highlights[0], group.startVerse, group.endVerse)}
                                             className={`w-full text-left p-3 rounded-lg border transition-colors hover:bg-accent/50 ${colorClasses[group.color] || 'bg-muted border-border'}`}
                                         >
                                             <div className="flex items-center justify-between mb-1">
