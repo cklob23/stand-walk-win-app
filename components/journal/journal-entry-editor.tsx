@@ -65,10 +65,8 @@ export function JournalEntryEditor({
 
     const removeExistingAttachment = async (attachmentId: string) => {
         try {
-            const res = await fetch('/api/journal/upload', {
+            const res = await fetch(`/api/journal/upload?attachmentId=${attachmentId}`, {
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ attachmentId }),
             })
             if (!res.ok) throw new Error('Failed to delete attachment')
             setAttachments(prev => prev.filter(a => a.id !== attachmentId))
@@ -86,6 +84,7 @@ export function JournalEntryEditor({
             const formData = new FormData()
             formData.append('file', file)
             formData.append('journalEntryId', entryId)
+            formData.append('sectionKey', 'daily') // Daily reflection attachments use 'daily' section key
 
             try {
                 const res = await fetch('/api/journal/upload', {

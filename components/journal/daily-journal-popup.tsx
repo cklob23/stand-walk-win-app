@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
     Dialog,
     DialogContent,
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Loader2, BookHeart } from 'lucide-react'
+import { Loader2, BookHeart, Paperclip, X, Image, FileText, Music } from 'lucide-react'
 import { saveJournalEntry } from '@/lib/journal-actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -39,11 +39,50 @@ function setDismissedToday(): void {
 
 export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: DailyJournalPopupProps) {
     const router = useRouter()
+    const fileInputRef = useRef<HTMLInputElement>(null)
     const [open, setOpen] = useState(false)
     const [prayerItems, setPrayerItems] = useState('')
     const [godSaying, setGodSaying] = useState('')
     const [shareWithLeader, setShareWithLeader] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
+    const [pendingFiles, setPendingFiles] = useState<File[]>([])
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || [])
+        const validFiles = files.filter(file => {
+            if (file.size > 10 * 1024 * 1024) {
+                toast.error(`${file.name} is too large. Maximum size is 10MB.`)
+                return false
+            }
+            return true
+        })
+        setPendingFiles(prev => [...prev, ...validFiles])
+        if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+
+    const removePendingFile = (index: number) => {
+        setPendingFiles(prev => prev.filter((_, i) => i !== index))
+    }
+
+    const uploadFiles = async (entryId: string) => {
+        for (const file of pendingFiles) {
+            const formData = new FormData()
+            formData.append('file', file)
+            formData.append('journalEntryId', entryId)
+            formData.append('sectionKey', 'daily')
+            try {
+                await fetch('/api/journal/upload', { method: 'POST', body: formData })
+            } catch {
+                toast.error(`Failed to upload ${file.name}`)
+            }
+        }
+    }
+
+    const getFileIcon = (file: File) => {
+        if (file.type.startsWith('image/')) return <Image className="h-4 w-4" />
+        if (file.type.startsWith('audio/')) return <Music className="h-4 w-4" />
+        return <FileText className="h-4 w-4" />
+    }
 
     useEffect(() => {
         // Only show if learner hasn't already written today and hasn't dismissed today
@@ -109,8 +148,13 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
         if (result.error) {
             toast.error(result.error)
         } else {
+            // Upload any pending files
+            if (result.entryId && pendingFiles.length > 0) {
+                await uploadFiles(result.entryId)
+            }
             toast.success('Journal entry saved!')
             setDismissedToday()
+            setPendingFiles([])
             setOpen(false)
             router.refresh()
         }
@@ -157,6 +201,66 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
                             rows={4}
                             className="resize-none"
                         />
+                    </div>
+
+                    {/* Attachments */}
+                    <div className="space-y-2">
+                        <Label className="text-sm font-medium text-foreground">
+                            Attachments
+                        </Label>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            multiple
+                            accept="image/*,audio/*,.pdf,.doc,.docx,.txt"
+                            onChange={handleFileSelect}
+                            className="hidden"
+                        />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full border-dashed"
+                        >
+                            <Paperclip className="h-4 w-4 mr-2" />
+                            Add photos, audio, or files
+                        </Button>
+                        {pendingFiles.length > 0 && (
+                            <div className="space-y-2 max-h-32 overflow-y-auto">
+                                {pendingFiles.map((file, index) => (
+                                    <div
+                                        key={`pending-${index}`}
+                                        className="flex items-center gap-2 p-2 bg-primary/5 border border-primary/20 rounded-md"
+                                    >
+                                        {file.type.startsWith('image/') ? (
+                                            <img
+                                                src={URL.createObjectURL(file)}
+                                                alt={file.name}
+                                                className="h-8 w-8 object-cover rounded"
+                                            />
+                                        ) : (
+                                            <div className="h-8 w-8 flex items-center justify-center bg-background rounded">
+                                                {getFileIcon(file)}
+                                            </div>
+                                        )}
+                                        <span className="flex-1 text-sm truncate">{file.name}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                            {(file.size / 1024).toFixed(0)}KB
+                                        </span>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6"
+                                            onClick={() => removePendingFile(index)}
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Share toggle */}

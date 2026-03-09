@@ -125,7 +125,11 @@ export function JournalPageClient({
                         prayer_items: editingEntry.prayer_items,
                         god_speaking: editingEntry.god_speaking,
                     } : null}
-                    existingAttachments={editingEntry?.attachments || todayEntry?.attachments || []}
+                    existingAttachments={
+                        // Only show attachments with section_key 'daily' for the daily reflection editor
+                        (editingEntry?.attachments || todayEntry?.attachments || [])
+                            .filter(att => att.section_key === 'daily')
+                    }
                     onClose={handleCloseEditor}
                 />
             )}
