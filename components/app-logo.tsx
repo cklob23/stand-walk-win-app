@@ -47,7 +47,7 @@ export function AppLogo({
         ) : (
           /* Using img tag for better cross-platform hosting compatibility */
           <img
-            src="/icon.jpg"
+            src="/icon.png"
             alt="Stand Walk Run"
             className="absolute inset-0 w-full h-full object-cover"
           />
@@ -81,7 +81,7 @@ export function AppLogoStatic({
       <span className={cn("relative overflow-hidden rounded-lg", iconClassName || "h-8 w-8 sm:h-9 sm:w-9")}>
         {/* Using img tag for better cross-platform hosting compatibility */}
         <img
-          src="/icon.jpg"
+          src="/icon.png"
           alt="Stand Walk Run"
           className="absolute inset-0 w-full h-full object-cover"
         />
@@ -112,7 +112,7 @@ export function AppIcon({ iconClassName }: AppLogoProps) {
         />
       ) : (
         <img
-          src="/icon.jpg"
+          src="/icon.png"
           alt="Stand Walk Run"
           className="absolute inset-0 w-full h-full object-cover"
         />
