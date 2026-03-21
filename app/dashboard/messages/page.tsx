@@ -1,10 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { MessagesView } from '@/components/messages/messages-view'
+import { getSelectedPairingId } from '@/lib/selected-pairing'
 import type { Message } from '@/lib/types'
 
-export default async function MessagesPage({ searchParams }: { searchParams: Promise<{ draft?: string }> }) {
-  const { draft } = await searchParams
+export default async function MessagesPage({ searchParams }: { searchParams: Promise<{ draft?: string; pairing?: string }> }) {
+  const { draft, pairing: urlPairingId } = await searchParams
+  // Use URL param first, then fall back to cookie
+  const cookiePairingId = await getSelectedPairingId()
+  const selectedPairingId = urlPairingId || cookiePairingId
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -27,7 +31,8 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
   let partner = null
 
   if (profile.role === 'leader') {
-    const { data } = await supabase
+    // Fetch ALL pairings for multi-learner support
+    const { data: allPairings } = await supabase
       .from('pairings')
       .select(`
         *,
@@ -36,12 +41,17 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
       .eq('leader_id', user.id)
       .in('status', ['active', 'pending'])
       .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
 
-    if (data) {
-      pairing = data
-      partner = data.learner
+    if (allPairings && allPairings.length > 0) {
+      // Use selected pairing from URL or default to most recent
+      const selectedPairing = selectedPairingId
+        ? allPairings.find(p => p.id === selectedPairingId)
+        : allPairings[0]
+
+      if (selectedPairing) {
+        pairing = selectedPairing
+        partner = selectedPairing.learner
+      }
     }
   } else {
     const { data } = await supabase

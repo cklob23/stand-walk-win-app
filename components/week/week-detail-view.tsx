@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -29,18 +29,28 @@ import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { weekDetailSteps } from '@/lib/tour-steps'
 
+interface AssignmentReaction {
+  id: string
+  assignment_progress_id: string
+  user_id: string
+  emoji: string
+  created_at: string
+}
+
 interface WeekDetailViewProps {
   profile: Profile
   pairing: Pairing
   partner: Profile | null
   weekContent: WeeklyContent
   assignments: Assignment[]
-  assignmentProgress: { id: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; user_id?: string }[]
-  learnerProgress: { id: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; user_id?: string }[]
+  assignmentProgress: { id: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; user_id?: string; leader_reply?: string | null; leader_reply_at?: string | null }[]
+  learnerProgress: { id: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; user_id?: string; leader_reply?: string | null; leader_reply_at?: string | null }[]
+  assignmentReactions?: AssignmentReaction[]
   reflections: (Reflection & { user: { id: string; full_name: string | null; avatar_url: string | null } | null })[]
   hasWeeklyMeeting?: boolean
   bibleTranslation?: string
   bibleTextSize?: string
+  expandedAssignmentId?: string
 }
 
 export function WeekDetailView({
@@ -51,12 +61,23 @@ export function WeekDetailView({
   assignments,
   assignmentProgress,
   learnerProgress,
+  assignmentReactions = [],
   reflections,
   hasWeeklyMeeting = false,
-  bibleTranslation = 'KJV',
+  bibleTranslation = 'ESV',
   bibleTextSize = 'base',
+  expandedAssignmentId,
 }: WeekDetailViewProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const currentPairingId = searchParams.get('pairing')
+
+  // Helper to build URLs with pairing param for leaders
+  const buildUrl = (path: string) => {
+    if (profile.role !== 'leader' || !currentPairingId) return path
+    return `${path}?pairing=${currentPairingId}`
+  }
+
   const scriptureTextClass = { sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-xl', '2xl': 'text-2xl' }[bibleTextSize] || 'text-base'
   const [reflectionText, setReflectionText] = useState('')
   const [isShared, setIsShared] = useState(false)
@@ -120,8 +141,8 @@ export function WeekDetailView({
       {/* Header */}
       <div className="mb-4 sm:mb-6">
         <button
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3 sm:mb-4"
+          onClick={() => router.push(buildUrl('/dashboard'))}
+          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-sm font-medium"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
@@ -136,7 +157,7 @@ export function WeekDetailView({
           <div className="flex items-center gap-2 flex-wrap">
             {hasPrevWeek && (
               <Button variant="outline" size="sm" asChild>
-                <Link href={`/dashboard/week/${weekNumber - 1}`}>
+                <Link href={buildUrl(`/dashboard/week/${weekNumber - 1}`)}>
                   <ArrowLeft className="h-4 w-4 mr-1" />
                   Week {weekNumber - 1}
                 </Link>
@@ -144,7 +165,7 @@ export function WeekDetailView({
             )}
             {hasNextWeek && (
               <Button variant="outline" size="sm" asChild>
-                <Link href={`/dashboard/week/${weekNumber + 1}`}>
+                <Link href={buildUrl(`/dashboard/week/${weekNumber + 1}`)}>
                   Week {weekNumber + 1}
                   <ArrowRight className="h-4 w-4 ml-1" />
                 </Link>
@@ -205,9 +226,17 @@ export function WeekDetailView({
                   assignment={assignment}
                   progress={assignment.progress}
                   learnerProgress={assignment.learnerProgress}
+                  learnerProgressReactions={assignment.learnerProgress?.id
+                    ? assignmentReactions.filter(r => r.assignment_progress_id === assignment.learnerProgress?.id)
+                    : []
+                  }
+                  progressReactions={assignment.progress?.id
+                    ? assignmentReactions.filter(r => r.assignment_progress_id === assignment.progress?.id)
+                    : []
+                  }
                   pairingId={pairing.id}
                   userId={profile.id}
-                  userRole={profile.role || undefined}
+                  userRole={profile.role === 'leader' ? 'leader' : 'learner'}
                   leaderId={pairing.leader_id}
                   learnerName={profile.role === 'learner' ? (profile.full_name || 'Learner') : (partner?.full_name || 'Learner')}
                   leaderName={profile.role === 'learner' ? (partner?.full_name || 'your leader') : (profile.full_name || 'Leader')}
@@ -216,6 +245,7 @@ export function WeekDetailView({
                   completedWeekAssignments={completedCount}
                   hasWeeklyMeeting={hasWeeklyMeeting}
                   weekTitle={weekContent.title}
+                  defaultOpen={expandedAssignmentId === assignment.id}
                 />
               ))}
               {assignments.length === 0 && (

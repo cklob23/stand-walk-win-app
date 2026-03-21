@@ -22,8 +22,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Settings, Bell, Moon, LogOut, Trash2, Camera, Loader2, X } from 'lucide-react'
+import { Settings, Bell, Moon, LogOut, Trash2, Camera, Loader2, X, Building2 } from 'lucide-react'
 import type { Profile } from '@/lib/types'
+import { useBranding } from '@/contexts/branding-context'
 
 interface SettingsViewProps {
   profile: Profile
@@ -32,6 +33,7 @@ interface SettingsViewProps {
 export function SettingsView({ profile }: SettingsViewProps) {
   const { theme, setTheme } = useTheme()
   const router = useRouter()
+  const { branding } = useBranding()
   const [mounted, setMounted] = useState(false)
   const [isDark, setIsDark] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -318,6 +320,15 @@ export function SettingsView({ profile }: SettingsViewProps) {
             <p className="text-sm font-medium text-foreground">Role</p>
             <p className="text-sm text-muted-foreground capitalize">{profile.role}</p>
           </div>
+          {branding.organizationName && (
+            <div>
+              <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5" />
+                Organization
+              </p>
+              <p className="text-sm text-muted-foreground">{branding.organizationName}</p>
+            </div>
+          )}
           <div>
             <p className="text-sm font-medium text-foreground">Member since</p>
             <p className="text-sm text-muted-foreground">

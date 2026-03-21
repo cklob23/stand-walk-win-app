@@ -166,7 +166,7 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
       <div className="text-center">
         {!hasSigned ? (
           <Button size="lg" asChild>
-            <Link href="/dashboard/covenant">
+            <Link href={`/dashboard/covenant?pairing=${pairing.id}`}>
               Sign the Covenant
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
@@ -177,7 +177,7 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
               You have signed the covenant. Waiting for {partner?.full_name || 'your partner'} to sign.
             </p>
             <Button variant="outline" asChild>
-              <Link href="/dashboard/covenant">
+              <Link href={`/dashboard/covenant?pairing=${pairing.id}`}>
                 View Covenant
               </Link>
             </Button>

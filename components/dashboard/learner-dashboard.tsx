@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,7 +16,8 @@ import {
   Calendar,
   Sparkles,
   AlertTriangle,
-  BookMarked
+  BookMarked,
+  GraduationCap
 } from 'lucide-react'
 import type { Profile, Pairing, WeeklyContent, Assignment, Message, Notification, ScheduledMeeting } from '@/lib/types'
 import { Video, Phone, MapPin, Monitor } from 'lucide-react'
@@ -28,6 +30,15 @@ import { scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { learnerDashboardSteps } from '@/lib/tour-steps'
+import { GraduationModal } from '@/components/graduation/graduation-modal'
+
+interface AssignmentReaction {
+  id: string
+  assignment_progress_id: string
+  user_id: string
+  emoji: string
+  created_at: string
+}
 
 interface LearnerDashboardProps {
   profile: Profile
@@ -35,13 +46,15 @@ interface LearnerDashboardProps {
   partner: Profile | null
   weeklyContent: WeeklyContent[]
   assignments: Assignment[]
-  assignmentProgress: { id?: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null }[]
+  assignmentProgress: { id?: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; leader_reply?: string | null; leader_reply_at?: string | null }[]
+  assignmentReactions?: AssignmentReaction[]
   recentMessages: Message[]
   notifications: Notification[]
   currentWeek: number
   nextMeeting: ScheduledMeeting | null
   hasWeeklyMeeting: boolean
   hasJournalEntryToday: boolean
+  expandedAssignmentId?: string | null
 }
 
 export function LearnerDashboard({
@@ -51,12 +64,17 @@ export function LearnerDashboard({
   weeklyContent,
   assignments,
   assignmentProgress,
+  assignmentReactions = [],
   recentMessages,
   currentWeek,
   nextMeeting,
   hasWeeklyMeeting,
   hasJournalEntryToday,
+  expandedAssignmentId,
 }: LearnerDashboardProps) {
+  const [showGraduationModal, setShowGraduationModal] = useState(false)
+  const [hasShownGraduation, setHasShownGraduation] = useState(false)
+
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
 
   // Get current week assignments with progress
@@ -76,6 +94,27 @@ export function LearnerDashboard({
     unlockedAssignmentIds.has(p.assignment_id) && p.status === 'completed'
   ).length
   const progressPercentage = totalAssignments > 0 ? Math.round((completedAssignments / totalAssignments) * 100) : 0
+
+  // Calculate full journey completion (all 6 weeks)
+  const TOTAL_WEEKS = 6
+  const allAssignmentsTotal = assignments.length
+  const allAssignmentsCompleted = assignmentProgress.filter(p => p.status === 'completed').length
+  const journeyCompletionPercentage = allAssignmentsTotal > 0
+    ? Math.round((allAssignmentsCompleted / allAssignmentsTotal) * 100)
+    : 0
+  const isJourneyComplete = journeyCompletionPercentage === 100 && currentWeek >= TOTAL_WEEKS && !profile.graduated_at
+
+  // Show graduation modal when journey is 100% complete
+  useEffect(() => {
+    if (isJourneyComplete && !hasShownGraduation) {
+      // Small delay to let the UI update first
+      const timer = setTimeout(() => {
+        setShowGraduationModal(true)
+        setHasShownGraduation(true)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [isJourneyComplete, hasShownGraduation])
 
   const partnerInitials = partner?.full_name
     ?.split(' ')
@@ -99,6 +138,31 @@ export function LearnerDashboard({
           Continue your growth journey with your Leader.
         </p>
       </div>
+
+      {/* Graduation Banner - shows when journey is 100% complete */}
+      {isJourneyComplete && (
+        <Card className="mb-6 border-primary bg-gradient-to-r from-primary/10 via-primary/5 to-transparent">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20">
+                  <GraduationCap className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">Journey Complete!</p>
+                  <p className="text-sm text-muted-foreground">
+                    Congratulations! You've completed all assignments.
+                  </p>
+                </div>
+              </div>
+              <Button onClick={() => setShowGraduationModal(true)}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                See Options
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3 w-full">
         {/* Main Content - Left Side */}
@@ -135,7 +199,7 @@ export function LearnerDashboard({
                     <p className="text-xs sm:text-sm text-muted-foreground font-serif italic line-clamp-4">
                       <ScriptureText
                         reference={currentWeekContent.scripture_reference}
-                        translation={profile.bible_translation_preference || 'KJV'}
+                        translation={profile.bible_translation_preference || 'ESV'}
                       />
                     </p>
                   </div>
@@ -188,6 +252,10 @@ export function LearnerDashboard({
                     key={assignment.id}
                     assignment={assignment}
                     progress={assignment.progress}
+                    progressReactions={assignment.progress?.id
+                      ? assignmentReactions.filter(r => r.assignment_progress_id === assignment.progress?.id)
+                      : []
+                    }
                     pairingId={pairing.id}
                     userId={profile.id}
                     userRole="learner"
@@ -199,6 +267,7 @@ export function LearnerDashboard({
                     completedWeekAssignments={currentWeekAssignments.filter(a => a.progress?.status === 'completed').length}
                     hasWeeklyMeeting={hasWeeklyMeeting}
                     weekTitle={currentWeekContent?.title}
+                    defaultOpen={expandedAssignmentId === assignment.id}
                   />
                 ))}
                 {currentWeekAssignments.length === 0 && (
@@ -468,6 +537,18 @@ export function LearnerDashboard({
 
       {/* Onboarding Tour */}
       <FeatureTour tourId="learner-dashboard" steps={learnerDashboardSteps} />
+
+      {/* Graduation Modal */}
+      <GraduationModal
+        isOpen={showGraduationModal}
+        onClose={() => setShowGraduationModal(false)}
+        userId={profile.id}
+        userName={profile.full_name?.split(' ')[0] || 'Graduate'}
+        pairingId={pairing.id}
+        journeyName={pairing.journey?.name || 'Stand Walk Run'}
+        canBeLeader={profile.can_be_leader !== false}
+        subscriptionTier={profile.subscription_tier}
+      />
     </div>
   )
 }

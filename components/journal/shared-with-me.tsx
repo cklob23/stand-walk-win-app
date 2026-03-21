@@ -6,10 +6,11 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { BookOpen, MessageSquare, PenLine, ChevronDown, ChevronUp, ExternalLink, Reply, Loader2, Send, Smile } from 'lucide-react'
+import { BookOpen, MessageSquare, PenLine, ChevronDown, ChevronUp, ExternalLink, Reply, Loader2, Send, Smile, FileText, Mic, Eye } from 'lucide-react'
+import { AttachmentPreviewModal } from '@/components/messages/attachment-preview-modal'
 import { format } from 'date-fns'
 import { scriptureToUrl } from '@/lib/bible-utils'
-import { replyToSharedItem, toggleJournalReaction, type JournalReaction } from '@/lib/journal-actions'
+import { replyToSharedItem, toggleJournalReaction, type JournalReaction, type JournalAttachment } from '@/lib/journal-actions'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { ReactionPicker, ReactionDisplay, getReactionIcon } from '@/components/messages/reaction-picker'
@@ -27,6 +28,7 @@ export interface SharedItem {
     journal_entry_id?: string | null
     section_key?: string | null
     reactions?: JournalReaction[]
+    attachments?: JournalAttachment[]
 }
 
 interface SharedWithMeProps {
@@ -46,6 +48,7 @@ export function SharedWithMe({ items, autoOpen = false, pairingId, currentUserNa
     const [replySaving, setReplySaving] = useState(false)
     const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null)
     const [localReactions, setLocalReactions] = useState<Record<string, JournalReaction[]>>({})
+    const [previewAttachment, setPreviewAttachment] = useState<JournalAttachment | null>(null)
 
     // Initialize local reactions from items
     useEffect(() => {
@@ -208,6 +211,53 @@ export function SharedWithMe({ items, autoOpen = false, pairingId, currentUserNa
                                     </>
                                 )}
 
+                                {/* Attachments */}
+                                {item.attachments && item.attachments.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {item.attachments.map((att) => {
+                                            // Use the secure file endpoint for private blob access
+                                            const fileUrl = `/api/journal/file?id=${att.id}`
+                                            return (
+                                                <button
+                                                    key={att.id}
+                                                    type="button"
+                                                    onClick={() => setPreviewAttachment(att)}
+                                                    className="relative group text-left"
+                                                >
+                                                    {att.file_type === 'image' ? (
+                                                        <div className="relative w-20 h-20 rounded-md overflow-hidden border bg-muted">
+                                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                            <img
+                                                                src={fileUrl}
+                                                                alt={att.filename}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                                                                <Eye className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                                                            {att.file_type === 'audio' ? (
+                                                                <Mic className="h-4 w-4 text-muted-foreground" />
+                                                            ) : (
+                                                                <FileText className="h-4 w-4 text-muted-foreground" />
+                                                            )}
+                                                            <div className="min-w-0">
+                                                                <p className="text-xs font-medium truncate max-w-[120px]">{att.filename}</p>
+                                                                <p className="text-[10px] text-muted-foreground">
+                                                                    {(att.file_size / 1024).toFixed(0)} KB
+                                                                </p>
+                                                            </div>
+                                                            <Eye className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                        </div>
+                                                    )}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                )}
+
                                 {item.scripture_ref && (() => {
                                     const url = scriptureToUrl(item.scripture_ref)
                                     return url ? (
@@ -341,6 +391,14 @@ export function SharedWithMe({ items, autoOpen = false, pairingId, currentUserNa
                     ))}
                 </div>
             )}
+            {/* Attachment Preview Modal */}
+            <AttachmentPreviewModal
+                open={!!previewAttachment}
+                onOpenChange={(open) => { if (!open) setPreviewAttachment(null) }}
+                url={previewAttachment ? `/api/journal/file?id=${previewAttachment.id}` : ''}
+                type={previewAttachment?.file_type === 'image' ? 'image' : 'file'}
+                filename={previewAttachment?.filename}
+            />
         </div>
     )
 }

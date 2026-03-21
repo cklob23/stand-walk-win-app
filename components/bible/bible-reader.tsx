@@ -120,7 +120,7 @@ interface BibleReaderProps {
     userRole?: string | null
 }
 
-export function BibleReader({ weekScripture, weekNumber, pairingId, savedTranslation, savedTextSize, savedBook, savedChapter, savedSkipVerseNumbers = false, savedVoiceURI, savedReadingSpeed, savedVoicePreferences, userRole }: BibleReaderProps) {
+export function BibleReader({ weekScripture, weekNumber, pairingId, savedTranslation, savedTextSize, savedBook, savedChapter, savedSkipVerseNumbers = true, savedVoiceURI, savedReadingSpeed, savedVoicePreferences, userRole }: BibleReaderProps) {
     const searchParams = useSearchParams()
     const router = useRouter()
 
@@ -151,7 +151,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     // State
     const [translation, setTranslation] = useState(
-        searchParams.get('v') || savedTranslation || 'NIV'
+        searchParams.get('v') || savedTranslation || 'ESV'
     )
     const [textSize, setTextSize] = useState(savedTextSize || 'base')
     const [selectedBook, setSelectedBook] = useState<string | null>(initialBook)
@@ -256,12 +256,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const browserVoicePref = getVoiceFromPreferences('browser')
     const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(browserVoicePref || savedVoiceURI || '')
 
-    // Initialize cloud voice from preferences (for mobile) - prefer OpenAI, then Google
+    // Initialize cloud voice from preferences - prefer OpenAI Echo as default
     const cloudVoicePref = getVoiceFromPreferences('openai') || getVoiceFromPreferences('google')
     const initialCloudVoice = cloudVoicePref ||
-        (savedVoiceURI?.startsWith('en-') || savedVoiceURI?.startsWith('openai-') ? savedVoiceURI : 'openai-nova')
+        (savedVoiceURI?.startsWith('en-') || savedVoiceURI?.startsWith('openai-') ? savedVoiceURI : 'openai-echo')
 
-    // Mobile: Cloud TTS verse-by-verse with pre-buffering
+    // Cloud TTS verse-by-verse with pre-buffering
     const [selectedCloudVoice, setSelectedCloudVoice] = useState<string>(initialCloudVoice)
     const [audioLoading, setAudioLoading] = useState(false)
     const mobileAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -303,8 +303,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     const [skipVerseNumbers, setSkipVerseNumbers] = useState(savedSkipVerseNumbers)
     const skipVerseNumbersRef = useRef(savedSkipVerseNumbers)
-    const [speechRate, setSpeechRate] = useState(savedReadingSpeed ?? 0.85)
-    const speechRateRef = useRef(savedReadingSpeed ?? 0.85)
+    const [speechRate, setSpeechRate] = useState(savedReadingSpeed ?? 1.0)
+    const speechRateRef = useRef(savedReadingSpeed ?? 1.0)
 
     // Data fetching
     const { data: booksData, isLoading: booksLoading } = useSWR(
@@ -377,11 +377,23 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     return a.name.localeCompare(b.name)
                 })
             setAvailableVoices(englishVoices)
+
+            // Set default voice if no saved preference
             if (selectedVoiceURI) {
                 const savedExists = englishVoices.some(v => v.voiceURI === selectedVoiceURI)
-                if (!savedExists && englishVoices.length > 0) setSelectedVoiceURI(englishVoices[0].voiceURI)
+                if (!savedExists && englishVoices.length > 0) {
+                    // Find Brian Online as fallback default for browser voices
+                    const brianVoice = englishVoices.find(v =>
+                        v.name.toLowerCase().includes('brian') && !v.localService
+                    )
+                    setSelectedVoiceURI(brianVoice?.voiceURI || englishVoices[0].voiceURI)
+                }
             } else if (englishVoices.length > 0) {
-                setSelectedVoiceURI(englishVoices[0].voiceURI)
+                // No saved voice - default to Brian Online (cloud voice) if available
+                const brianVoice = englishVoices.find(v =>
+                    v.name.toLowerCase().includes('brian') && !v.localService
+                )
+                setSelectedVoiceURI(brianVoice?.voiceURI || englishVoices[0].voiceURI)
             }
         }
 
@@ -1382,8 +1394,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         }
     }
 
+    // Check if current voice selection is a cloud voice (OpenAI or Google)
+    const isCloudVoiceSelected = selectedCloudVoice.startsWith('openai-') ||
+        (selectedCloudVoice.startsWith('en-') && selectedCloudVoice.includes('Wavenet'))
+
     const handlePlayChapter = (initialStartVerse?: number) => {
-        if (useCloudVoices) handlePlayMobile(initialStartVerse)
+        // Use cloud playback if on mobile/Apple OR if a cloud voice is selected on desktop
+        if (useCloudVoices || isCloudVoiceSelected) handlePlayMobile(initialStartVerse)
         else handlePlayDesktop(initialStartVerse)
     }
     const handlePauseAudio = () => {
@@ -1511,7 +1528,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     const handleTextSizeChange = (size: string) => {
         setTextSize(size)
-            > savePrefs(translation, size, skipVerseNumbers, useCloudVoices ? selectedCloudVoice : selectedVoiceURI, speechRate)
+        savePrefs(translation, size, skipVerseNumbers, useCloudVoices ? selectedCloudVoice : selectedVoiceURI, speechRate)
     }
 
     const handleBack = () => {
@@ -1744,9 +1761,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     Reading Voice
                                 </label>
                                 <p className="text-xs text-muted-foreground">
-                                    {useCloudVoices
-                                        ? 'Choose from OpenAI or Google cloud voices for natural-sounding scripture reading.'
-                                        : 'Choose a voice for the audio Bible. Voices marked Neural or Enhanced sound the most human.'}
+                                    Choose a voice for the audio Bible. Voices marked Neural or Enhanced sound the most human.
                                 </p>
 
                                 {useCloudVoices ? (
@@ -1790,8 +1805,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         </SelectContent>
                                     </Select>
                                 ) : (
-                                    availableVoices.length > 0 ? (
-                                        <Select value={selectedVoiceURI} onValueChange={(v) => {
+                                    <Select
+                                        value={selectedCloudVoice.startsWith('openai-') || selectedCloudVoice.startsWith('en-') ? selectedCloudVoice : selectedVoiceURI}
+                                        onValueChange={(v) => {
                                             const wasPlaying = isPlaying || isPaused
                                             const resumeVerse = currentReadingVerse
                                             if (wasPlaying) {
@@ -1799,42 +1815,75 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                 setIsPaused(true)
                                                 setPausedAtVerse(resumeVerse)
                                             }
-                                            setSelectedVoiceURI(v)
+                                            // Check if it's a cloud voice or browser voice
+                                            if (v.startsWith('openai-') || (v.startsWith('en-') && v.includes('Wavenet'))) {
+                                                setSelectedCloudVoice(v)
+                                            } else {
+                                                setSelectedVoiceURI(v)
+                                            }
                                             savePrefs(translation, textSize, skipVerseNumbers, v, speechRate)
-                                        }}>
-                                            <SelectTrigger className="w-full sm:w-[320px] h-9 text-sm bg-card">
-                                                <SelectValue placeholder="Select a voice..." />
-                                            </SelectTrigger>
-                                            <SelectContent className="max-h-[300px]">
-                                                {availableVoices.map((voice) => {
-                                                    const nameLower = voice.name.toLowerCase()
-                                                    const isNeural = nameLower.includes('(enhanced)') || nameLower.includes('(premium)') || nameLower.includes('natural') || nameLower.includes('neural')
-                                                    const isGoogle = nameLower.startsWith('google ')
-                                                    const displayName = voice.name
-                                                        .replace(/Microsoft |Google |Apple /i, '')
-                                                        .replace(/ \(Natural\)| \(Enhanced\)| \(Premium\)/i, '')
-                                                        .replace(/ Online$/i, '')
-                                                    const langMap: Record<string, string> = { 'en-US': 'US', 'en-GB': 'UK', 'en-AU': 'AU', 'en-IN': 'IN', 'en-IE': 'IE', 'en-ZA': 'ZA' }
-                                                    const langLabel = langMap[voice.lang] || ''
-                                                    let qualityLabel = ''
-                                                    if (isNeural) qualityLabel = 'Neural'
-                                                    else if (isGoogle) qualityLabel = 'Google'
-                                                    else if (!voice.localService) qualityLabel = 'Cloud'
-                                                    return (
-                                                        <SelectItem key={voice.voiceURI} value={voice.voiceURI}>
-                                                            <span className="flex items-center gap-1.5">
-                                                                {displayName}
-                                                                {langLabel && <Badge variant="outline" className="text-[10px] h-4 px-1">{langLabel}</Badge>}
-                                                                {qualityLabel && <Badge variant="secondary" className="text-[10px] h-4 px-1">{qualityLabel}</Badge>}
-                                                            </span>
-                                                        </SelectItem>
-                                                    )
-                                                })}
-                                            </SelectContent>
-                                        </Select>
-                                    ) : (
-                                        <p className="text-xs text-muted-foreground italic">Loading voices...</p>
-                                    )
+                                        }}
+                                    >
+                                        <SelectTrigger className="w-full sm:w-[320px] h-9 text-sm bg-card">
+                                            <SelectValue placeholder="Select a voice..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[300px]">
+                                            {/* OpenAI Cloud Voices */}
+                                            <SelectGroup>
+                                                <SelectLabel className="text-xs font-semibold text-primary/70">OpenAI Voices (Premium)</SelectLabel>
+                                                {CLOUD_TTS_VOICES.filter(v => v.provider === 'openai').map((voice) => (
+                                                    <SelectItem key={voice.id} value={voice.id}>
+                                                        <span className="flex items-center gap-1.5">
+                                                            {voice.name}
+                                                            <span className="text-muted-foreground text-xs">({voice.description})</span>
+                                                        </span>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectGroup>
+                                            {/* Google Cloud Voices */}
+                                            <SelectGroup>
+                                                <SelectLabel className="text-xs font-semibold text-primary/70">Google Voices (Premium)</SelectLabel>
+                                                {CLOUD_TTS_VOICES.filter(v => v.provider === 'google').map((voice) => (
+                                                    <SelectItem key={voice.id} value={voice.id}>
+                                                        <span className="flex items-center gap-1.5">
+                                                            {voice.name}
+                                                            <span className="text-muted-foreground text-xs">({voice.description})</span>
+                                                        </span>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectGroup>
+                                            {/* Browser Voices */}
+                                            {availableVoices.length > 0 && (
+                                                <SelectGroup>
+                                                    <SelectLabel className="text-xs font-semibold text-primary/70">Browser Voices</SelectLabel>
+                                                    {availableVoices.map((voice) => {
+                                                        const nameLower = voice.name.toLowerCase()
+                                                        const isNeural = nameLower.includes('(enhanced)') || nameLower.includes('(premium)') || nameLower.includes('natural') || nameLower.includes('neural')
+                                                        const isGoogleBrowser = nameLower.startsWith('google ')
+                                                        const displayName = voice.name
+                                                            .replace(/Microsoft |Google |Apple /i, '')
+                                                            .replace(/ \(Natural\)| \(Enhanced\)| \(Premium\)/i, '')
+                                                            .replace(/ Online$/i, '')
+                                                        const langMap: Record<string, string> = { 'en-US': 'US', 'en-GB': 'UK', 'en-AU': 'AU', 'en-IN': 'IN', 'en-IE': 'IE', 'en-ZA': 'ZA' }
+                                                        const langLabel = langMap[voice.lang] || ''
+                                                        let qualityLabel = ''
+                                                        if (isNeural) qualityLabel = 'Neural'
+                                                        else if (isGoogleBrowser) qualityLabel = 'Google'
+                                                        else if (!voice.localService) qualityLabel = 'Online'
+                                                        return (
+                                                            <SelectItem key={voice.voiceURI} value={voice.voiceURI}>
+                                                                <span className="flex items-center gap-1.5">
+                                                                    {displayName}
+                                                                    {langLabel && <Badge variant="outline" className="text-[10px] h-4 px-1">{langLabel}</Badge>}
+                                                                    {qualityLabel && <Badge variant="secondary" className="text-[10px] h-4 px-1">{qualityLabel}</Badge>}
+                                                                </span>
+                                                            </SelectItem>
+                                                        )
+                                                    })}
+                                                </SelectGroup>
+                                            )}
+                                        </SelectContent>
+                                    </Select>
                                 )}
                             </div>
 

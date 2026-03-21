@@ -25,12 +25,15 @@ import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
 
 interface NotificationsViewProps {
   userId: string
+  userRole?: string
   notifications: Notification[]
 }
 
 const notificationIcons: Record<string, typeof Bell> = {
   message: MessageSquare,
   assignment: BookOpen,
+  assignment_reply: MessageSquare,
+  assignment_reaction: Bell,
   week_complete: CheckCircle2,
   encouragement: Bell,
   journal_shared: BookOpen,
@@ -38,34 +41,60 @@ const notificationIcons: Record<string, typeof Bell> = {
   pairing: Users,
 }
 
-function getNotificationHref(notification: Notification): string {
+function getNotificationHref(notification: Notification, userRole?: string): string {
   // Route by title for specific notification types
   const title = notification.title?.toLowerCase() || ''
+  const pairingParam = notification.pairing_id
+  const assignmentId = notification.metadata?.assignmentId
+  // Try to get weekNumber from metadata, or extract from message (e.g., "Week 1: ...")
+  let weekNumber = notification.metadata?.weekNumber
+  if (!weekNumber && notification.message) {
+    const weekMatch = notification.message.match(/Week (\d+)/i)
+    if (weekMatch) {
+      weekNumber = parseInt(weekMatch[1], 10)
+    }
+  }
+
   if (title.includes('bible note shared') || title.includes('shared a verse') || title.includes('journal entry shared')) {
     return '/dashboard/journal?section=shared'
   }
   if (title.includes('meeting requested') || title.includes('meeting scheduled')) {
-    return '/dashboard/schedule'
+    return pairingParam ? `/dashboard/schedule?pairing=${pairingParam}` : '/dashboard/schedule'
   }
 
   switch (notification.type) {
     case 'message':
       return '/dashboard/messages'
     case 'covenant':
-      return '/dashboard/covenant'
+      return pairingParam ? `/dashboard/covenant?pairing=${pairingParam}` : '/dashboard/covenant'
     case 'journal_shared':
       return '/dashboard/journal?section=shared'
     case 'pairing':
-      return '/dashboard/schedule'
-    case 'assignment':
+      return pairingParam ? `/dashboard/schedule?pairing=${pairingParam}` : '/dashboard/schedule'
+    case 'assignment_reply':
+    case 'assignment_reaction':
+    case 'assignment': {
+      // For leaders, navigate to week page where they can see assignment details
+      // For learners, navigate to dashboard where assignments are shown
+      if (userRole === 'leader' && weekNumber) {
+        const baseUrl = `/dashboard/week/${weekNumber}`
+        const params = new URLSearchParams()
+        if (pairingParam) params.set('pairing', pairingParam)
+        if (assignmentId) params.set('assignmentId', assignmentId)
+        return params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl
+      }
+      // Learners see assignments on main dashboard
+      const baseUrl = pairingParam ? `/dashboard?pairing=${pairingParam}` : '/dashboard'
+      return assignmentId ? `${baseUrl}${pairingParam ? '&' : '?'}assignmentId=${assignmentId}` : baseUrl
+    }
     case 'week_complete':
     case 'encouragement':
     default:
-      return '/dashboard'
+      return pairingParam ? `/dashboard?pairing=${pairingParam}` : '/dashboard'
   }
 }
 
-export function NotificationsView({ userId, notifications: initialNotifications }: NotificationsViewProps) {
+export function NotificationsView({ userId, userRole, notifications: initialNotifications }: NotificationsViewProps) {
   const router = useRouter()
   const [notifications, setNotifications] = useState(initialNotifications)
   const { permission, isSupported, requestPermission } = useBrowserNotifications()
@@ -160,7 +189,7 @@ export function NotificationsView({ userId, notifications: initialNotifications 
         )
       }
     }
-    router.push(getNotificationHref(notification))
+    router.push(getNotificationHref(notification, userRole))
   }
 
   const handleDelete = async (id: string) => {

@@ -24,7 +24,7 @@ async function getWebPush() {
   return _webpush!
 }
 
-type NotificationType = 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing' | 'journal_shared'
+type NotificationType = 'message' | 'assignment' | 'assignment_reply' | 'assignment_reaction' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing' | 'journal_shared' | 'meeting_request' | 'meeting_accepted' | 'meeting_declined' | 'meeting_counter_proposed' | 'meeting_completed'
 
 interface CreateNotificationParams {
   userId: string
@@ -32,6 +32,7 @@ interface CreateNotificationParams {
   type: NotificationType
   title: string
   message: string
+  metadata?: Record<string, string | number | boolean | null>
 }
 
 function getNotificationUrl(type: NotificationType, pairingId?: string): string {
@@ -39,6 +40,7 @@ function getNotificationUrl(type: NotificationType, pairingId?: string): string 
   if (type === 'journal_shared') return '/dashboard/journal?section=shared'
   if (type === 'pairing') return '/dashboard/schedule'
   if (type === 'covenant') return '/dashboard/covenant'
+  if (type === 'meeting_request' || type === 'meeting_accepted' || type === 'meeting_declined' || type === 'meeting_counter_proposed' || type === 'meeting_completed') return '/dashboard/schedule'
   return '/dashboard'
 }
 
@@ -87,6 +89,7 @@ export async function createNotification({
   type,
   title,
   message,
+  metadata,
 }: CreateNotificationParams) {
   const supabase = createClient()
 
@@ -99,6 +102,7 @@ export async function createNotification({
       title,
       message,
       read: false,
+      metadata: metadata || null,
     })
     .select()
     .single()
@@ -135,7 +139,8 @@ export async function notifyAssignmentCompleted(
   learnerName: string,
   pairingId: string,
   assignmentTitle: string,
-  weekNumber: number
+  weekNumber: number,
+  assignmentId?: string
 ) {
   return createNotification({
     userId: leaderId,
@@ -143,6 +148,7 @@ export async function notifyAssignmentCompleted(
     type: 'assignment',
     title: `${learnerName} completed an assignment`,
     message: `Week ${weekNumber}: "${assignmentTitle}" has been marked as complete.`,
+    metadata: assignmentId ? { assignmentId, weekNumber } : undefined,
   })
 }
 

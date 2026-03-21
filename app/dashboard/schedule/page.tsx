@@ -1,8 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ScheduleView } from '@/components/schedule/schedule-view'
+import { getSelectedPairingId } from '@/lib/selected-pairing'
 
-export default async function SchedulePage() {
+export default async function SchedulePage({
+    searchParams,
+}: {
+    searchParams: Promise<{ notes?: string; pairing?: string }>
+}) {
+    const params = await searchParams
+    // Use URL param first, then fall back to cookie
+    const cookiePairingId = await getSelectedPairingId()
+    const selectedPairingId = params.pairing || cookiePairingId
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -25,7 +34,8 @@ export default async function SchedulePage() {
     let partner = null
 
     if (profile.role === 'leader') {
-        const { data } = await supabase
+        // Fetch ALL pairings for multi-learner support
+        const { data: allPairings } = await supabase
             .from('pairings')
             .select(`
         *,
@@ -34,12 +44,17 @@ export default async function SchedulePage() {
             .eq('leader_id', user.id)
             .in('status', ['active', 'pending'])
             .order('created_at', { ascending: false })
-            .limit(1)
-            .single()
 
-        if (data) {
-            pairing = data
-            partner = data.learner
+        if (allPairings && allPairings.length > 0) {
+            // Use selected pairing from URL or default to most recent
+            const selectedPairing = selectedPairingId
+                ? allPairings.find(p => p.id === selectedPairingId)
+                : allPairings[0]
+
+            if (selectedPairing) {
+                pairing = selectedPairing
+                partner = selectedPairing.learner
+            }
         }
     } else {
         const { data } = await supabase
@@ -92,6 +107,15 @@ export default async function SchedulePage() {
         .order('meeting_date', { ascending: true })
         .order('start_time', { ascending: true })
 
+    // Get pending meeting requests (pending_approval and counter_proposed)
+    const { data: pendingMeetings } = await supabase
+        .from('scheduled_meetings')
+        .select('*')
+        .eq('pairing_id', pairing.id)
+        .in('status', ['pending_approval', 'counter_proposed'])
+        .order('meeting_date', { ascending: true })
+        .order('start_time', { ascending: true })
+
     const { data: pastMeetings } = await supabase
         .from('scheduled_meetings')
         .select('*')
@@ -107,9 +131,11 @@ export default async function SchedulePage() {
             partner={partner}
             availabilitySlots={availabilitySlots || []}
             upcomingMeetings={upcomingMeetings || []}
+            pendingMeetings={pendingMeetings || []}
             pastMeetings={pastMeetings || []}
             weekTopic={weekContent?.title || null}
             weekNumber={currentWeek}
+            initialNotes={params.notes || null}
         />
     )
 }

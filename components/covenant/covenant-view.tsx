@@ -251,7 +251,7 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
           <Button
             size="lg"
             className="mt-4"
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push(`/dashboard?pairing=${pairing.id}`)}
           >
             Go to Dashboard
           </Button>
@@ -262,7 +262,7 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
         <div className="mt-6 text-center">
           <Button
             variant="outline"
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push(`/dashboard?pairing=${pairing.id}`)}
           >
             Go to Dashboard
           </Button>

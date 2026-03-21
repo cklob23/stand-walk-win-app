@@ -1,13 +1,19 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { WeekDetailView } from '@/components/week/week-detail-view'
+import { getSelectedPairingId } from '@/lib/selected-pairing'
 
 interface WeekPageProps {
   params: Promise<{ weekNumber: string }>
+  searchParams: Promise<{ pairing?: string; assignmentId?: string }>
 }
 
-export default async function WeekPage({ params }: WeekPageProps) {
+export default async function WeekPage({ params, searchParams }: WeekPageProps) {
   const { weekNumber } = await params
+  const { pairing: urlPairingId, assignmentId } = await searchParams
+  // Use URL param first, then fall back to cookie
+  const cookiePairingId = await getSelectedPairingId()
+  const selectedPairingId = urlPairingId || cookiePairingId
   const weekNum = parseInt(weekNumber, 10)
 
   if (isNaN(weekNum) || weekNum < 1 || weekNum > 6) {
@@ -36,7 +42,8 @@ export default async function WeekPage({ params }: WeekPageProps) {
   let partner = null
 
   if (profile.role === 'leader') {
-    const { data } = await supabase
+    // Fetch ALL pairings for multi-learner support
+    const { data: allPairings } = await supabase
       .from('pairings')
       .select(`
         *,
@@ -45,12 +52,17 @@ export default async function WeekPage({ params }: WeekPageProps) {
       .eq('leader_id', user.id)
       .in('status', ['active', 'pending'])
       .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
 
-    if (data) {
-      pairing = data
-      partner = data.learner
+    if (allPairings && allPairings.length > 0) {
+      // Use selected pairing from URL or default to most recent
+      const selectedPairing = selectedPairingId
+        ? allPairings.find(p => p.id === selectedPairingId)
+        : allPairings[0]
+
+      if (selectedPairing) {
+        pairing = selectedPairing
+        partner = selectedPairing.learner
+      }
     }
   } else {
     const { data } = await supabase
@@ -98,23 +110,36 @@ export default async function WeekPage({ params }: WeekPageProps) {
     .eq('week_number', weekNum)
     .order('order_index', { ascending: true })
 
-  // Get assignment progress for the current user
+  // Get assignment progress
+  // For leaders viewing learner dashboard, fetch LEARNER's progress (not leader's)
+  // For learners, fetch their own progress
+  const progressUserId = profile.role === 'leader' ? pairing.learner_id : user.id
   const { data: assignmentProgress } = await supabase
     .from('assignment_progress')
     .select('*')
     .eq('pairing_id', pairing.id)
-    .eq('user_id', user.id)
+    .eq('user_id', progressUserId)
 
-  // If user is a leader, also fetch learner's progress so we can show their responses
+  // If user is a leader, learnerProgress is the same as assignmentProgress
+  // (we're already fetching the learner's progress)
   let learnerProgress: typeof assignmentProgress = null
   if (profile.role === 'leader' && pairing.learner_id) {
-    const { data } = await supabase
-      .from('assignment_progress')
-      .select('*')
-      .eq('pairing_id', pairing.id)
-      .eq('user_id', pairing.learner_id)
+    learnerProgress = assignmentProgress
+  }
 
-    learnerProgress = data
+  // Fetch assignment reactions (for both leaders and learners viewing feedback)
+  // Use admin client to bypass RLS since the RLS policy might be causing issues
+  let assignmentReactions: { id: string; assignment_progress_id: string; user_id: string; emoji: string; created_at: string }[] = []
+  if (assignmentProgress && assignmentProgress.length > 0) {
+    const progressIds = assignmentProgress.filter(p => p.id).map(p => p.id)
+    if (progressIds.length > 0) {
+      const adminSupabase = createAdminClient()
+      const { data: reactions } = await adminSupabase
+        .from('assignment_reactions')
+        .select('*')
+        .in('assignment_progress_id', progressIds)
+      assignmentReactions = reactions || []
+    }
   }
 
   // Get reflections for this week
@@ -151,10 +176,12 @@ export default async function WeekPage({ params }: WeekPageProps) {
       assignments={assignments || []}
       assignmentProgress={assignmentProgress || []}
       learnerProgress={learnerProgress || []}
+      assignmentReactions={assignmentReactions}
       reflections={reflections || []}
       hasWeeklyMeeting={hasWeeklyMeeting}
-      bibleTranslation={profile.bible_translation_preference || 'KJV'}
+      bibleTranslation={profile.bible_translation_preference || 'ESV'}
       bibleTextSize={profile.bible_text_size || 'base'}
+      expandedAssignmentId={assignmentId}
     />
   )
 }

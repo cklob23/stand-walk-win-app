@@ -1,5 +1,105 @@
 export type UserRole = 'leader' | 'learner'
 
+export type AdminRole = 'master_admin' | 'org_admin'
+
+export interface Organization {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  max_users: number
+  subscription_tier_id: string | null
+  subscription_tier?: SubscriptionTier
+  is_active: boolean
+  owner_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface OrganizationMember {
+  id: string
+  organization_id: string
+  user_id: string
+  role: 'admin' | 'member'
+  added_by: string | null
+  created_at: string
+  organization?: Organization
+  user?: Profile
+  added_by_profile?: Profile
+}
+
+export interface SubscriptionTier {
+  id: string
+  name: string
+  display_name: string
+  max_learners: number
+  price_monthly: number
+  features: {
+    can_graduate_to_leader?: boolean
+    additional_journeys?: boolean
+    priority_support?: boolean
+    description?: string
+  }
+  sort_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Journey {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  total_weeks: number
+  is_default: boolean
+  price: number
+  is_available: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface UserJourney {
+  id: string
+  user_id: string
+  journey_id: string
+  pairing_id: string | null
+  status: 'active' | 'completed' | 'paused'
+  started_at: string
+  completed_at: string | null
+  completion_percentage: number
+  created_at: string
+  updated_at: string
+  journey?: Journey
+}
+
+export interface UserJourneyPurchase {
+  id: string
+  user_id: string
+  journey_id: string
+  purchased_at: string
+  payment_reference: string | null
+  payment_amount: number | null
+  granted_by: string | null
+  notes: string | null
+  created_at: string
+  journey?: Journey
+}
+
+export interface SubscriptionChange {
+  id: string
+  user_id: string
+  old_tier_id: string | null
+  new_tier_id: string | null
+  changed_by: string | null
+  reason: string | null
+  payment_reference: string | null
+  created_at: string
+  old_tier?: SubscriptionTier
+  new_tier?: SubscriptionTier
+  changed_by_profile?: Profile
+}
+
 export interface Profile {
   id: string
   email: string
@@ -20,6 +120,15 @@ export interface Profile {
   bible_last_chapter?: number | null
   bible_skip_verse_numbers?: boolean | null
   bible_voice_uri?: string | null
+  // Subscription & graduation fields
+  subscription_tier_id?: string | null
+  subscription_tier?: SubscriptionTier
+  is_admin?: boolean
+  admin_role?: AdminRole | null
+  organization_id?: string | null
+  organization?: Organization
+  graduated_at?: string | null
+  can_be_leader?: boolean
   created_at: string
   updated_at: string
 }
@@ -41,8 +150,10 @@ export interface Pairing {
   completed_at: string | null
   created_at: string
   updated_at?: string
+  journey_id?: string | null
   leader?: Profile
   learner?: Profile
+  journey?: Journey
 }
 
 export interface WeeklyContent {
@@ -117,11 +228,16 @@ export interface Notification {
   id: string
   user_id: string
   pairing_id: string | null
-  type: 'message' | 'assignment' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing'
+  type: 'message' | 'assignment' | 'assignment_reply' | 'assignment_reaction' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing' | 'journal_shared' | 'meeting_request' | 'meeting_accepted' | 'meeting_declined' | 'meeting_counter_proposed' | 'meeting_completed'
   title: string
   message: string
   read: boolean
   created_at: string
+  metadata?: {
+    assignmentId?: string
+    weekNumber?: number
+    [key: string]: string | number | boolean | null | undefined
+  } | null
 }
 
 export interface Reflection {
@@ -159,16 +275,21 @@ export interface ScheduledMeeting {
   id: string
   pairing_id: string
   scheduled_by: string
+  proposed_by: string | null
+  original_meeting_id: string | null
   meeting_date: string // "YYYY-MM-DD"
   start_time: string
   end_time: string
   meeting_type: 'facetime' | 'zoom' | 'phone' | 'in_person'
   meeting_link: string | null
   notes: string | null
-  status: 'scheduled' | 'completed' | 'cancelled'
+  status: 'scheduled' | 'completed' | 'cancelled' | 'pending_approval' | 'declined' | 'counter_proposed'
+  decline_reason: string | null
+  response_note: string | null
   created_at: string
   updated_at: string
   scheduled_by_profile?: Profile
+  proposer?: Profile
 }
 
 export interface DashboardData {

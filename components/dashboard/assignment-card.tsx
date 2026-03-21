@@ -32,7 +32,10 @@ import {
   Send,
   CalendarHeart,
   Cross,
-  BookHeart,
+  SmilePlus,
+  Reply,
+  X,
+  Edit2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
@@ -40,7 +43,21 @@ import type { Assignment } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { notifyAssignmentCompleted, advanceToNextWeek } from '@/lib/notifications'
 import { extractScriptureReferences, extractBookReferences } from '@/lib/bible-utils'
-import { saveAssignmentToJournal } from '@/lib/journal-actions'
+import { toggleAssignmentReaction, replyToAssignment, deleteAssignmentReply } from '@/lib/assignment-actions'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+
+
+interface AssignmentReaction {
+  id: string
+  assignment_progress_id: string
+  user_id: string
+  emoji: string
+  created_at: string
+}
 
 interface AssignmentCardProps {
   assignment: Assignment
@@ -50,6 +67,8 @@ interface AssignmentCardProps {
     status: string
     notes: string | null
     completed_at: string | null
+    leader_reply?: string | null
+    leader_reply_at?: string | null
   }
   learnerProgress?: {
     id?: string
@@ -57,7 +76,11 @@ interface AssignmentCardProps {
     status: string
     notes: string | null
     completed_at: string | null
+    leader_reply?: string | null
+    leader_reply_at?: string | null
   }
+  learnerProgressReactions?: AssignmentReaction[]
+  progressReactions?: AssignmentReaction[]
   pairingId: string
   userId: string
   userRole?: 'leader' | 'learner'
@@ -69,6 +92,7 @@ interface AssignmentCardProps {
   completedWeekAssignments?: number
   hasWeeklyMeeting?: boolean
   weekTitle?: string
+  defaultOpen?: boolean
 }
 
 const typeIcons: Record<string, typeof BookOpen> = {
@@ -110,6 +134,8 @@ export function AssignmentCard({
   assignment,
   progress,
   learnerProgress,
+  learnerProgressReactions,
+  progressReactions,
   pairingId,
   userId,
   userRole,
@@ -120,19 +146,61 @@ export function AssignmentCard({
   totalWeekAssignments,
   completedWeekAssignments,
   hasWeeklyMeeting,
-  weekTitle
+  weekTitle,
+  defaultOpen = false
 }: AssignmentCardProps) {
   const router = useRouter()
-  const [isOpen, setIsOpen] = useState(false)
-  const [response, setResponse] = useState(progress?.notes || '')
+  const cardRef = useRef<HTMLDivElement>(null)
+  const [isOpen, setIsOpen] = useState(defaultOpen)
+
+  // Scroll into view when opened from notification link
+  useEffect(() => {
+    if (defaultOpen && cardRef.current) {
+      setTimeout(() => {
+        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+    }
+  }, [defaultOpen])
+
+  // Initialize response from localStorage draft or saved progress
+  const draftKey = `assignment-draft-${assignment.id}`
+  const [response, setResponse] = useState(() => {
+    // Check localStorage for draft first (only on client)
+    if (typeof window !== 'undefined') {
+      const draft = localStorage.getItem(draftKey)
+      if (draft) return draft
+    }
+    return progress?.notes || ''
+  })
   const [isLoading, setIsLoading] = useState(false)
+
+  // Reactions and reply state (for leaders)
+  const [reactions, setReactions] = useState<AssignmentReaction[]>(learnerProgressReactions || [])
+  const [showReplyForm, setShowReplyForm] = useState(false)
+  const [replyText, setReplyText] = useState(learnerProgress?.leader_reply || '')
+  const [isSendingReply, setIsSendingReply] = useState(false)
+  const [isReacting, setIsReacting] = useState(false)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
 
   const supabase = createClient()
 
-  const [isEditing, setIsEditing] = useState(false)
-  const [journalSaving, setJournalSaving] = useState(false)
-  const [journalSaved, setJournalSaved] = useState(false)
-  const [showResponseBox, setShowResponseBox] = useState(!!progress?.notes)
+  // Save response to localStorage as user types (debounced effect)
+  useEffect(() => {
+    if (response && response !== progress?.notes) {
+      localStorage.setItem(draftKey, response)
+    } else if (!response || response === progress?.notes) {
+      localStorage.removeItem(draftKey)
+    }
+  }, [response, draftKey, progress?.notes])
+
+  const [showResponseBox, setShowResponseBox] = useState(() => {
+    // Show response box if there's a draft or saved notes
+    if (typeof window !== 'undefined') {
+      const draft = localStorage.getItem(draftKey)
+      if (draft) return true
+    }
+    return !!progress?.notes
+  })
 
   // Prayer timer state
   const isPrayerType = assignment.assignment_type === 'prayer'
@@ -278,7 +346,84 @@ export function AssignmentCard({
   }, [meetingAutoCompleted, isMeetingType])
 
   // Check if this assignment type requires a written response
-  const requiresResponse = assignment.assignment_type === 'reflection' || assignment.assignment_type === 'discussion'
+  // Reflection/Discussion always require response
+  // Reading/Action types require response if the response box is shown (user clicked "Write a response")
+  const isReflectionOrDiscussion = assignment.assignment_type === 'reflection' || assignment.assignment_type === 'discussion'
+  const requiresResponse = isReflectionOrDiscussion || showResponseBox
+
+  // Available emojis for reactions
+  const availableEmojis = ['❤️', '🙏', '👏', '💪', '🔥', '✨']
+
+  // Handle toggling a reaction on learner's response
+  const handleReaction = async (emoji: string) => {
+    if (!learnerProgress?.id || isReacting) return
+    setIsReacting(true)
+    try {
+      const result = await toggleAssignmentReaction(learnerProgress.id, emoji, pairingId)
+      if (result.success) {
+        // Toggle locally
+        setReactions(prev => {
+          const existing = prev.find(r => r.user_id === userId && r.emoji === emoji)
+          if (existing) {
+            return prev.filter(r => r.id !== existing.id)
+          } else {
+            return [...prev, {
+              id: `temp-${Date.now()}`,
+              assignment_progress_id: learnerProgress.id!,
+              user_id: userId,
+              emoji,
+              created_at: new Date().toISOString()
+            }]
+          }
+        })
+        setShowEmojiPicker(false)
+      } else {
+        toast.error(result.error || 'Failed to add reaction')
+      }
+    } catch {
+      toast.error('Failed to add reaction')
+    } finally {
+      setIsReacting(false)
+    }
+  }
+
+  // Handle sending a reply to learner's response
+  const handleSendReply = async () => {
+    if (!learnerProgress?.id || !replyText.trim() || isSendingReply) return
+    setIsSendingReply(true)
+    try {
+      const result = await replyToAssignment(learnerProgress.id, replyText.trim(), pairingId)
+      if (result.success) {
+        toast.success('Reply sent!')
+        setShowReplyForm(false)
+      } else {
+        toast.error(result.error || 'Failed to send reply')
+      }
+    } catch {
+      toast.error('Failed to send reply')
+    } finally {
+      setIsSendingReply(false)
+    }
+  }
+
+  // Handle deleting a reply
+  const handleDeleteReply = async () => {
+    if (!learnerProgress?.id || isSendingReply) return
+    setIsSendingReply(true)
+    try {
+      const result = await deleteAssignmentReply(learnerProgress.id)
+      if (result.success) {
+        setReplyText('')
+        toast.success('Reply removed')
+      } else {
+        toast.error(result.error || 'Failed to remove reply')
+      }
+    } catch {
+      toast.error('Failed to remove reply')
+    } finally {
+      setIsSendingReply(false)
+    }
+  }
 
   const handleSaveProgress = async (newStatus: 'in_progress' | 'completed') => {
     // Validate that reflection/discussion assignments have a response before completing
@@ -322,6 +467,11 @@ export function AssignmentCard({
 
     toast.success(newStatus === 'completed' ? 'Assignment completed!' : 'Progress saved!')
 
+    // Clear draft from localStorage on completion
+    if (newStatus === 'completed') {
+      localStorage.removeItem(draftKey)
+    }
+
     // Send notification to leader when learner completes an assignment
     if (newStatus === 'completed' && userRole === 'learner' && leaderId && learnerName) {
       await notifyAssignmentCompleted(
@@ -329,7 +479,8 @@ export function AssignmentCard({
         learnerName,
         pairingId,
         assignment.title,
-        assignment.week_number
+        assignment.week_number,
+        assignment.id
       )
 
       // Check if this was the last assignment for the week
@@ -361,10 +512,12 @@ export function AssignmentCard({
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div className={cn(
-        "rounded-lg border transition-colors w-full overflow-hidden",
-        isCompleted ? "bg-success/5 border-success/20" : "bg-card hover:border-primary/30"
-      )}>
+      <div
+        ref={cardRef}
+        className={cn(
+          "rounded-lg border transition-colors w-full overflow-hidden",
+          isCompleted ? "bg-success/5 border-success/20" : "bg-card hover:border-primary/30"
+        )}>
         <CollapsibleTrigger asChild>
           <button className="w-full p-3 sm:p-4 text-left flex items-center gap-3 sm:gap-4">
             {/* Status Icon */}
@@ -676,6 +829,156 @@ export function AssignmentCard({
                     <p className="text-sm text-foreground whitespace-pre-wrap">
                       {isSalvationStory ? stripSalvationPrefix(learnerProgress.notes) || 'No written response.' : learnerProgress.notes}
                     </p>
+
+                    {/* Reactions display */}
+                    {reactions.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t">
+                        {Object.entries(
+                          reactions.reduce((acc, r) => {
+                            acc[r.emoji] = (acc[r.emoji] || 0) + 1
+                            return acc
+                          }, {} as Record<string, number>)
+                        ).map(([emoji, count]) => (
+                          <button
+                            key={emoji}
+                            onClick={() => handleReaction(emoji)}
+                            disabled={isReacting}
+                            className={cn(
+                              "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors",
+                              reactions.some(r => r.user_id === userId && r.emoji === emoji)
+                                ? "bg-primary/10 border-primary/30 text-primary"
+                                : "bg-muted/50 border-border hover:bg-muted"
+                            )}
+                          >
+                            <span>{emoji}</span>
+                            {count > 1 && <span className="text-xs">{count}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Reaction and Reply buttons for leader */}
+                    <div className="flex items-center gap-2 mt-2 pt-2 border-t">
+                      <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                            disabled={isReacting}
+                          >
+                            {isReacting ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <SmilePlus className="h-3.5 w-3.5" />
+                            )}
+                            React
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-2" align="start">
+                          <div className="flex gap-1">
+                            {availableEmojis.map(emoji => (
+                              <button
+                                key={emoji}
+                                onClick={() => handleReaction(emoji)}
+                                className={cn(
+                                  "text-xl p-1.5 rounded hover:bg-muted transition-colors",
+                                  reactions.some(r => r.user_id === userId && r.emoji === emoji) && "bg-primary/10"
+                                )}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+
+                      {!learnerProgress.leader_reply && !showReplyForm && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                          onClick={() => setShowReplyForm(true)}
+                        >
+                          <Reply className="h-3.5 w-3.5" />
+                          Reply
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Leader's existing reply */}
+                {learnerProgress.leader_reply && (
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-primary uppercase tracking-wide">Your Reply</p>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                          onClick={() => {
+                            setReplyText(learnerProgress.leader_reply || '')
+                            setShowReplyForm(true)
+                          }}
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={handleDeleteReply}
+                          disabled={isSendingReply}
+                        >
+                          {isSendingReply ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-foreground whitespace-pre-wrap">{learnerProgress.leader_reply}</p>
+                    {learnerProgress.leader_reply_at && (
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(learnerProgress.leader_reply_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Reply form */}
+                {showReplyForm && (
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <Textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder={`Write a reply to ${learnerName || 'your learner'}...`}
+                      className="min-h-[60px] text-sm resize-none"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setShowReplyForm(false)
+                          setReplyText(learnerProgress.leader_reply || '')
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleSendReply}
+                        disabled={!replyText.trim() || isSendingReply}
+                        className="gap-1"
+                      >
+                        {isSendingReply ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Send className="h-3.5 w-3.5" />
+                        )}
+                        {learnerProgress.leader_reply ? 'Update' : 'Send'}
+                      </Button>
+                    </div>
                   </div>
                 )}
 
@@ -815,28 +1118,13 @@ export function AssignmentCard({
                   {/* For salvation story, only show textarea after a choice is made */}
                   {(!isSalvationStory || salvationChoice !== null || isCompleted) && (
                     <>
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-foreground">
-                          {isSalvationStory && salvationChoice === 'yes'
-                            ? 'Your Salvation Story'
-                            : isSalvationStory && salvationChoice === 'no'
-                              ? 'Your Thoughts & Questions'
-                              : 'Your Response'}
-                        </label>
-                        <div className="flex items-center gap-1.5">
-                          {isCompleted && !isEditing && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
-                              onClick={() => setIsEditing(true)}
-                            >
-                              <PenLine className="h-3 w-3" />
-                              Edit Response
-                            </Button>
-                          )}
-                        </div>
-                      </div>
+                      <label className="text-sm font-medium text-foreground">
+                        {isSalvationStory && salvationChoice === 'yes'
+                          ? 'Your Salvation Story'
+                          : isSalvationStory && salvationChoice === 'no'
+                            ? 'Your Thoughts & Questions'
+                            : 'Your Response'}
+                      </label>
                       <Textarea
                         value={isSalvationStory ? stripSalvationPrefix(response) : response}
                         onChange={(e) => {
@@ -851,109 +1139,10 @@ export function AssignmentCard({
                             ? 'Share when and how you came to know Christ...'
                             : isSalvationStory && salvationChoice === 'no'
                               ? 'Share any questions or thoughts you have about faith...'
-                              : 'Write your thoughts here...'
+                              : 'Write your response here...'
                         }
                         rows={4}
-                        disabled={isCompleted && !isEditing}
-                        className={cn(isCompleted && !isEditing && "opacity-60")}
                       />
-                      <div className="flex flex-wrap gap-2">
-                        {isEditing && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="default"
-                              className="h-8 text-xs"
-                              disabled={isLoading}
-                              onClick={async () => {
-                                setIsLoading(true)
-                                const { error } = await supabase
-                                  .from('assignment_progress')
-                                  .upsert({
-                                    pairing_id: pairingId,
-                                    assignment_id: assignment.id,
-                                    user_id: userId,
-                                    status: 'completed',
-                                    notes: response || null,
-                                    completed_at: progress?.completed_at || new Date().toISOString(),
-                                  }, {
-                                    onConflict: 'pairing_id,assignment_id,user_id',
-                                    ignoreDuplicates: false
-                                  })
-                                setIsLoading(false)
-                                if (error) {
-                                  toast.error('Failed to update response')
-                                } else {
-                                  toast.success('Response updated!')
-                                  setIsEditing(false)
-                                  router.refresh()
-                                }
-                              }}
-                            >
-                              {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                              Save Changes
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 text-xs"
-                              onClick={() => {
-                                setResponse(progress?.notes || '')
-                                setIsEditing(false)
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                          </>
-                        )}
-                        {/* Save to Journal button */}
-                        {(response.trim() || progress?.notes) && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 text-xs gap-1.5"
-                            disabled={journalSaving}
-                            onClick={async () => {
-                              const textToSave = (isSalvationStory ? stripSalvationPrefix(response) : response).trim() || progress?.notes?.trim() || ''
-                              if (!textToSave) return
-                              setJournalSaving(true)
-                              const wLabel = weekTitle
-                                ? `Week ${assignment.week_number} - ${weekTitle}`
-                                : `Week ${assignment.week_number}`
-                              const aNum = assignment.order_index + 1
-                              const jTitle = `${wLabel}: Assignment ${aNum} - ${assignment.title}`
-                              const result = await saveAssignmentToJournal(
-                                pairingId,
-                                assignment.title,
-                                assignment.assignment_type,
-                                textToSave,
-                                jTitle
-                              )
-                              if (result.success) {
-                                setJournalSaved(true)
-                                toast.success('Saved to your prayer journal!', {
-                                  action: {
-                                    label: 'View Journal',
-                                    onClick: () => router.push('/dashboard/journal'),
-                                  },
-                                })
-                              } else {
-                                toast.error(result.error || 'Failed to save to journal')
-                              }
-                              setJournalSaving(false)
-                            }}
-                          >
-                            {journalSaving ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : journalSaved ? (
-                              <CheckCircle2 className="h-3 w-3 text-green-600" />
-                            ) : (
-                              <BookHeart className="h-3 w-3" />
-                            )}
-                            {journalSaved ? 'Saved to Journal' : 'Save to Journal'}
-                          </Button>
-                        )}
-                      </div>
                     </>
                   )}
                 </div>
@@ -976,125 +1165,13 @@ export function AssignmentCard({
                     </Button>
                   ) : (
                     <>
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-foreground">Your Response</label>
-                        {isCompleted && !isEditing && progress?.notes && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
-                            onClick={() => setIsEditing(true)}
-                          >
-                            <PenLine className="h-3 w-3" />
-                            Edit
-                          </Button>
-                        )}
-                      </div>
+                      <label className="text-sm font-medium text-foreground">Your Response</label>
                       <Textarea
                         value={response}
                         onChange={(e) => setResponse(e.target.value)}
-                        placeholder="Write your thoughts, learnings, or reflections..."
+                        placeholder="Write your response here..."
                         rows={3}
-                        disabled={isCompleted && !isEditing && !!progress?.notes}
-                        className={cn(isCompleted && !isEditing && progress?.notes && "opacity-60")}
                       />
-                      <div className="flex flex-wrap gap-2">
-                        {response.trim() && response !== (progress?.notes || '') && (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            className="h-8 text-xs"
-                            disabled={isLoading}
-                            onClick={async () => {
-                              setIsLoading(true)
-                              const { error } = await supabase
-                                .from('assignment_progress')
-                                .upsert({
-                                  pairing_id: pairingId,
-                                  assignment_id: assignment.id,
-                                  user_id: userId,
-                                  status: progress?.status || 'in_progress',
-                                  notes: response || null,
-                                  completed_at: progress?.completed_at || null,
-                                }, {
-                                  onConflict: 'pairing_id,assignment_id,user_id',
-                                  ignoreDuplicates: false
-                                })
-                              setIsLoading(false)
-                              if (error) {
-                                toast.error('Failed to save response')
-                              } else {
-                                toast.success('Response saved!')
-                                setIsEditing(false)
-                                router.refresh()
-                              }
-                            }}
-                          >
-                            {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                            Save Response
-                          </Button>
-                        )}
-                        {isEditing && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 text-xs"
-                            onClick={() => {
-                              setResponse(progress?.notes || '')
-                              setIsEditing(false)
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                        )}
-                        {/* Save to Journal button */}
-                        {(response.trim() || progress?.notes) && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 text-xs gap-1.5"
-                            disabled={journalSaving}
-                            onClick={async () => {
-                              const textToSave = response.trim() || progress?.notes?.trim() || ''
-                              if (!textToSave) return
-                              setJournalSaving(true)
-                              const wLabel = weekTitle
-                                ? `Week ${assignment.week_number} - ${weekTitle}`
-                                : `Week ${assignment.week_number}`
-                              const aNum = assignment.order_index + 1
-                              const jTitle = `${wLabel}: Assignment ${aNum} - ${assignment.title}`
-                              const result = await saveAssignmentToJournal(
-                                pairingId,
-                                assignment.title,
-                                assignment.assignment_type,
-                                textToSave,
-                                jTitle
-                              )
-                              if (result.success) {
-                                setJournalSaved(true)
-                                toast.success('Saved to your prayer journal!', {
-                                  action: {
-                                    label: 'View Journal',
-                                    onClick: () => router.push('/dashboard/journal'),
-                                  },
-                                })
-                              } else {
-                                toast.error(result.error || 'Failed to save to journal')
-                              }
-                              setJournalSaving(false)
-                            }}
-                          >
-                            {journalSaving ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : journalSaved ? (
-                              <CheckCircle2 className="h-3 w-3 text-green-600" />
-                            ) : (
-                              <BookHeart className="h-3 w-3" />
-                            )}
-                            {journalSaved ? 'Saved to Journal' : 'Save to Journal'}
-                          </Button>
-                        )}
-                      </div>
                     </>
                   )}
                 </div>
@@ -1104,26 +1181,10 @@ export function AssignmentCard({
             <div className="flex flex-wrap items-center gap-2">
               {!isLeader && !isCompleted && !isMeetingType && (
                 <>
-                  {/* For prayer with timer: hide the generic Start button since the timer has its own Start */}
-                  {status !== 'in_progress' && !(isPrayerType && prayerDuration) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleSaveProgress('in_progress')}
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <Clock className="h-4 w-4 mr-2" />
-                      )}
-                      Start
-                    </Button>
-                  )}
                   <Button
                     size="sm"
                     onClick={() => handleSaveProgress('completed')}
-                    disabled={isLoading || (requiresResponse && !isSalvationStory && !response.trim()) || (isSalvationStory && salvationChoice === null)}
+                    disabled={isLoading || (requiresResponse && !isSalvationStory && !stripSalvationPrefix(response).trim()) || (isSalvationStory && salvationChoice === null)}
                   >
                     {isLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -1135,18 +1196,92 @@ export function AssignmentCard({
                   {isSalvationStory && salvationChoice === null && (
                     <p className="text-xs text-muted-foreground self-center">Answer the question first</p>
                   )}
-                  {requiresResponse && !isSalvationStory && !response.trim() && (
+                  {requiresResponse && !isSalvationStory && !stripSalvationPrefix(response).trim() && (
                     <p className="text-xs text-muted-foreground self-center">Write a response first</p>
                   )}
                 </>
               )}
               {!isLeader && isCompleted && !isMeetingType && (
-                <div className="flex items-center gap-2 text-sm text-success">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Completed
+                <div className="flex items-center gap-2">
+                  {/* Show Save button if response was edited after completion */}
+                  {response !== (progress?.notes || '') && (
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        setIsLoading(true)
+                        const { error } = await supabase
+                          .from('assignment_progress')
+                          .update({ notes: response || null })
+                          .eq('pairing_id', pairingId)
+                          .eq('assignment_id', assignment.id)
+                          .eq('user_id', userId)
+                        setIsLoading(false)
+                        if (error) {
+                          toast.error('Failed to save response')
+                        } else {
+                          localStorage.removeItem(draftKey)
+                          toast.success('Response saved!')
+                          router.refresh()
+                        }
+                      }}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                      )}
+                      Save
+                    </Button>
+                  )}
+                  <div className="flex items-center gap-2 text-sm text-success">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Completed
+                  </div>
                 </div>
               )}
             </div>
+
+            {/* Leader's reactions and reply display for learners */}
+            {!isLeader && isCompleted && (progressReactions?.length || progress?.leader_reply) && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
+                <p className="text-xs font-medium text-primary uppercase tracking-wide">
+                  {leaderName ? `${leaderName}'s Feedback` : 'Leader Feedback'}
+                </p>
+
+                {/* Reactions from leader */}
+                {progressReactions && progressReactions.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(
+                      progressReactions.reduce((acc, r) => {
+                        acc[r.emoji] = (acc[r.emoji] || 0) + 1
+                        return acc
+                      }, {} as Record<string, number>)
+                    ).map(([emoji, count]) => (
+                      <span
+                        key={emoji}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-background border"
+                      >
+                        <span>{emoji}</span>
+                        {count > 1 && <span className="text-xs">{count}</span>}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Reply from leader */}
+                {progress?.leader_reply && (
+                  <div className="space-y-1">
+                    <p className="text-sm text-foreground whitespace-pre-wrap">{progress.leader_reply}</p>
+                    {progress.leader_reply_at && (
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(progress.leader_reply_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CollapsibleContent>
       </div>

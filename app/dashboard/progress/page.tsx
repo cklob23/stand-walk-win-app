@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -22,7 +23,22 @@ interface AssignmentProgressRecord {
   completed_at: string | null;
 }
 
+// Helper to read cookie on client
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
+}
+
 export default function ProgressPage() {
+  const searchParams = useSearchParams();
+  // Use URL param first, then fall back to cookie
+  const urlPairingId = searchParams.get('pairing');
+  const cookiePairingId = getCookie('selected-pairing-id');
+  const selectedPairingId = urlPairingId || cookiePairingId;
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [pairing, setPairing] = useState<Pairing | null>(null);
   const [weeklyContent, setWeeklyContent] = useState<WeeklyContent[]>([]);
@@ -51,15 +67,20 @@ export default function ProgressPage() {
       // Get pairing based on role
       let pairingData = null;
       if (profileData?.role === 'leader') {
-        const { data } = await supabase
+        // Fetch ALL pairings for multi-learner support
+        const { data: allPairings } = await supabase
           .from("pairings")
           .select("*")
           .eq("leader_id", user.id)
           .in("status", ["active", "pending"])
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
-        pairingData = data;
+          .order("created_at", { ascending: false });
+
+        if (allPairings && allPairings.length > 0) {
+          // Use selected pairing from URL or default to most recent
+          pairingData = selectedPairingId
+            ? allPairings.find(p => p.id === selectedPairingId) || allPairings[0]
+            : allPairings[0];
+        }
       } else {
         const { data } = await supabase
           .from("pairings")
@@ -71,7 +92,7 @@ export default function ProgressPage() {
           .single();
         pairingData = data;
       }
-      
+
       if (pairingData) setPairing(pairingData);
 
       // Get weekly content
@@ -79,7 +100,7 @@ export default function ProgressPage() {
         .from("weekly_content")
         .select("*")
         .order("week_number");
-      
+
       if (contentData) setWeeklyContent(contentData);
 
       // Get all assignments
@@ -88,7 +109,7 @@ export default function ProgressPage() {
         .select("*")
         .order("week_number")
         .order("order_index");
-      
+
       if (assignmentsData) setAssignments(assignmentsData);
 
       // Get assignment progress for this pairing
@@ -97,7 +118,7 @@ export default function ProgressPage() {
           .from("assignment_progress")
           .select("*")
           .eq("pairing_id", pairingData.id);
-        
+
         if (progressData) setAssignmentProgress(progressData);
       }
 
@@ -105,7 +126,8 @@ export default function ProgressPage() {
     }
 
     loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPairingId, cookiePairingId]);
 
   if (loading) {
     return (
@@ -122,28 +144,28 @@ export default function ProgressPage() {
   }
 
   const currentWeek = pairing?.current_week || 1;
-  
+
   // Get unlocked assignments (up to current week)
   const unlockedAssignments = assignments.filter(a => a.week_number <= currentWeek);
   const unlockedAssignmentIds = new Set(unlockedAssignments.map(a => a.id));
   const allAssignmentIds = new Set(assignments.map(a => a.id));
-  
+
   // Calculate completed assignments - only count progress for assignments that exist
   const completedAssignments = assignmentProgress.filter(
     (p) => allAssignmentIds.has(p.assignment_id) && p.status === "completed"
   ).length;
-  
+
   // Calculate completed for unlocked weeks only
   const completedUnlocked = assignmentProgress.filter(
     (p) => unlockedAssignmentIds.has(p.assignment_id) && p.status === "completed"
   ).length;
-  
+
   // Calculate total assignments up to current week
   const totalAssignmentsUpToCurrentWeek = unlockedAssignments.length;
-  
+
   // Calculate total assignments overall (for overall progress)
   const totalAssignmentsOverall = assignments.length;
-  
+
   const overallProgress =
     totalAssignmentsOverall > 0
       ? Math.round((completedAssignments / totalAssignmentsOverall) * 100)
@@ -155,16 +177,16 @@ export default function ProgressPage() {
     const weekAssignments = assignments.filter(
       (a) => a.week_number === week.week_number
     );
-    
+
     // Count completed assignments for this week
     const completed = weekAssignments.filter((a) =>
       assignmentProgress.some(
         (p) => p.assignment_id === a.id && p.status === "completed"
       )
     ).length;
-    
+
     const total = weekAssignments.length;
-    
+
     return {
       ...week,
       completed,
@@ -259,18 +281,17 @@ export default function ProgressPage() {
               return (
                 <div
                   key={week.id}
-                  className={`rounded-lg border p-4 ${
-                    isCurrentWeek
+                  className={`rounded-lg border p-4 ${isCurrentWeek
                       ? "border-primary bg-primary/5"
                       : isFutureWeek
                         ? "border-muted bg-muted/30 opacity-60"
                         : "border-border"
-                  }`}
+                    }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-sm sm:text-base">
                           Week {week.week_number}: {week.title}
                         </h3>
                         {isCurrentWeek && (
@@ -288,12 +309,12 @@ export default function ProgressPage() {
                           <Badge variant="outline">Upcoming</Badge>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-xs sm:text-sm text-muted-foreground line-clamp-1">
                         {week.scripture_reference}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <div className="text-lg font-semibold">
+                    <div className="text-left sm:text-right shrink-0">
+                      <div className="text-base sm:text-lg font-semibold">
                         {week.completed}/{week.total}
                       </div>
                       <p className="text-xs text-muted-foreground">tasks</p>

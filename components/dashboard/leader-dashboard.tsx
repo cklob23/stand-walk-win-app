@@ -30,13 +30,22 @@ import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { leaderDashboardSteps } from '@/lib/tour-steps'
 
+interface AssignmentReaction {
+  id: string
+  assignment_progress_id: string
+  user_id: string
+  emoji: string
+  created_at: string
+}
+
 interface LeaderDashboardProps {
   profile: Profile
   pairing: Pairing
   partner: Profile | null
   weeklyContent: WeeklyContent[]
   assignments: Assignment[]
-  assignmentProgress: { id?: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null }[]
+  assignmentProgress: { id?: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; leader_reply?: string | null; leader_reply_at?: string | null }[]
+  assignmentReactions?: AssignmentReaction[]
   recentMessages: Message[]
   notifications: Notification[]
   currentWeek: number
@@ -44,6 +53,7 @@ interface LeaderDashboardProps {
   hasWeeklyMeeting: boolean
   sharedJournalEntries?: { id: string; entry_date: string; prayer_items: string; god_saying: string }[]
   hasJournalEntryToday: boolean
+  expandedAssignmentId?: string | null
 }
 
 export function LeaderDashboard({
@@ -53,12 +63,15 @@ export function LeaderDashboard({
   weeklyContent,
   assignments,
   assignmentProgress,
+  assignmentReactions = [],
   recentMessages,
   currentWeek,
   nextMeeting,
   sharedJournalEntries = [],
   hasJournalEntryToday,
+  expandedAssignmentId,
 }: LeaderDashboardProps) {
+  const currentPairingId = pairing.id
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
 
   // Calculate overall progress - only count assignments from unlocked weeks
@@ -136,20 +149,20 @@ export function LeaderDashboard({
                     <p className="text-sm text-muted-foreground font-serif italic break-words">
                       <ScriptureText
                         reference={currentWeekContent.scripture_reference}
-                        translation={profile.bible_translation_preference || 'KJV'}
+                        translation={profile.bible_translation_preference || 'ESV'}
                       />
                     </p>
                   </div>
                 )}
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                   <Button asChild className="w-full sm:w-auto">
-                    <Link href={`/dashboard/week/${currentWeek}`}>
+                    <Link href={`/dashboard/week/${currentWeek}${currentPairingId ? `?pairing=${currentPairingId}` : ''}`}>
                       View Week Content
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
                   <Button variant="outline" asChild className="w-full sm:w-auto bg-transparent">
-                    <Link href="/dashboard/progress">
+                    <Link href={`/dashboard/progress${currentPairingId ? `?pairing=${currentPairingId}` : ''}`}>
                       <TrendingUp className="mr-2 h-4 w-4" />
                       View Progress
                     </Link>
@@ -208,35 +221,37 @@ export function LeaderDashboard({
 
         {/* Sidebar - Right Side */}
         <div className="space-y-6">
-          {/* Learner Card */}
+          {/* Current Learner Card */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Your Learner</CardTitle>
+              <CardTitle className="text-base">Current Learner</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-4">
-                <Avatar className="h-14 w-14">
-                  {partner?.avatar_url && partner.avatar_url.length > 0 ? <AvatarImage src={partner.avatar_url} alt={partner.full_name || 'Partner'} /> : null}
-                  <AvatarFallback className="bg-primary/10 text-primary text-lg" delayMs={0}>
-                    {partnerInitials}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-foreground truncate">
-                    {partner?.full_name || 'Learner'}
-                  </p>
-                  <p className="text-sm text-muted-foreground truncate">
-                    {partner?.email}
-                  </p>
+              {partner ? (
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-12 w-12">
+                    {partner.avatar_url && partner.avatar_url.length > 0 ? (
+                      <AvatarImage src={partner.avatar_url} alt={partner.full_name || 'Learner'} />
+                    ) : null}
+                    <AvatarFallback className="bg-primary/10 text-primary" delayMs={0}>
+                      {partnerInitials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground truncate">{partner.full_name}</p>
+                    <p className="text-xs text-muted-foreground">Week {pairing.current_week || 1}</p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No learner selected</p>
+              )}
               {partner?.bio && (
-                <p className="mt-4 text-sm text-muted-foreground line-clamp-3">
+                <p className="mt-3 text-sm text-muted-foreground line-clamp-2">
                   {partner.bio}
                 </p>
               )}
               <Button variant="outline" className="w-full mt-4 bg-transparent" asChild>
-                <Link href="/dashboard/messages">
+                <Link href={`/dashboard/messages${currentPairingId ? `?pairing=${currentPairingId}` : ''}`}>
                   <MessageSquare className="mr-2 h-4 w-4" />
                   Send Message
                 </Link>
@@ -321,7 +336,7 @@ export function LeaderDashboard({
                 <div className="text-center py-2">
                   <p className="text-sm text-muted-foreground mb-2">No upcoming meetings</p>
                   <Button variant="outline" size="sm" asChild className="bg-transparent">
-                    <Link href="/dashboard/schedule">
+                    <Link href={`/dashboard/schedule${currentPairingId ? `?pairing=${currentPairingId}` : ''}`}>
                       <Calendar className="mr-2 h-3 w-3" />
                       Set Availability
                     </Link>
@@ -435,7 +450,7 @@ export function LeaderDashboard({
               </div>
               {(!pairing.covenant_accepted_leader || !pairing.covenant_accepted_learner) && (
                 <Button variant="outline" className="w-full mt-4 bg-transparent" asChild>
-                  <Link href="/dashboard/covenant">
+                  <Link href={`/dashboard/covenant${currentPairingId ? `?pairing=${currentPairingId}` : ''}`}>
                     View Covenant
                   </Link>
                 </Button>

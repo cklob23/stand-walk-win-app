@@ -32,12 +32,28 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
   const [message, setMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isPartnerTyping, setIsPartnerTyping] = useState(false)
+  const [isLoadingChat, setIsLoadingChat] = useState(false)
+  const previousPairingIdRef = useRef(pairingId)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const supabase = createClient()
   const realtimeReady = useRealtimeAuth()
+
+  // Show loading when switching between learners (pairingId changes)
+  useEffect(() => {
+    if (previousPairingIdRef.current !== pairingId) {
+      setIsLoadingChat(true)
+      previousPairingIdRef.current = pairingId
+    }
+  }, [pairingId])
+
+  // Update messages when recentMessages prop changes (new learner data loaded)
+  useEffect(() => {
+    setMessages(recentMessages)
+    setIsLoadingChat(false)
+  }, [recentMessages])
 
   // Scroll to bottom within chat container when messages change or typing indicator appears
   useEffect(() => {
@@ -46,6 +62,21 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
       el.scrollTop = el.scrollHeight
     }
   }, [messages, isPartnerTyping])
+
+  // Scroll to bottom on initial mount
+  useEffect(() => {
+    const el = chatContainerRef.current
+    if (el) {
+      el.scrollTop = el.scrollHeight
+    }
+    // Delayed scroll for slower render
+    const timeoutId = setTimeout(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+      }
+    }, 100)
+    return () => clearTimeout(timeoutId)
+  }, [])
 
   // Channel ref to send typing broadcasts from
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
@@ -238,6 +269,32 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
     })
 
     setIsLoading(false)
+  }
+
+  // Show loading state when switching learners
+  if (isLoadingChat) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-center py-8">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading messages...</p>
+          </div>
+        </div>
+        {/* Disabled input during loading */}
+        <div className="flex gap-2 items-end opacity-50 pointer-events-none">
+          <Textarea
+            value=""
+            placeholder={`Message ${partnerName}...`}
+            className="min-h-[60px] sm:min-h-[80px] resize-none text-base"
+            disabled
+          />
+          <Button size="icon" className="h-10 w-10 shrink-0" disabled>
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (

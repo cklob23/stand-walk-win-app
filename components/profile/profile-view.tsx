@@ -10,9 +10,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { User, Loader2, Save, Camera } from 'lucide-react'
+import { User, Loader2, Save, Camera, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Profile } from '@/lib/types'
+import { useBranding } from '@/contexts/branding-context'
 
 interface ProfileViewProps {
   profile: Profile
@@ -20,6 +21,7 @@ interface ProfileViewProps {
 
 export function ProfileView({ profile: initialProfile }: ProfileViewProps) {
   const router = useRouter()
+  const { branding } = useBranding()
   const [profile, setProfile] = useState(initialProfile)
   const [isLoading, setIsLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -142,9 +144,17 @@ export function ProfileView({ profile: initialProfile }: ProfileViewProps) {
             <div>
               <h3 className="font-semibold text-foreground">{profile.full_name}</h3>
               <p className="text-sm text-muted-foreground">{profile.email}</p>
-              <Badge variant="secondary" className="mt-1 capitalize">
-                {profile.role}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <Badge variant="secondary" className="capitalize">
+                  {profile.role}
+                </Badge>
+                {branding.organizationName && (
+                  <Badge variant="outline" className="gap-1">
+                    <Building2 className="h-3 w-3" />
+                    {branding.organizationName}
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
 

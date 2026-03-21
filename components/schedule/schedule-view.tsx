@@ -51,9 +51,12 @@ import {
     Link as LinkIcon,
     ArrowLeft,
     Pencil,
+    AlertCircle,
+    Check,
+    MessageSquare,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { saveAvailability, bookMeeting, cancelMeeting, completeMeeting, updateMeeting, updateMeetingLink, updateContactInfo } from '@/lib/scheduling-actions'
+import { saveAvailability, bookMeeting, cancelMeeting, completeMeeting, updateMeeting, updateMeetingLink, updateContactInfo, acceptMeeting, declineMeeting, proposeNewTime } from '@/lib/scheduling-actions'
 import type { Profile, Pairing, AvailabilitySlot, ScheduledMeeting } from '@/lib/types'
 import Link from 'next/link'
 
@@ -133,6 +136,7 @@ interface ScheduleViewProps {
     partner: Profile | null
     availabilitySlots: AvailabilitySlot[]
     upcomingMeetings: ScheduledMeeting[]
+    pendingMeetings: ScheduledMeeting[]
     pastMeetings: ScheduledMeeting[]
     weekTopic?: string | null
     weekNumber?: number | null
@@ -204,6 +208,7 @@ export function ScheduleView({
     partner,
     availabilitySlots: initialSlots,
     upcomingMeetings,
+    pendingMeetings,
     pastMeetings,
     weekTopic,
     weekNumber,
@@ -262,6 +267,16 @@ export function ScheduleView({
 
                 {/* Sidebar */}
                 <div data-tour="schedule-upcoming" className="space-y-6">
+                    {/* Pending Meeting Requests */}
+                    {pendingMeetings.length > 0 && (
+                        <PendingMeetings
+                            meetings={pendingMeetings}
+                            profile={profile}
+                            partner={partner}
+                            pairingId={pairing.id}
+                            availabilitySlots={initialSlots}
+                        />
+                    )}
                     <UpcomingMeetings
                         meetings={upcomingMeetings}
                         profile={profile}
@@ -313,7 +328,7 @@ function ContactInfoCard({
         // Compact display mode
         return (
             <Card>
-                <CardContent className="py-4">
+                <CardContent className="py-1">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4 flex-wrap">
                             {profile.phone && (
@@ -1370,7 +1385,7 @@ function UpcomingMeetings({
                                                 disabled={isLoading}
                                             >
                                                 {isLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}
-                                                Done
+                                                Complete
                                             </Button>
                                             <Button
                                                 variant="ghost"
@@ -1501,5 +1516,420 @@ function PastMeetings({
                 )}
             </CardContent>
         </Card>
+    )
+}
+
+// ========================
+// Pending Meeting Requests
+// ========================
+function PendingMeetings({
+    meetings,
+    profile,
+    partner,
+    pairingId,
+    availabilitySlots,
+}: {
+    meetings: ScheduledMeeting[]
+    profile: Profile
+    partner: Profile | null
+    pairingId: string
+    availabilitySlots: AvailabilitySlot[]
+}) {
+    const router = useRouter()
+    const isMobile = useIsMobile()
+    const isLeader = profile.role === 'leader'
+    const [loadingId, setLoadingId] = useState<string | null>(null)
+    const [actionType, setActionType] = useState<'accept' | 'decline' | 'propose' | null>(null)
+    const [selectedMeeting, setSelectedMeeting] = useState<ScheduledMeeting | null>(null)
+    const [responseNote, setResponseNote] = useState('')
+    const [declineReason, setDeclineReason] = useState('')
+
+    // Propose new time state
+    const [proposeType, setProposeType] = useState<'facetime' | 'zoom' | 'phone' | 'in_person'>('zoom')
+    const [proposeSlot, setProposeSlot] = useState<{ date: string; start: string; end: string } | null>(null)
+    const [proposeNotes, setProposeNotes] = useState('')
+
+    // Filter meetings to show:
+    // - Leaders see pending_approval (requests from learners)
+    // - Learners see counter_proposed (counter-proposals from leaders)
+    const relevantMeetings = meetings.filter(m => {
+        if (isLeader) {
+            return m.status === 'pending_approval' && m.proposed_by !== profile.id
+        } else {
+            return m.status === 'counter_proposed' && m.proposed_by !== profile.id
+        }
+    })
+
+    if (relevantMeetings.length === 0) return null
+
+    const handleAccept = async () => {
+        if (!selectedMeeting) return
+        setLoadingId(selectedMeeting.id)
+        const result = await acceptMeeting(selectedMeeting.id, responseNote || undefined)
+        if (result.error) toast.error(result.error)
+        else {
+            toast.success('Meeting accepted!')
+            setSelectedMeeting(null)
+            setActionType(null)
+            setResponseNote('')
+            router.refresh()
+        }
+        setLoadingId(null)
+    }
+
+    const handleDecline = async () => {
+        if (!selectedMeeting) return
+        setLoadingId(selectedMeeting.id)
+        const result = await declineMeeting(selectedMeeting.id, declineReason || undefined)
+        if (result.error) toast.error(result.error)
+        else {
+            toast.success('Meeting declined.')
+            setSelectedMeeting(null)
+            setActionType(null)
+            setDeclineReason('')
+            router.refresh()
+        }
+        setLoadingId(null)
+    }
+
+    const handleProposeNewTime = async () => {
+        if (!selectedMeeting || !proposeSlot) return
+        setLoadingId(selectedMeeting.id)
+
+        // Build meeting link
+        let meetingLink: string | undefined = undefined
+        if (proposeType === 'zoom') {
+            meetingLink = profile.zoom_link || partner?.zoom_link || undefined
+        }
+
+        const result = await proposeNewTime({
+            originalMeetingId: selectedMeeting.id,
+            meetingDate: proposeSlot.date,
+            startTime: proposeSlot.start,
+            endTime: proposeSlot.end,
+            meetingType: proposeType,
+            meetingLink,
+            notes: proposeNotes || undefined,
+        })
+
+        if (result.error) toast.error(result.error)
+        else {
+            toast.success('New time proposed!')
+            setSelectedMeeting(null)
+            setActionType(null)
+            setProposeSlot(null)
+            setProposeNotes('')
+            router.refresh()
+        }
+        setLoadingId(null)
+    }
+
+    // Build available slots for proposing new time
+    const slotsByDay = availabilitySlots.reduce(
+        (acc, slot) => {
+            if (!acc[slot.day_of_week]) acc[slot.day_of_week] = []
+            acc[slot.day_of_week].push(slot)
+            return acc
+        },
+        {} as Record<number, AvailabilitySlot[]>
+    )
+
+    const dialogContent = selectedMeeting && (
+        <div className="space-y-4">
+            {/* Meeting info */}
+            <div className="p-3 bg-muted rounded-lg">
+                <p className="font-medium">
+                    {formatDate(selectedMeeting.meeting_date)} at {formatTime(selectedMeeting.start_time.slice(0, 5))}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                    {MEETING_TYPE_CONFIG[selectedMeeting.meeting_type as keyof typeof MEETING_TYPE_CONFIG]?.label || selectedMeeting.meeting_type} meeting
+                </p>
+                {selectedMeeting.notes && (
+                    <p className="text-sm mt-2 italic">&quot;{selectedMeeting.notes}&quot;</p>
+                )}
+            </div>
+
+            {actionType === 'accept' && (
+                <div className="space-y-2">
+                    <Label>Response Note (optional)</Label>
+                    <Textarea
+                        value={responseNote}
+                        onChange={(e) => setResponseNote(e.target.value)}
+                        placeholder="Add a note for your partner..."
+                        rows={2}
+                    />
+                </div>
+            )}
+
+            {actionType === 'decline' && (
+                <div className="space-y-2">
+                    <Label>Reason (optional)</Label>
+                    <Textarea
+                        value={declineReason}
+                        onChange={(e) => setDeclineReason(e.target.value)}
+                        placeholder="Let them know why you can't make it..."
+                        rows={2}
+                    />
+                </div>
+            )}
+
+            {actionType === 'propose' && (
+                <>
+                    {/* Meeting Type */}
+                    <div className="space-y-2">
+                        <Label>Meeting Type</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                            {(Object.entries(MEETING_TYPE_CONFIG) as [string, typeof MEETING_TYPE_CONFIG.facetime][]).map(
+                                ([key, config]) => {
+                                    const TypeIcon = config.icon
+                                    const isSelected = proposeType === key
+                                    return (
+                                        <Button
+                                            key={key}
+                                            variant={isSelected ? 'default' : 'outline'}
+                                            size="sm"
+                                            onClick={() => setProposeType(key as typeof proposeType)}
+                                            className={`justify-center gap-2 ${isSelected ? '' : 'bg-transparent'}`}
+                                        >
+                                            <TypeIcon className="h-4 w-4 shrink-0" />
+                                            <span>{config.label}</span>
+                                        </Button>
+                                    )
+                                }
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Time Slot Picker */}
+                    <div className="space-y-2">
+                        <Label>Select New Time</Label>
+                        <div className="max-h-48 overflow-y-auto space-y-3 rounded-md border p-2">
+                            {DAY_NAMES.map((dayName, dayIdx) => {
+                                const daySlots = slotsByDay[dayIdx]
+                                if (!daySlots) return null
+
+                                const upcomingDates = getUpcomingDatesForDay(dayIdx)
+                                if (upcomingDates.length === 0) return null
+
+                                return (
+                                    <div key={dayIdx} className="space-y-1">
+                                        <p className="text-xs font-semibold text-foreground">{dayName}</p>
+                                        {upcomingDates.map((date) => {
+                                            const allHourSlots: { start: string; end: string }[] = []
+                                            for (const slot of daySlots) {
+                                                const hours = getHourSlots(slot.start_time.slice(0, 5), slot.end_time.slice(0, 5))
+                                                for (const h of hours) allHourSlots.push(h)
+                                            }
+                                            if (allHourSlots.length === 0) return null
+
+                                            return (
+                                                <div key={date} className="space-y-1">
+                                                    <p className="text-xs text-muted-foreground ml-1">{formatDate(date)}</p>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {allHourSlots.map((hourSlot) => {
+                                                            const isCurrentSlot = proposeSlot?.date === date && proposeSlot?.start === hourSlot.start
+                                                            return (
+                                                                <Button
+                                                                    key={`${date}_${hourSlot.start}`}
+                                                                    variant={isCurrentSlot ? 'default' : 'outline'}
+                                                                    size="sm"
+                                                                    className={`h-7 text-xs ${isCurrentSlot ? '' : 'bg-transparent'}`}
+                                                                    onClick={() => setProposeSlot({ date, start: hourSlot.start, end: hourSlot.end })}
+                                                                >
+                                                                    <Clock className="h-3 w-3 mr-1" />
+                                                                    {formatTime(hourSlot.start)} - {formatTime(hourSlot.end)}
+                                                                </Button>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                        {proposeSlot && (
+                            <p className="text-xs text-muted-foreground">
+                                Selected: {formatDate(proposeSlot.date)} at {formatTime(proposeSlot.start)} - {formatTime(proposeSlot.end)}
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Notes */}
+                    <div className="space-y-2">
+                        <Label>Notes (optional)</Label>
+                        <Textarea
+                            value={proposeNotes}
+                            onChange={(e) => setProposeNotes(e.target.value)}
+                            placeholder="Explain why you're proposing a different time..."
+                            rows={2}
+                        />
+                    </div>
+                </>
+            )}
+        </div>
+    )
+
+    const dialogActions = (
+        <>
+            <Button variant="outline" onClick={() => { setSelectedMeeting(null); setActionType(null) }}>
+                Cancel
+            </Button>
+            {actionType === 'accept' && (
+                <Button onClick={handleAccept} disabled={loadingId !== null}>
+                    {loadingId ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Accept Meeting'}
+                </Button>
+            )}
+            {actionType === 'decline' && (
+                <Button variant="destructive" onClick={handleDecline} disabled={loadingId !== null}>
+                    {loadingId ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Decline Meeting'}
+                </Button>
+            )}
+            {actionType === 'propose' && (
+                <Button onClick={handleProposeNewTime} disabled={loadingId !== null || !proposeSlot}>
+                    {loadingId ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send Proposal'}
+                </Button>
+            )}
+        </>
+    )
+
+    return (
+        <>
+            <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20">
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-amber-600" />
+                        {isLeader ? 'Meeting Requests' : 'Pending Proposals'}
+                        <Badge variant="secondary" className="ml-auto bg-amber-100 text-amber-800">
+                            {relevantMeetings.length}
+                        </Badge>
+                    </CardTitle>
+                    <CardDescription>
+                        {isLeader
+                            ? 'Your learner has requested the following meetings'
+                            : 'Your leader has proposed new meeting times'}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    {relevantMeetings.map((meeting) => {
+                        const config = MEETING_TYPE_CONFIG[meeting.meeting_type as keyof typeof MEETING_TYPE_CONFIG]
+                        const TypeIcon = config?.icon || Video
+
+                        return (
+                            <div
+                                key={meeting.id}
+                                className="p-3 rounded-lg border bg-background space-y-3"
+                            >
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <p className="font-medium text-sm">
+                                            {formatDate(meeting.meeting_date)}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <Clock className="h-3 w-3" />
+                                            {formatTime(meeting.start_time.slice(0, 5))} - {formatTime(meeting.end_time.slice(0, 5))}
+                                        </p>
+                                    </div>
+                                    <Badge variant="outline" className={`text-xs ${config?.color || ''}`}>
+                                        <TypeIcon className="h-3 w-3 mr-1" />
+                                        {config?.label || meeting.meeting_type}
+                                    </Badge>
+                                </div>
+
+                                {meeting.notes && (
+                                    <p className="text-xs text-muted-foreground italic bg-muted p-2 rounded">
+                                        &quot;{meeting.notes}&quot;
+                                    </p>
+                                )}
+
+                                <div className="flex flex-wrap gap-2">
+                                    <Button
+                                        size="sm"
+                                        className="gap-1"
+                                        onClick={() => {
+                                            setSelectedMeeting(meeting)
+                                            setActionType('accept')
+                                        }}
+                                        disabled={loadingId !== null}
+                                    >
+                                        <Check className="h-3 w-3" />
+                                        Accept
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="gap-1"
+                                        onClick={() => {
+                                            setSelectedMeeting(meeting)
+                                            setActionType('propose')
+                                            setProposeType(meeting.meeting_type as typeof proposeType)
+                                        }}
+                                        disabled={loadingId !== null}
+                                    >
+                                        <Clock className="h-3 w-3" />
+                                        New Time
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="gap-1 text-destructive hover:text-destructive"
+                                        onClick={() => {
+                                            setSelectedMeeting(meeting)
+                                            setActionType('decline')
+                                        }}
+                                        disabled={loadingId !== null}
+                                    >
+                                        <X className="h-3 w-3" />
+                                        Decline
+                                    </Button>
+                                </div>
+                            </div>
+                        )
+                    })}
+                </CardContent>
+            </Card>
+
+            {/* Action Dialog/Drawer */}
+            {isMobile ? (
+                <Drawer open={!!selectedMeeting && !!actionType} onOpenChange={(open) => { if (!open) { setSelectedMeeting(null); setActionType(null) } }}>
+                    <DrawerContent>
+                        <DrawerHeader>
+                            <DrawerTitle>
+                                {actionType === 'accept' && 'Accept Meeting'}
+                                {actionType === 'decline' && 'Decline Meeting'}
+                                {actionType === 'propose' && 'Propose New Time'}
+                            </DrawerTitle>
+                            <DrawerDescription>
+                                {actionType === 'accept' && 'Confirm this meeting time'}
+                                {actionType === 'decline' && 'Let your partner know you cannot make this time'}
+                                {actionType === 'propose' && 'Suggest an alternative meeting time'}
+                            </DrawerDescription>
+                        </DrawerHeader>
+                        <div className="px-4 pb-4">{dialogContent}</div>
+                        <DrawerFooter>{dialogActions}</DrawerFooter>
+                    </DrawerContent>
+                </Drawer>
+            ) : (
+                <Dialog open={!!selectedMeeting && !!actionType} onOpenChange={(open) => { if (!open) { setSelectedMeeting(null); setActionType(null) } }}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>
+                                {actionType === 'accept' && 'Accept Meeting'}
+                                {actionType === 'decline' && 'Decline Meeting'}
+                                {actionType === 'propose' && 'Propose New Time'}
+                            </DialogTitle>
+                            <DialogDescription>
+                                {actionType === 'accept' && 'Confirm this meeting time'}
+                                {actionType === 'decline' && 'Let your partner know you cannot make this time'}
+                                {actionType === 'propose' && 'Suggest an alternative meeting time'}
+                            </DialogDescription>
+                        </DialogHeader>
+                        {dialogContent}
+                        <DialogFooter>{dialogActions}</DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
+        </>
     )
 }

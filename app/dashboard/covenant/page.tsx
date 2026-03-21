@@ -1,8 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { CovenantView } from '@/components/covenant/covenant-view'
+import { getSelectedPairingId } from '@/lib/selected-pairing'
 
-export default async function CovenantPage() {
+export default async function CovenantPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ pairing?: string }>
+}) {
+  const params = await searchParams
+  // Use URL param first, then fall back to cookie
+  const cookiePairingId = await getSelectedPairingId()
+  const selectedPairingId = params.pairing || cookiePairingId
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -25,19 +34,28 @@ export default async function CovenantPage() {
   let partner = null
 
   if (profile.role === 'leader') {
-    const { data } = await supabase
+    // Fetch ALL pairings for multi-learner support (include pending for covenant signing)
+    const { data: allPairings } = await supabase
       .from('pairings')
       .select(`
         *,
         learner:profiles!pairings_learner_id_fkey(*)
       `)
       .eq('leader_id', user.id)
-      .eq('status', 'active')
-      .single()
-    
-    if (data) {
-      pairing = data
-      partner = data.learner
+      .in('status', ['active', 'pending'])
+      .not('learner_id', 'is', null)
+      .order('created_at', { ascending: false })
+
+    if (allPairings && allPairings.length > 0) {
+      // Use selected pairing from URL or default to most recent
+      const selectedPairing = selectedPairingId
+        ? allPairings.find(p => p.id === selectedPairingId)
+        : allPairings[0]
+
+      if (selectedPairing) {
+        pairing = selectedPairing
+        partner = selectedPairing.learner
+      }
     }
   } else {
     const { data } = await supabase
@@ -47,9 +65,11 @@ export default async function CovenantPage() {
         leader:profiles!pairings_leader_id_fkey(*)
       `)
       .eq('learner_id', user.id)
-      .eq('status', 'active')
+      .in('status', ['active', 'pending'])
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single()
-    
+
     if (data) {
       pairing = data
       partner = data.leader
@@ -61,7 +81,7 @@ export default async function CovenantPage() {
   }
 
   return (
-    <CovenantView 
+    <CovenantView
       profile={profile}
       pairing={pairing}
       partner={partner}

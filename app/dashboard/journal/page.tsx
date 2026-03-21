@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { BookHeart } from 'lucide-react'
 import { JournalPageClient } from '@/components/journal/journal-page-client'
 import { getTodayEntry } from '@/lib/journal-actions'
+import { getSelectedPairingId } from '@/lib/selected-pairing'
 
 export const metadata = {
     title: 'Prayer Journal - Stand Walk Run',
@@ -12,7 +13,7 @@ export const metadata = {
 export default async function JournalPage({
     searchParams,
 }: {
-    searchParams: Promise<{ section?: string; localDate?: string }>
+    searchParams: Promise<{ section?: string; localDate?: string; pairing?: string }>
 }) {
     const params = await searchParams
     // localDate is passed from the client via URL param to handle timezone correctly
@@ -29,23 +30,61 @@ export default async function JournalPage({
 
     if (!profile) redirect('/onboarding')
 
-    // Get pairing
-    const roleFilter = profile.role === 'leader'
-        ? { leader_id: user.id }
-        : { learner_id: user.id }
+    // Get selected pairing from URL or cookie
+    const cookiePairingId = await getSelectedPairingId()
+    const selectedPairingId = params.pairing || cookiePairingId
 
-    const { data: pairing } = await supabase
-        .from('pairings')
-        .select(`
-      id,
-      leader_id,
-      learner_id,
-      leader:profiles!pairings_leader_id_fkey(full_name),
-      learner:profiles!pairings_learner_id_fkey(full_name)
-    `)
-        .match(roleFilter)
-        .eq('status', 'active')
-        .single()
+    // Get pairing(s) based on role
+    let pairing = null
+
+    if (profile.role === 'leader') {
+        // Leaders can have multiple learners - fetch all pairings
+        const { data: allPairings } = await supabase
+            .from('pairings')
+            .select(`
+        id,
+        leader_id,
+        learner_id,
+        status,
+        leader:profiles!pairings_leader_id_fkey(full_name),
+        learner:profiles!pairings_learner_id_fkey(full_name)
+      `)
+            .eq('leader_id', user.id)
+            .order('created_at', { ascending: false })
+
+        if (allPairings && allPairings.length > 0) {
+            // Filter to active pairings with learners, or use selected pairing
+            const activePairings = allPairings.filter(p => p.status === 'active' && p.learner_id)
+
+            if (selectedPairingId) {
+                // Check if selected pairing is valid (active with learner)
+                pairing = activePairings.find(p => p.id === selectedPairingId)
+            }
+
+            // Default to first active pairing with a learner
+            if (!pairing && activePairings.length > 0) {
+                pairing = activePairings[0]
+            }
+        }
+    } else {
+        // Learners have one pairing
+        const { data } = await supabase
+            .from('pairings')
+            .select(`
+        id,
+        leader_id,
+        learner_id,
+        leader:profiles!pairings_leader_id_fkey(full_name),
+        learner:profiles!pairings_learner_id_fkey(full_name)
+      `)
+            .eq('learner_id', user.id)
+            .in('status', ['active', 'pending'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single()
+
+        pairing = data
+    }
 
     if (!pairing) {
         return (
@@ -110,6 +149,22 @@ export default async function JournalPage({
         .order('journal_date', { ascending: false })
     const partnerSharedEntries = partnerSharedData || []
 
+    // Fetch attachments for partner's shared entries
+    const partnerEntryIds = partnerSharedEntries.map(e => e.id)
+    let partnerAttachmentsMap: Record<string, { id: string; journal_entry_id: string; user_id: string; url: string; filename: string; file_type: "image" | "audio" | "file"; file_size: number; section_key: string; created_at: string }[]> = {}
+    if (partnerEntryIds.length > 0) {
+        const { data: partnerAttachments } = await adminSupabase
+            .from('journal_attachments')
+            .select('*')
+            .in('journal_entry_id', partnerEntryIds)
+        if (partnerAttachments) {
+            for (const att of partnerAttachments) {
+                if (!partnerAttachmentsMap[att.journal_entry_id]) partnerAttachmentsMap[att.journal_entry_id] = []
+                partnerAttachmentsMap[att.journal_entry_id].push(att as typeof partnerAttachmentsMap[string][number])
+            }
+        }
+    }
+
     // Fetch shared items from partner via the shared_items table
     const { data: sharedItemsData } = await supabase
         .from('shared_items')
@@ -132,6 +187,7 @@ export default async function JournalPage({
         journal_entry_id: null as string | null,
         section_key: null as string | null,
         reactions: [] as { id: string; journal_entry_id: string; user_id: string; emoji: string; section_key: string; created_at: string }[],
+        attachments: [] as { id: string; journal_entry_id: string; user_id: string; url: string; filename: string; file_type: "image" | "audio" | "file"; file_size: number; section_key: string; created_at: string }[],
     }))
 
     // Fetch reactions for journal entries - keyed by entryId:sectionKey
@@ -184,6 +240,7 @@ export default async function JournalPage({
                 journal_entry_id: entry.id,
                 section_key: 'daily',
                 reactions: reactionsMap[`${entry.id}:daily`] || [],
+                attachments: [],
             })
         }
 
@@ -216,15 +273,20 @@ export default async function JournalPage({
                 journal_entry_id: entry.id,
                 section_key: verseSectionKey,
                 reactions: reactionsMap[`${entry.id}:${verseSectionKey}`] || [],
+                attachments: [],
             })
         })
 
-        // 3) Custom entries (shared_sections.custom_0, custom_1, etc.)
+        // 3) Custom entries (shared_sections.custom_{created_at} or legacy custom_{idx})
         const customs = entry.custom_entries as { title: string; content: string; created_at: string }[] | null
+        const entryAttachments = partnerAttachmentsMap[entry.id] || []
         if (customs) {
             customs.forEach((c, idx) => {
-                if (!sections[`custom_${idx}`]) return
-                const customSectionKey = `custom_${idx}`
+                // Use timestamp-based key (falls back to index for legacy entries)
+                const customSectionKey = c.created_at ? `custom_${c.created_at}` : `custom_${idx}`
+                if (!sections[customSectionKey]) return
+                // Filter attachments for this specific section
+                const sectionAttachments = entryAttachments.filter(att => att.section_key === customSectionKey)
                 journalSharedItems.push({
                     id: `journal-custom-${entry.id}-${idx}`,
                     type: 'journal' as const,
@@ -238,6 +300,7 @@ export default async function JournalPage({
                     journal_entry_id: entry.id,
                     section_key: customSectionKey,
                     reactions: reactionsMap[`${entry.id}:${customSectionKey}`] || [],
+                    attachments: sectionAttachments,
                 })
             })
         }

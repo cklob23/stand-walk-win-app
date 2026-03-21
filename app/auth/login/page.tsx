@@ -9,7 +9,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-6 sm:space-y-8">
         <div className="text-center">
           <Link href="/" className="inline-flex items-center gap-2 mb-4 sm:mb-6">
-            <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-primary">
+            <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-sm bg-primary">
               <Image
                 src="/favicon.ico"
                 alt="Stand Walk Run logo"
