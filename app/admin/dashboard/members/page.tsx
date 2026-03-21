@@ -228,18 +228,18 @@ export default async function AdminMembersPage() {
                         Leaders who joined using access codes and their paired learners
                     </CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <div className="rounded-md border">
-                        <Table>
+                <CardContent className="px-0 sm:px-6">
+                    <div className="rounded-md border overflow-x-auto">
+                        <Table className="min-w-[700px]">
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Name</TableHead>
-                                    <TableHead>Email</TableHead>
-                                    <TableHead>Role</TableHead>
-                                    <TableHead>Tier</TableHead>
-                                    <TableHead>Paired With</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Joined</TableHead>
+                                    <TableHead className="whitespace-nowrap">Name</TableHead>
+                                    <TableHead className="whitespace-nowrap">Email</TableHead>
+                                    <TableHead className="whitespace-nowrap">Role</TableHead>
+                                    <TableHead className="whitespace-nowrap">Tier</TableHead>
+                                    <TableHead className="whitespace-nowrap">Paired With</TableHead>
+                                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                                    <TableHead className="whitespace-nowrap">Joined</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>

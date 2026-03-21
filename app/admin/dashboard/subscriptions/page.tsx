@@ -157,67 +157,69 @@ export default async function MasterSubscriptionsPage() {
                     <CardTitle>All Subscriptions</CardTitle>
                     <CardDescription>View all subscription records</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Purchaser</TableHead>
-                                <TableHead>Organization</TableHead>
-                                <TableHead>Tier</TableHead>
-                                <TableHead>Licenses</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Created</TableHead>
-                                <TableHead className="w-10"></TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {subscriptions.map((sub) => (
-                                <TableRow key={sub.id} className="cursor-pointer hover:bg-muted/50">
-                                    <TableCell>
-                                        <Link href={`/admin/dashboard/subscriptions/${sub.id}`} className="font-medium hover:underline text-primary">
-                                            {sub.purchaser_email}
-                                        </Link>
-                                    </TableCell>
-                                    <TableCell>
-                                        {sub.organization ? (
-                                            <div className="flex items-center gap-1">
-                                                <Building2 className="h-3 w-3 text-muted-foreground" />
-                                                <span className="text-sm">{sub.organization.name}</span>
-                                            </div>
-                                        ) : (
-                                            <span className="text-muted-foreground">-</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant="secondary">
-                                            {sub.subscription_tier?.display_name || 'Unknown'}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>{sub.license_count || 1}</TableCell>
-                                    <TableCell>
-                                        <Badge variant={sub.status === 'active' ? 'default' : 'secondary'}>
-                                            {sub.status}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">
-                                        {new Date(sub.created_at).toLocaleDateString()}
-                                    </TableCell>
-                                    <TableCell>
-                                        <Link href={`/admin/dashboard/subscriptions/${sub.id}`}>
-                                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                                        </Link>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                            {subscriptions.length === 0 && (
+                <CardContent className="px-0 sm:px-6">
+                    <div className="overflow-x-auto">
+                        <Table className="min-w-[700px]">
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                                        No subscriptions found
-                                    </TableCell>
+                                    <TableHead className="whitespace-nowrap">Purchaser</TableHead>
+                                    <TableHead className="whitespace-nowrap">Organization</TableHead>
+                                    <TableHead className="whitespace-nowrap">Tier</TableHead>
+                                    <TableHead className="whitespace-nowrap">Licenses</TableHead>
+                                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                                    <TableHead className="whitespace-nowrap">Created</TableHead>
+                                    <TableHead className="w-10"></TableHead>
                                 </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {subscriptions.map((sub) => (
+                                    <TableRow key={sub.id} className="cursor-pointer hover:bg-muted/50">
+                                        <TableCell>
+                                            <Link href={`/admin/dashboard/subscriptions/${sub.id}`} className="font-medium hover:underline text-primary">
+                                                {sub.purchaser_email}
+                                            </Link>
+                                        </TableCell>
+                                        <TableCell>
+                                            {sub.organization ? (
+                                                <div className="flex items-center gap-1">
+                                                    <Building2 className="h-3 w-3 text-muted-foreground" />
+                                                    <span className="text-sm">{sub.organization.name}</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-muted-foreground">-</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant="secondary">
+                                                {sub.subscription_tier?.display_name || 'Unknown'}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>{sub.license_count || 1}</TableCell>
+                                        <TableCell>
+                                            <Badge variant={sub.status === 'active' ? 'default' : 'secondary'}>
+                                                {sub.status}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground">
+                                            {new Date(sub.created_at).toLocaleDateString()}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Link href={`/admin/dashboard/subscriptions/${sub.id}`}>
+                                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                            </Link>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {subscriptions.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                                            No subscriptions found
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
         </div>

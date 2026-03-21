@@ -140,75 +140,77 @@ export default async function MasterOrganizationsPage() {
                     <CardTitle>All Organizations</CardTitle>
                     <CardDescription>View and manage organization accounts</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Organization</TableHead>
-                                <TableHead>Members</TableHead>
-                                <TableHead>Access Codes</TableHead>
-                                <TableHead>Tier</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Created</TableHead>
-                                <TableHead>Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {organizations.map((org) => (
-                                <TableRow key={org.id}>
-                                    <TableCell>
-                                        <div>
-                                            <p className="font-medium">{org.name}</p>
-                                            <p className="text-sm text-muted-foreground">{org.slug}</p>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="flex items-center gap-1">
-                                            <Users className="h-4 w-4 text-muted-foreground" />
-                                            {org.member_count} / {org.max_users || '∞'}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="flex items-center gap-2">
-                                            <Badge variant="outline" className="text-green-600">
-                                                {org.available_codes} available
-                                            </Badge>
-                                            <Badge variant="secondary">
-                                                {org.used_codes} used
-                                            </Badge>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant="secondary">
-                                            {org.subscription_tier?.display_name || 'No Tier'}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant={org.is_active ? 'default' : 'secondary'}>
-                                            {org.is_active ? 'Active' : 'Inactive'}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">
-                                        {new Date(org.created_at).toLocaleDateString()}
-                                    </TableCell>
-                                    <TableCell>
-                                        <Button variant="outline" size="sm" asChild>
-                                            <Link href={`/admin/dashboard/organizations/${org.id}`}>
-                                                Manage
-                                            </Link>
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                            {organizations.length === 0 && (
+                <CardContent className="px-0 sm:px-6">
+                    <div className="overflow-x-auto">
+                        <Table className="min-w-[800px]">
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                                        No organizations found
-                                    </TableCell>
+                                    <TableHead className="whitespace-nowrap">Organization</TableHead>
+                                    <TableHead className="whitespace-nowrap">Members</TableHead>
+                                    <TableHead className="whitespace-nowrap">Access Codes</TableHead>
+                                    <TableHead className="whitespace-nowrap">Tier</TableHead>
+                                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                                    <TableHead className="whitespace-nowrap">Created</TableHead>
+                                    <TableHead className="whitespace-nowrap">Actions</TableHead>
                                 </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {organizations.map((org) => (
+                                    <TableRow key={org.id}>
+                                        <TableCell>
+                                            <div>
+                                                <p className="font-medium">{org.name}</p>
+                                                <p className="text-sm text-muted-foreground">{org.slug}</p>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-1">
+                                                <Users className="h-4 w-4 text-muted-foreground" />
+                                                {org.member_count} / {org.max_users || '∞'}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant="outline" className="text-green-600">
+                                                    {org.available_codes} available
+                                                </Badge>
+                                                <Badge variant="secondary">
+                                                    {org.used_codes} used
+                                                </Badge>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant="secondary">
+                                                {org.subscription_tier?.display_name || 'No Tier'}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant={org.is_active ? 'default' : 'secondary'}>
+                                                {org.is_active ? 'Active' : 'Inactive'}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground">
+                                            {new Date(org.created_at).toLocaleDateString()}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Button variant="outline" size="sm" asChild>
+                                                <Link href={`/admin/dashboard/organizations/${org.id}`}>
+                                                    Manage
+                                                </Link>
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {organizations.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                                            No organizations found
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
         </div>

@@ -350,12 +350,12 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
         <div className="mx-auto max-w-7xl px-4">
           <div className="flex h-16 items-center justify-between">
             {/* Logo */}
-            <Link href="/dashboard">
-              <AppLogo textClassName="hidden sm:block text-sm sm:text-base" showSubtitle />
+            <Link href="/dashboard" className="shrink-0">
+              <AppLogo textClassName="hidden lg:block text-sm lg:text-base" showSubtitle />
             </Link>
 
             {/* Desktop Navigation */}
-            <nav data-tour="dashboard-nav" className="hidden md:flex items-center gap-1">
+            <nav data-tour="dashboard-nav" className="hidden lg:flex items-center gap-1">
               {navItems.map((item) => {
                 const href = getNavHref(item.href)
                 const isActive = pathname === item.href
@@ -675,7 +675,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden"
+                className="lg:hidden"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               >
                 {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -686,7 +686,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
 
           {/* Mobile Navigation */}
           {mobileMenuOpen && (
-            <nav className="md:hidden py-4 border-t">
+            <nav className="lg:hidden py-4 border-t">
               <div className="flex flex-col gap-1">
                 {navItems.map((item) => {
                   const href = getNavHref(item.href)

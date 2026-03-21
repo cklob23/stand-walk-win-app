@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Users, GraduationCap, BookOpen, Crown, Minus, Plus, Building2, ShoppingCart, Trash2, X } from 'lucide-react'
+import { Check, Users, GraduationCap, BookOpen, Crown, Minus, Plus, Building2, ShoppingCart, Trash2, X, ArrowLeft } from 'lucide-react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,7 +16,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SUBSCRIPTION_TIERS, JOURNEYS, formatPrice } from '@/lib/products'
 import { CartCheckout } from './cart-checkout'
-import { AppIcon } from '../app-logo'
+import { AppLogoStatic } from '@/components/app-logo'
 
 // Cart item type
 interface CartItem {
@@ -39,6 +40,7 @@ interface UserData {
     id: string
     email: string
     fullName: string | null
+    avatarUrl: string | null
     hasSubscription: boolean
     organizationId: string | null
     organizationName: string | null
@@ -149,6 +151,7 @@ export function PricingContent({ userData }: PricingContentProps) {
                 createOrg={createOrg}
                 orgName={orgName}
                 userId={userData?.id}
+                organizationId={userData?.organizationId || undefined}
                 onBack={() => setShowCheckout(false)}
             />
         )
@@ -158,27 +161,56 @@ export function PricingContent({ userData }: PricingContentProps) {
         <div className="min-h-screen bg-background">
             {/* Header */}
             <div className="border-b bg-card">
-                <div className="container mx-auto px-4 py-6">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-sm">
-                                <AppIcon />
-                            </div>
-                            <div>
-                                <h1 className="text-2xl font-bold text-foreground">Stand Walk Run</h1>
-                                <p className="text-sm text-muted-foreground">
+                <div className="container mx-auto px-4 py-4 sm:py-6">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                            <AppLogoStatic
+                                iconClassName="h-7 w-7 sm:h-9 sm:w-9 rounded-sm shrink-0"
+                                textClassName="text-sm sm:text-lg"
+                                showText={true}
+                            />
+                            <div className="hidden sm:block border-l pl-3 ml-1">
+                                <p className="text-xs sm:text-sm text-muted-foreground">
                                     {userData?.hasSubscription ? 'Add more plans or journeys' : 'Choose your discipleship plans'}
                                 </p>
                             </div>
                         </div>
 
                         {/* User Info & Cart Button */}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                            {/* Back to Admin Dashboard for logged-in org admins */}
+                            {userData?.organizationId && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    asChild
+                                    className="hidden sm:flex"
+                                >
+                                    <Link href="/admin/dashboard">
+                                        <ArrowLeft className="h-4 w-4 mr-1" />
+                                        Admin
+                                    </Link>
+                                </Button>
+                            )}
+
                             {userData && (
-                                <div className="hidden sm:block text-right">
-                                    <p className="text-sm font-medium">{userData.fullName || userData.email}</p>
-                                    {userData.organizationName && (
-                                        <p className="text-xs text-muted-foreground">{userData.organizationName}</p>
+                                <div className="hidden sm:flex items-center gap-2">
+                                    <div className="text-right">
+                                        <p className="text-sm font-medium">{userData.fullName || userData.email}</p>
+                                        {userData.organizationName && (
+                                            <p className="text-xs text-muted-foreground">{userData.organizationName}</p>
+                                        )}
+                                    </div>
+                                    {userData.avatarUrl ? (
+                                        <img
+                                            src={userData.avatarUrl}
+                                            alt={userData.fullName || 'Profile'}
+                                            className="h-8 w-8 rounded-full object-cover"
+                                        />
+                                    ) : (
+                                        <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-medium">
+                                            {(userData.fullName || userData.email || 'U')[0].toUpperCase()}
+                                        </div>
                                     )}
                                 </div>
                             )}
@@ -195,8 +227,8 @@ export function PricingContent({ userData }: PricingContentProps) {
                                         )}
                                     </Button>
                                 </SheetTrigger>
-                                <SheetContent className="w-full sm:max-w-md flex flex-col">
-                                    <SheetHeader className="px-1">
+                                <SheetContent className="w-full sm:max-w-md flex flex-col p-6">
+                                    <SheetHeader className="px-0">
                                         <SheetTitle>Your Cart</SheetTitle>
                                         <SheetDescription>
                                             {totalItems === 0 ? 'Your cart is empty' : `${totalItems} item${totalItems > 1 ? 's' : ''} selected`}
@@ -204,7 +236,7 @@ export function PricingContent({ userData }: PricingContentProps) {
                                     </SheetHeader>
 
                                     {totalItems > 0 && (
-                                        <div className="flex-1 overflow-auto mt-6 px-1">
+                                        <div className="flex-1 overflow-auto mt-6 px-0">
                                             {/* Plan Licenses */}
                                             {cart.length > 0 && (
                                                 <div className="space-y-3">
@@ -310,6 +342,20 @@ export function PricingContent({ userData }: PricingContentProps) {
                                                     />
                                                 </div>
 
+                                                {/* Show organization info for existing org admins */}
+                                                {userData?.organizationId && userData?.organizationName && (
+                                                    <div className="rounded-lg border bg-primary/5 border-primary/20 p-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <Building2 className="h-4 w-4 text-primary" />
+                                                            <div>
+                                                                <p className="text-sm font-medium">Adding to Organization</p>
+                                                                <p className="text-xs text-muted-foreground">{userData.organizationName}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Show create org option only for new users with multiple licenses */}
                                                 {cart.length > 1 && !userData?.organizationId && (
                                                     <div className="rounded-lg border bg-muted/30 p-3">
                                                         <div className="flex items-center justify-between">
@@ -663,11 +709,12 @@ function PlanSelection({
                                         onClick={() => {
                                             setSelectedTierForAdd(tier.id)
                                             setSelectedJourneyForAdd(JOURNEYS[0]?.id || '')
-                                            setQuantityToAdd(1)
+                                            // Start at current cart count for this tier, minimum 1
+                                            setQuantityToAdd(Math.max(1, cartCount))
                                         }}
                                     >
                                         <Plus className="h-4 w-4 mr-2" />
-                                        Add License
+                                        {cartCount > 0 ? 'Add More Licenses' : 'Add License'}
                                     </Button>
                                 )}
                             </CardFooter>

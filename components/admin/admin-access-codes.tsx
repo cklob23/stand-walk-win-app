@@ -179,12 +179,13 @@ export function AdminAccessCodes({ accessCodes, organizationName }: AdminAccessC
                                 </span>
                             )}
                         </div>
-                        <div className="flex gap-2">
-                            <Button onClick={copyAllAvailable} variant="secondary">
+                        <div className="flex flex-wrap gap-2">
+                            <Button onClick={copyAllAvailable} variant="secondary" className="flex-shrink-0">
                                 <Copy className="mr-2 h-4 w-4" />
-                                Copy All Available ({availableCodes.length})
+                                <span className="hidden sm:inline">Copy All Available ({availableCodes.length})</span>
+                                <span className="sm:hidden">Copy All ({availableCodes.length})</span>
                             </Button>
-                            <Button onClick={downloadCodes} variant="outline">
+                            <Button onClick={downloadCodes} variant="outline" className="flex-shrink-0">
                                 <Download className="mr-2 h-4 w-4" />
                                 Export CSV
                             </Button>
@@ -214,18 +215,18 @@ export function AdminAccessCodes({ accessCodes, organizationName }: AdminAccessC
                         </div>
                     </div>
                 </CardHeader>
-                <CardContent>
-                    <div className="rounded-md border">
-                        <Table>
+                <CardContent className="px-0 sm:px-6">
+                    <div className="rounded-md border overflow-x-auto">
+                        <Table className="min-w-[700px]">
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Code</TableHead>
-                                    <TableHead>Plan</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Journey</TableHead>
-                                    <TableHead>Used By</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    <TableHead className="whitespace-nowrap">Code</TableHead>
+                                    <TableHead className="whitespace-nowrap">Plan</TableHead>
+                                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                                    <TableHead className="whitespace-nowrap">Journey</TableHead>
+                                    <TableHead className="whitespace-nowrap">Used By</TableHead>
+                                    <TableHead className="whitespace-nowrap">Date</TableHead>
+                                    <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>

@@ -112,8 +112,9 @@ async function handleCartSubscriptionPurchase(
     const createOrg = metadata.create_org === 'true'
     const orgName = metadata.org_name
     const purchaserEmail = metadata.purchaser_email || session.customer_email
+    const existingOrganizationId = metadata.existing_organization_id || null
 
-    console.log('[v0] Cart metadata:', { itemsCompressed, tierSummary, licenseCount, createOrg, orgName, purchaserEmail })
+    console.log('[v0] Cart metadata:', { itemsCompressed, tierSummary, licenseCount, createOrg, orgName, purchaserEmail, existingOrganizationId })
 
     if (!purchaserEmail) {
         console.error('[v0] Missing purchaser email')
@@ -190,9 +191,13 @@ async function handleCartSubscriptionPurchase(
     const amountPaid = session.amount_total || 0
     const purchaserName = session.customer_details?.name || null
 
-    // Create organization if requested
-    let organizationId: string | null = null
-    if (createOrg && orgName && licenseCount > 1) {
+    // Use existing organization or create a new one if requested
+    let organizationId: string | null = existingOrganizationId || null
+
+    // If org admin is adding more licenses, use their existing org
+    if (existingOrganizationId) {
+        console.log('[v0] Using existing organization for additional licenses:', existingOrganizationId)
+    } else if (createOrg && orgName && licenseCount > 1) {
         const baseSlug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
         const uniqueSlug = `${baseSlug}-${Date.now().toString(36)}`
 
@@ -208,6 +213,9 @@ async function handleCartSubscriptionPurchase(
                 max_users: licenseCount,
                 is_active: true,
                 admin_email: purchaserEmail,
+                // Set default app colors for new organizations
+                branding_primary_color: '#0f6353',
+                branding_secondary_color: '#f0ede6',
             })
             .select()
             .single()
@@ -302,10 +310,11 @@ async function handleCartSubscriptionPurchase(
 
     // Send email with all access codes (with plan info per code)
     if (allAccessCodes.length > 0 && purchaserEmail) {
-        console.log('[v0] Sending access codes email to:', purchaserEmail)
+        console.log('[v0] Sending access codes email to:', purchaserEmail, 'isExistingOrgAdmin:', !!existingOrganizationId)
 
         // Pass detailed code info so each code shows its plan
-        await sendAccessCodesEmail(purchaserEmail, allAccessCodes, undefined, undefined, orgName)
+        // Pass isExistingOrgAdmin flag to send different email for existing admins adding more licenses
+        await sendAccessCodesEmail(purchaserEmail, allAccessCodes, undefined, undefined, orgName, !!existingOrganizationId)
     }
 
     console.log('[v0] Cart subscription purchase completed successfully')
@@ -402,6 +411,9 @@ async function handleSubscriptionPurchase(
                 max_users: licenseCount,
                 is_active: true,
                 admin_email: purchaserEmail,
+                // Set default app colors for new organizations
+                branding_primary_color: '#0f6353',
+                branding_secondary_color: '#f0ede6',
             })
             .select()
             .single()

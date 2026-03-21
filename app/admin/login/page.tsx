@@ -1,6 +1,6 @@
 import { AdminLoginForm } from '@/components/admin/admin-login-form'
 import Link from 'next/link'
-import { AppLogo } from '@/components/app-logo'
+import { AppLogoStatic } from '@/components/app-logo'
 import { Building2 } from 'lucide-react'
 
 export const metadata = {
@@ -14,7 +14,7 @@ export default function AdminLoginPage() {
             <div className="w-full max-w-md space-y-6 sm:space-y-8">
                 <div className="text-center">
                     <Link href="/" className="inline-flex mb-4 sm:mb-6">
-                        <AppLogo iconClassName="h-9 w-9 sm:h-10 sm:w-10 rounded-sm" textClassName="text-lg sm:text-xl" />
+                        <AppLogoStatic iconClassName="h-9 w-9 sm:h-10 sm:w-10 rounded-sm" textClassName="text-lg sm:text-xl" />
                     </Link>
                     <div className="flex items-center justify-center gap-2 mb-2">
                         <Building2 className="h-5 w-5 text-primary" />

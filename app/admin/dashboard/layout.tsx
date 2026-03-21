@@ -22,7 +22,7 @@ export default async function AdminDashboardLayout({
     }
 
     return (
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen bg-background overflow-x-hidden">
             <AdminHeader
                 user={user}
                 profile={profile}
@@ -31,7 +31,7 @@ export default async function AdminDashboardLayout({
             />
             <div className="flex">
                 <AdminSidebar isMasterAdmin={isMasterAdmin} />
-                <main className="flex-1 p-6 lg:p-8">
+                <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
                     {children}
                 </main>
             </div>

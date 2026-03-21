@@ -1,349 +1,242 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { LeaderDashboard } from '@/components/dashboard/leader-dashboard'
-import { LearnerDashboard } from '@/components/dashboard/learner-dashboard'
-import { NoPairingState } from '@/components/dashboard/no-pairing-state'
-import { CovenantRequired } from '@/components/dashboard/covenant-required'
-import { getSelectedPairingId } from '@/lib/selected-pairing'
-import type { Message, Profile, Pairing } from '@/lib/types'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Users,
+  MessageSquare,
+  TrendingUp,
+  Calendar,
+  Heart,
+  ArrowRight,
+  CheckCircle2
+} from 'lucide-react'
+import { AppLogoStatic } from '@/components/app-logo'
 
-interface LearnerWithPairing {
-  pairing: Pairing
-  learner: Profile
-}
-
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ pairing?: string; new?: string; assignmentId?: string }>
-}) {
-  const params = await searchParams
+export default async function HomePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) {
-    redirect('/auth/login')
-  }
-
-  // Get user profile with subscription tier
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select(`
-      *,
-      subscription_tier:subscription_tiers(*)
-    `)
-    .eq('id', user.id)
-    .single()
-
-  if (!profile) {
-    redirect('/onboarding')
-  }
-
-  if (!profile.onboarding_complete) {
-    redirect('/onboarding')
-  }
-
-  // Get pairing based on role
-  let pairing = null
-  let partner = null
-  let allLearners: LearnerWithPairing[] = []
-
-  if (profile.role === 'leader') {
-    // Fetch ALL pairings for this leader (multi-learner support)
-    const { data: allPairings } = await supabase
-      .from('pairings')
-      .select(`
-        *,
-        learner:profiles!pairings_learner_id_fkey(*)
-      `)
-      .eq('leader_id', user.id)
-      .order('created_at', { ascending: false })
-
-    if (allPairings && allPairings.length > 0) {
-      // Build list of learners with their pairings
-      allLearners = allPairings
-        .filter(p => p.learner) // Only include pairings with learners
-        .map(p => ({
-          pairing: p as Pairing,
-          learner: p.learner as Profile
-        }))
-
-      // Determine which pairing to show based on:
-      // 1. URL param (highest priority)
-      // 2. Cookie (persisted selection)
-      // 3. Default to most recent
-      const cookiePairingId = await getSelectedPairingId()
-      const selectedPairingId = params.pairing || cookiePairingId
-      const selectedPairing = selectedPairingId
-        ? allPairings.find(p => p.id === selectedPairingId)
-        : allPairings[0]
-
-      if (selectedPairing) {
-        pairing = selectedPairing
-        partner = selectedPairing.learner
-      }
-    }
-
-    // If user wants to add a new learner, show NoPairingState with existing pairings
-    if (params.new === 'true') {
-      // Check if there's already a pending pairing without a learner
-      const pendingPairing = allPairings?.find(p => p.status === 'pending' && !p.learner_id)
-      // Count active/pending pairings for learner limit
-      const activePairingCount = (allPairings || []).filter(p =>
-        p.status === 'active' || (p.status === 'pending' && !p.learner_id)
-      ).length
-      const maxLearners = (profile.subscription_tier as { max_learners?: number })?.max_learners || 1
-
-      return (
-        <NoPairingState
-          profile={profile}
-          pairingCode={pendingPairing?.invite_code || null}
-          pairingId={pendingPairing?.id || null}
-          hasExistingLearners={allLearners.length > 0}
-          currentLearnerCount={activePairingCount}
-          maxLearners={maxLearners}
-          subscriptionTier={profile.subscription_tier as any}
-        />
-      )
-    }
-  } else {
-    const { data } = await supabase
-      .from('pairings')
-      .select(`
-        *,
-        leader:profiles!pairings_leader_id_fkey(*)
-      `)
-      .eq('learner_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(1)
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('onboarding_complete')
+      .eq('id', user.id)
       .single()
 
-    if (data) {
-      pairing = data
-      partner = data.leader
+    if (profile?.onboarding_complete) {
+      redirect('/dashboard')
+    } else {
+      redirect('/onboarding')
     }
   }
 
-  // Get weekly content
-  const { data: weeklyContent } = await supabase
-    .from('weekly_content')
-    .select('*')
-    .order('week_number', { ascending: true })
+  const features = [
+    {
+      icon: Users,
+      title: '1-on-1 Mentorship',
+      description: 'Connect with a dedicated Leader or Learner for personalized spiritual guidance.',
+    },
+    {
+      icon: Calendar,
+      title: '6-Week Journey',
+      description: 'Structured weekly content with scripture, reflections, and actionable assignments.',
+    },
+    {
+      icon: MessageSquare,
+      title: 'Real-time Messaging',
+      description: 'Stay connected with your partner through in-app messaging and notifications.',
+    },
+    {
+      icon: TrendingUp,
+      title: 'Track Progress',
+      description: 'Monitor your spiritual growth with visual progress tracking and milestones.',
+    },
+  ]
 
-  // Get assignments for current week
-  const currentWeek = pairing?.current_week || 1
-  const { data: assignments } = await supabase
-    .from('assignments')
-    .select('*')
-    .order('week_number', { ascending: true })
-    .order('order_index', { ascending: true })
+  const weeklyThemes = [
+    'Foundation of Faith',
+    'Prayer & Communion',
+    'Scripture Study',
+    'Community & Fellowship',
+    'Service & Outreach',
+    'Living Your Faith',
+  ]
 
-  // Get assignment progress
-  // For leaders viewing learner dashboard, fetch LEARNER's progress (not leader's)
-  // For learners, fetch their own progress
-  let assignmentProgress: { id?: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; user_id?: string; leader_reply?: string | null; leader_reply_at?: string | null }[] = []
-  if (pairing) {
-    const progressUserId = profile.role === 'leader' ? pairing.learner_id : user.id
-    const { data } = await supabase
-      .from('assignment_progress')
-      .select('*')
-      .eq('pairing_id', pairing.id)
-      .eq('user_id', progressUserId)
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2">
+            <AppLogoStatic />
+          </Link>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button variant="ghost" asChild size="sm" className="hidden sm:flex">
+              <Link href="/auth/login">Sign in</Link>
+            </Button>
+            <Button variant="ghost" asChild size="sm" className="sm:hidden">
+              <Link href="/auth/login">Sign in</Link>
+            </Button>
+            <Button asChild size="sm" className="sm:hidden">
+              <Link href="/auth/signup">Start</Link>
+            </Button>
+            <Button asChild className="hidden sm:flex">
+              <Link href="/auth/signup">Get Started</Link>
+            </Button>
+          </div>
+        </div>
+      </header>
 
-    assignmentProgress = data || []
-  }
+      {/* Hero Section */}
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/10" />
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:py-24 lg:py-32 relative">
+          <div className="text-center max-w-3xl mx-auto">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-foreground tracking-tight text-balance">
+              Grow Together in{' '}
+              <span className="text-primary">Faith</span>
+            </h1>
+            <p className="mt-4 sm:mt-6 text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto text-pretty px-4">
+              A transformative 6-week discipleship journey connecting Leaders and Learners
+              for meaningful spiritual growth, accountability, and lasting impact.
+            </p>
+            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Button size="lg" asChild className="w-full sm:w-auto">
+                <Link href="/auth/signup">
+                  Start Your Journey
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+              <Button size="lg" variant="outline" asChild className="w-full sm:w-auto bg-transparent">
+                <Link href="#features">Learn More</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
 
-  // Fetch assignment reactions (for both leaders viewing learner responses and learners seeing leader reactions)
-  let assignmentReactions: { id: string; assignment_progress_id: string; user_id: string; emoji: string; created_at: string }[] = []
-  if (pairing && assignmentProgress.length > 0) {
-    const progressIds = assignmentProgress.filter(p => p.id).map(p => p.id!)
-    if (progressIds.length > 0) {
-      const { data: reactions } = await supabase
-        .from('assignment_reactions')
-        .select('*')
-        .in('assignment_progress_id', progressIds)
-      assignmentReactions = reactions || []
-    }
-  }
+      {/* Features Section */}
+      <section id="features" className="py-16 sm:py-24 bg-muted/30">
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="text-center mb-10 sm:mb-16">
+            <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Everything you need for discipleship</h2>
+            <p className="mt-3 sm:mt-4 text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto px-4">
+              Our platform provides the tools and structure for meaningful spiritual mentorship.
+            </p>
+          </div>
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            {features.map((feature) => (
+              <Card key={feature.title} className="border-border/50">
+                <CardContent className="pt-6">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 mb-4">
+                    <feature.icon className="h-6 w-6 text-primary" />
+                  </div>
+                  <h3 className="font-semibold text-foreground">{feature.title}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">{feature.description}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
 
-  // Check if current week is complete and auto-advance if needed
-  let effectiveCurrentWeek = currentWeek
-  if (pairing && assignments && assignments.length > 0) {
-    // Get assignments for the current week
-    const currentWeekAssignments = (assignments || []).filter(a => a.week_number === currentWeek)
+      {/* Journey Section */}
+      <section className="py-16 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Your 6-Week Journey</h2>
+              <p className="mt-3 sm:mt-4 text-sm sm:text-base text-muted-foreground">
+                Each week builds upon the last, guiding you through foundational truths
+                and practical applications of faith.
+              </p>
+              <div className="mt-8 space-y-4">
+                {weeklyThemes.map((theme, index) => (
+                  <div key={theme} className="flex items-center gap-4">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-medium">
+                      {index + 1}
+                    </div>
+                    <span className="text-foreground font-medium">{theme}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="relative">
+              <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+                <CardContent className="pt-6 space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                      <Heart className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground">Covenant Agreement</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Begin with a shared commitment to growth
+                      </p>
+                    </div>
+                  </div>
+                  <div className="h-px bg-border" />
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                      <span className="text-sm text-foreground">Weekly scripture readings</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                      <span className="text-sm text-foreground">Guided reflection prompts</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                      <span className="text-sm text-foreground">Practical action steps</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                      <span className="text-sm text-foreground">Discussion questions</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                      <span className="text-sm text-foreground">Prayer partnerships</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </section>
 
-    // Only count progress for assignments in the current week
-    const currentWeekAssignmentIds = new Set(currentWeekAssignments.map(a => a.id))
-    const currentWeekCompletedCount = assignmentProgress.filter(p =>
-      currentWeekAssignmentIds.has(p.assignment_id) && p.status === 'completed'
-    ).length
+      {/* CTA Section */}
+      <section className="py-16 sm:py-24 bg-primary/5">
+        <div className="mx-auto max-w-3xl px-4 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Ready to begin?</h2>
+          <p className="mt-3 sm:mt-4 text-sm sm:text-base text-muted-foreground">
+            Join thousands of believers who have deepened their faith through
+            intentional discipleship relationships.
+          </p>
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Button size="lg" asChild>
+              <Link href="/auth/signup">
+                Create Your Account
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
 
-    // If all assignments for current week are complete, advance to next week
-    if (currentWeekAssignments.length > 0 && currentWeekCompletedCount >= currentWeekAssignments.length && currentWeek < 6) {
-      const nextWeek = currentWeek + 1
-
-      // Update the pairing's current week in the database
-      await supabase
-        .from('pairings')
-        .update({ current_week: nextWeek })
-        .eq('id', pairing.id)
-
-      // Update the local value
-      effectiveCurrentWeek = nextWeek
-      pairing.current_week = nextWeek
-    }
-  }
-
-  // Get recent messages
-  let recentMessages: Message[] = []
-  if (pairing) {
-    const { data } = await supabase
-      .from('messages')
-      .select(`
-        *,
-        sender:profiles(id, full_name, avatar_url),
-        reactions:message_reactions(*)
-      `)
-      .eq('pairing_id', pairing.id)
-      .order('created_at', { ascending: false })
-      .limit(10)
-
-    recentMessages = (data || []) as Message[]
-  }
-
-  // Get next upcoming meeting
-  let nextMeeting = null
-  if (pairing) {
-    const today = new Date().toISOString().split('T')[0]
-    const { data } = await supabase
-      .from('scheduled_meetings')
-      .select('*')
-      .eq('pairing_id', pairing.id)
-      .eq('status', 'scheduled')
-      .gte('meeting_date', today)
-      .order('meeting_date', { ascending: true })
-      .order('start_time', { ascending: true })
-      .limit(1)
-      .single()
-
-    nextMeeting = data
-  }
-
-  // Get unread notifications
-  const { data: notifications } = await supabase
-    .from('notifications')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('read', false)
-    .order('created_at', { ascending: false })
-    .limit(5)
-
-  // If no active pairing, show the no pairing state
-  if (!pairing || (pairing.status === 'pending' && !pairing.learner_id)) {
-    // Calculate learner count for limit check
-    const activePairingCount = profile.role === 'leader'
-      ? allLearners.length + (pairing && !pairing.learner_id ? 1 : 0)
-      : 0
-    const maxLearners = (profile.subscription_tier as { max_learners?: number })?.max_learners || 1
-
-    return (
-      <NoPairingState
-        profile={profile}
-        pairingCode={pairing?.invite_code || null}
-        pairingId={pairing?.id || null}
-        hasExistingLearners={allLearners.length > 0}
-        currentLearnerCount={activePairingCount}
-        maxLearners={maxLearners}
-        subscriptionTier={profile.subscription_tier as any}
-      />
-    )
-  }
-
-  // Check if both parties have signed the covenant
-  const covenantComplete = pairing.covenant_accepted_leader && pairing.covenant_accepted_learner
-
-  // If covenant not complete, show covenant required screen
-  if (!covenantComplete && pairing.learner_id) {
-    return (
-      <CovenantRequired
-        profile={profile}
-        pairing={pairing}
-        partner={partner}
-      />
-    )
-  }
-
-  // Check if there's a COMPLETED meeting for the current journey week.
-  // Only meetings marked "Done" count — merely scheduled meetings do not.
-  // For week N, the learner needs at least N completed meetings total.
-  // This ensures each week requires a new completed meeting before advancing.
-  let hasWeeklyMeeting = false
-  if (pairing) {
-    const { count } = await supabase
-      .from('scheduled_meetings')
-      .select('*', { count: 'exact', head: true })
-      .eq('pairing_id', pairing.id)
-      .eq('status', 'completed')
-
-    hasWeeklyMeeting = (count ?? 0) >= effectiveCurrentWeek
-  }
-
-  // Check if user has journal entry for today
-  // Note: this uses UTC date on the server; the DailyJournalPopup also checks
-  // via localStorage with the client's local date for accurate dismissal
-  let hasJournalEntryToday = false
-  if (pairing) {
-    const today = new Date().toISOString().split('T')[0]
-    const { data: journalEntry } = await supabase
-      .from('prayer_journal')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('journal_date', today)
-      .limit(1)
-
-    hasJournalEntryToday = (journalEntry?.length ?? 0) > 0
-  }
-
-  // Get shared journal entries for leader view
-  let sharedJournalEntries: { id: string; entry_date: string; prayer_items: string; god_saying: string }[] = []
-  if (profile.role === 'leader' && pairing && pairing.learner_id) {
-    const { data } = await supabase
-      .from('prayer_journal')
-      .select('id, entry_date, prayer_items, god_saying')
-      .eq('pairing_id', pairing.id)
-      .eq('user_id', pairing.learner_id)
-      .eq('shared_with_leader', true)
-      .order('entry_date', { ascending: false })
-      .limit(3)
-
-    sharedJournalEntries = data || []
-  }
-
-  const dashboardProps = {
-    profile,
-    pairing,
-    partner,
-    weeklyContent: weeklyContent || [],
-    assignments: assignments || [],
-    assignmentProgress,
-    recentMessages: recentMessages.reverse(),
-    notifications: notifications || [],
-    currentWeek: effectiveCurrentWeek,
-    nextMeeting,
-    hasWeeklyMeeting,
-  }
-
-  if (profile.role === 'leader') {
-    return (
-      <LeaderDashboard
-        {...dashboardProps}
-        assignmentReactions={assignmentReactions}
-        sharedJournalEntries={sharedJournalEntries}
-        hasJournalEntryToday={hasJournalEntryToday}
-        expandedAssignmentId={params.assignmentId}
-      />
-    )
-  }
-
-  return <LearnerDashboard {...dashboardProps} assignmentReactions={assignmentReactions} hasJournalEntryToday={hasJournalEntryToday} expandedAssignmentId={params.assignmentId} />
+      {/* Footer */}
+      <footer className="border-t bg-card py-8 sm:py-12">
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <AppLogoStatic iconClassName="h-7 w-7 sm:h-8 sm:w-8" />
+            <p className="text-xs sm:text-sm text-muted-foreground text-center">
+              Grow together in faith. One step at a time.
+            </p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  )
 }

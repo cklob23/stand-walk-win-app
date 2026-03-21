@@ -158,103 +158,105 @@ export default async function MasterUsersPage() {
                     <CardTitle>User Management</CardTitle>
                     <CardDescription>View and manage all user accounts</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>User</TableHead>
-                                <TableHead>Role</TableHead>
-                                <TableHead>Paired With</TableHead>
-                                <TableHead>Admin Role</TableHead>
-                                <TableHead>Organization</TableHead>
-                                <TableHead>Tier</TableHead>
-                                <TableHead>Joined</TableHead>
-                                <TableHead className="w-16">Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {users.map((user) => (
-                                <TableRow key={user.id}>
-                                    <TableCell>
-                                        <div className="flex items-center gap-3">
-                                            <Avatar className="h-8 w-8">
-                                                <AvatarImage src={user.avatar_url || ''} />
-                                                <AvatarFallback>
-                                                    {user.full_name?.split(' ').map((n: string) => n[0]).join('') || '?'}
-                                                </AvatarFallback>
-                                            </Avatar>
-                                            <div>
-                                                <p className="font-medium">{user.full_name || 'Unknown'}</p>
-                                                <p className="text-sm text-muted-foreground">{user.email}</p>
-                                            </div>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        {user.role ? (
-                                            <Badge variant={user.role === 'leader' ? 'default' : 'secondary'}>
-                                                {user.role === 'leader' ? 'Leader' : 'Learner'}
-                                            </Badge>
-                                        ) : (
-                                            <span className="text-muted-foreground">-</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">
-                                        {user.paired_with || '-'}
-                                    </TableCell>
-                                    <TableCell>
-                                        {user.admin_role ? (
-                                            <Badge variant="outline" className={
-                                                user.admin_role === 'master_admin'
-                                                    ? 'border-red-500 text-red-500'
-                                                    : 'border-amber-500 text-amber-600'
-                                            }>
-                                                {user.admin_role === 'master_admin' ? 'Master Admin' : 'Org Admin'}
-                                            </Badge>
-                                        ) : (
-                                            <span className="text-muted-foreground">-</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell>
-                                        {user.organization ? (
-                                            <div className="flex items-center gap-1">
-                                                <Building2 className="h-3 w-3 text-muted-foreground" />
-                                                <span className="text-sm">{user.organization.name}</span>
-                                            </div>
-                                        ) : (
-                                            <span className="text-muted-foreground">-</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell>
-                                        {user.subscription_tier ? (
-                                            <Badge variant="secondary">
-                                                {user.subscription_tier.display_name}
-                                            </Badge>
-                                        ) : (
-                                            <span className="text-muted-foreground">No Tier</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">
-                                        {new Date(user.created_at).toLocaleDateString()}
-                                    </TableCell>
-                                    <TableCell>
-                                        <DeleteUserButton
-                                            userId={user.id}
-                                            userName={user.full_name || 'Unknown'}
-                                            userEmail={user.email || ''}
-                                            currentAdminId={adminData.user.id}
-                                        />
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                            {users.length === 0 && (
+                <CardContent className="px-0 sm:px-6">
+                    <div className="overflow-x-auto">
+                        <Table className="min-w-[900px]">
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                                        No users found
-                                    </TableCell>
+                                    <TableHead className="whitespace-nowrap">User</TableHead>
+                                    <TableHead className="whitespace-nowrap">Role</TableHead>
+                                    <TableHead className="whitespace-nowrap">Paired With</TableHead>
+                                    <TableHead className="whitespace-nowrap">Admin Role</TableHead>
+                                    <TableHead className="whitespace-nowrap">Organization</TableHead>
+                                    <TableHead className="whitespace-nowrap">Tier</TableHead>
+                                    <TableHead className="whitespace-nowrap">Joined</TableHead>
+                                    <TableHead className="w-16 whitespace-nowrap">Actions</TableHead>
                                 </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {users.map((user) => (
+                                    <TableRow key={user.id}>
+                                        <TableCell>
+                                            <div className="flex items-center gap-3">
+                                                <Avatar className="h-8 w-8">
+                                                    <AvatarImage src={user.avatar_url || ''} />
+                                                    <AvatarFallback>
+                                                        {user.full_name?.split(' ').map((n: string) => n[0]).join('') || '?'}
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                                <div>
+                                                    <p className="font-medium">{user.full_name || 'Unknown'}</p>
+                                                    <p className="text-sm text-muted-foreground">{user.email}</p>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            {user.role ? (
+                                                <Badge variant={user.role === 'leader' ? 'default' : 'secondary'}>
+                                                    {user.role === 'leader' ? 'Leader' : 'Learner'}
+                                                </Badge>
+                                            ) : (
+                                                <span className="text-muted-foreground">-</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground">
+                                            {user.paired_with || '-'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {user.admin_role ? (
+                                                <Badge variant="outline" className={
+                                                    user.admin_role === 'master_admin'
+                                                        ? 'border-red-500 text-red-500'
+                                                        : 'border-amber-500 text-amber-600'
+                                                }>
+                                                    {user.admin_role === 'master_admin' ? 'Master Admin' : 'Org Admin'}
+                                                </Badge>
+                                            ) : (
+                                                <span className="text-muted-foreground">-</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {user.organization ? (
+                                                <div className="flex items-center gap-1">
+                                                    <Building2 className="h-3 w-3 text-muted-foreground" />
+                                                    <span className="text-sm">{user.organization.name}</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-muted-foreground">-</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {user.subscription_tier ? (
+                                                <Badge variant="secondary">
+                                                    {user.subscription_tier.display_name}
+                                                </Badge>
+                                            ) : (
+                                                <span className="text-muted-foreground">No Tier</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground">
+                                            {new Date(user.created_at).toLocaleDateString()}
+                                        </TableCell>
+                                        <TableCell>
+                                            <DeleteUserButton
+                                                userId={user.id}
+                                                userName={user.full_name || 'Unknown'}
+                                                userEmail={user.email || ''}
+                                                currentAdminId={adminData.user.id}
+                                            />
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {users.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                                            No users found
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
         </div>

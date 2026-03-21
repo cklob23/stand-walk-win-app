@@ -10,8 +10,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import Link from 'next/link'
-import { BookOpen, Loader2, ArrowLeft, Mail, Eye, EyeOff, Lock } from 'lucide-react'
-import Image from "next/image"
+import { Loader2, ArrowLeft, Mail, Eye, EyeOff, Lock } from 'lucide-react'
+import { AppLogoStatic } from '@/components/app-logo'
 
 export default function ForgotPasswordPage() {
   const router = useRouter()
@@ -131,17 +131,8 @@ export default function ForgotPasswordPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-8">
       <div className="w-full max-w-md space-y-6 sm:space-y-8">
         <div className="text-center">
-          <Link href="/" className="inline-flex items-center gap-2 mb-4 sm:mb-6">
-            <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-primary">
-              <Image
-                src="/favicon.ico"
-                alt="Stand Walk Run logo"
-                width={40}
-                height={30}
-                className='rounded-sm'
-              />
-            </div>
-            <span className="text-lg sm:text-xl font-semibold text-foreground">Stand Walk Run</span>
+          <Link href="/" className="inline-flex mb-4 sm:mb-6">
+            <AppLogoStatic iconClassName="h-9 w-9 sm:h-10 sm:w-10 rounded-sm" textClassName="text-lg sm:text-xl" />
           </Link>
           <h1 className="text-xl sm:text-2xl font-bold text-foreground">
             {step === 'newPassword' ? 'Create new password' : 'Reset your password'}

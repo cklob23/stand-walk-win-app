@@ -40,6 +40,7 @@ interface CartCheckoutProps {
     createOrg: boolean
     orgName: string
     userId?: string
+    organizationId?: string // For existing org admins adding more licenses
     onBack: () => void
 }
 
@@ -50,6 +51,7 @@ export function CartCheckout({
     createOrg,
     orgName,
     userId,
+    organizationId,
     onBack,
 }: CartCheckoutProps) {
     const router = useRouter()
@@ -90,10 +92,11 @@ export function CartCheckout({
             email,
             createOrg,
             orgName,
+            organizationId, // Pass existing org ID for admins adding more licenses
         })
         sessionIdRef.current = result.sessionId
         return result.clientSecret!
-    }, [cart, journeyCart, email, createOrg, orgName, userId, hasOnlyJourneys])
+    }, [cart, journeyCart, email, createOrg, orgName, userId, organizationId, hasOnlyJourneys])
 
     const handleComplete = useCallback(async () => {
         const currentSessionId = sessionIdRef.current

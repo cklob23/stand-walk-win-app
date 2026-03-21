@@ -107,10 +107,11 @@ export interface CartCheckoutParams {
     email: string
     createOrg?: boolean
     orgName?: string
+    organizationId?: string // For existing org admins adding more licenses
 }
 
 export async function startCartCheckout(params: CartCheckoutParams) {
-    const { items, email, createOrg, orgName } = params
+    const { items, email, createOrg, orgName, organizationId } = params
 
     if (items.length === 0) {
         throw new Error('Cart is empty')
@@ -216,6 +217,7 @@ export async function startCartCheckout(params: CartCheckoutParams) {
         create_org: createOrg ? 'true' : 'false',
         org_name: orgName || '',
         purchaser_email: email,
+        existing_organization_id: organizationId || '', // For existing org admins
     }
 
     const session = await stripe.checkout.sessions.create({

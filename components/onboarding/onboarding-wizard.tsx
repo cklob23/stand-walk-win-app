@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Users, Sprout, ArrowRight, ArrowLeft, Loader2, CheckCircle } from 'lucide-react'
-import { AppLogo } from '@/components/app-logo'
+import { AppLogoStatic } from '@/components/app-logo'
 import { toast } from 'sonner'
 import type { Profile } from '@/lib/types'
 
@@ -172,7 +172,7 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
           {currentStep === 0 && (
             <div className="text-center space-y-4 sm:space-y-6">
               <div className="flex justify-center">
-                <AppLogo showText={false} iconClassName="h-16 w-16 sm:h-20 sm:w-20 rounded-sm" />
+                <AppLogoStatic showText={false} iconClassName="h-16 w-16 sm:h-20 sm:w-20 rounded-sm" />
               </div>
               <div className="space-y-2">
                 <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Welcome to Stand Walk Run</h1>
@@ -282,8 +282,6 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
               </CardContent>
             </Card>
           )}
-
-
         </div>
       </div>
     </div>

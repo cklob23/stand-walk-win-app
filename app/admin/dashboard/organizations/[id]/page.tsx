@@ -380,52 +380,54 @@ export default async function ManageOrganizationPage({
                     <CardTitle>Organization Members</CardTitle>
                     <CardDescription>Users associated with this organization</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Email</TableHead>
-                                <TableHead>Role</TableHead>
-                                <TableHead>Admin Role</TableHead>
-                                <TableHead>Joined</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {members.map((member) => (
-                                <TableRow key={member.id}>
-                                    <TableCell className="font-medium">{member.full_name || 'Not set'}</TableCell>
-                                    <TableCell>{member.email}</TableCell>
-                                    <TableCell>
-                                        {member.role ? (
-                                            <Badge variant={member.role === 'leader' ? 'default' : 'secondary'}>
-                                                {getRoleDisplay(member.role)}
-                                            </Badge>
-                                        ) : (
-                                            <span className="text-muted-foreground">-</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell>
-                                        {member.admin_role ? (
-                                            <Badge variant="outline">{getAdminRoleDisplay(member.admin_role)}</Badge>
-                                        ) : (
-                                            <span className="text-muted-foreground">-</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">
-                                        {new Date(member.created_at).toLocaleDateString()}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                            {members.length === 0 && (
+                <CardContent className="px-0 sm:px-6">
+                    <div className="overflow-x-auto">
+                        <Table className="min-w-[600px]">
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                                        No members found
-                                    </TableCell>
+                                    <TableHead className="whitespace-nowrap">Name</TableHead>
+                                    <TableHead className="whitespace-nowrap">Email</TableHead>
+                                    <TableHead className="whitespace-nowrap">Role</TableHead>
+                                    <TableHead className="whitespace-nowrap">Admin Role</TableHead>
+                                    <TableHead className="whitespace-nowrap">Joined</TableHead>
                                 </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {members.map((member) => (
+                                    <TableRow key={member.id}>
+                                        <TableCell className="font-medium">{member.full_name || 'Not set'}</TableCell>
+                                        <TableCell>{member.email}</TableCell>
+                                        <TableCell>
+                                            {member.role ? (
+                                                <Badge variant={member.role === 'leader' ? 'default' : 'secondary'}>
+                                                    {getRoleDisplay(member.role)}
+                                                </Badge>
+                                            ) : (
+                                                <span className="text-muted-foreground">-</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {member.admin_role ? (
+                                                <Badge variant="outline">{getAdminRoleDisplay(member.admin_role)}</Badge>
+                                            ) : (
+                                                <span className="text-muted-foreground">-</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground">
+                                            {new Date(member.created_at).toLocaleDateString()}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {members.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                                            No members found
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
 
@@ -435,49 +437,51 @@ export default async function ManageOrganizationPage({
                     <CardTitle>Access Codes</CardTitle>
                     <CardDescription>All access codes for this organization</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Code</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Created</TableHead>
-                                <TableHead>Expires</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {accessCodes.slice(0, 10).map((code) => (
-                                <TableRow key={code.id}>
-                                    <TableCell className="font-mono">{code.code}</TableCell>
-                                    <TableCell>
-                                        <Badge variant={code.status === 'available' ? 'outline' : 'secondary'}>
-                                            {code.status}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">
-                                        {new Date(code.created_at).toLocaleDateString()}
-                                    </TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">
-                                        {code.expires_at ? new Date(code.expires_at).toLocaleDateString() : 'Never'}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                            {accessCodes.length === 0 && (
+                <CardContent className="px-0 sm:px-6">
+                    <div className="overflow-x-auto">
+                        <Table className="min-w-[500px]">
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                                        No access codes found
-                                    </TableCell>
+                                    <TableHead className="whitespace-nowrap">Code</TableHead>
+                                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                                    <TableHead className="whitespace-nowrap">Created</TableHead>
+                                    <TableHead className="whitespace-nowrap">Expires</TableHead>
                                 </TableRow>
-                            )}
-                            {accessCodes.length > 10 && (
-                                <TableRow>
-                                    <TableCell colSpan={4} className="text-center text-muted-foreground py-4">
-                                        Showing 10 of {accessCodes.length} codes
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {accessCodes.slice(0, 10).map((code) => (
+                                    <TableRow key={code.id}>
+                                        <TableCell className="font-mono">{code.code}</TableCell>
+                                        <TableCell>
+                                            <Badge variant={code.status === 'available' ? 'outline' : 'secondary'}>
+                                                {code.status}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground">
+                                            {new Date(code.created_at).toLocaleDateString()}
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground">
+                                            {code.expires_at ? new Date(code.expires_at).toLocaleDateString() : 'Never'}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {accessCodes.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                                            No access codes found
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                                {accessCodes.length > 10 && (
+                                    <TableRow>
+                                        <TableCell colSpan={4} className="text-center text-muted-foreground py-4">
+                                            Showing 10 of {accessCodes.length} codes
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
         </div>

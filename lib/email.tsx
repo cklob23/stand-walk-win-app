@@ -48,7 +48,8 @@ export async function sendAccessCodesEmail(
   codes: string[] | AccessCodeWithPlan[],
   tierName?: string,
   journeyName?: string,
-  orgName?: string
+  orgName?: string,
+  isExistingOrgAdmin?: boolean // Set to true when org admin is adding more licenses
 ) {
   // Determine if we have detailed code info or just strings
   const hasDetailedInfo = codes.length > 0 && typeof codes[0] === 'object'
@@ -87,14 +88,27 @@ export async function sendAccessCodesEmail(
     ? [...new Set((codes as AccessCodeWithPlan[]).map(c => c.journeyName))].join(', ')
     : 'Stand Walk Run Journey')
 
+  // Different email content for existing org admins vs new purchasers
+  const emailSubject = isExistingOrgAdmin
+    ? 'Additional Licenses Added - Stand Walk Run'
+    : 'Your Access Code(s) - Stand Walk Run'
+
+  const emailHeading = isExistingOrgAdmin
+    ? 'Additional Licenses Added!'
+    : 'Welcome to Stand Walk Run!'
+
+  const emailIntro = isExistingOrgAdmin
+    ? `Your additional license${codes.length === 1 ? ' has' : 's have'} been added to your organization. Here ${codes.length === 1 ? 'is the new access code' : 'are your new access codes'}:`
+    : `Thank you for your purchase! Here ${codes.length === 1 ? 'is your access code' : 'are your access codes'} to get started:`
+
   return sendEmail({
     to: email,
-    subject: 'Your Access Code(s) - Stand Walk Run',
+    subject: emailSubject,
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #166534;">Welcome to Stand Walk Run!</h1>
+        <h1 style="color: #0f6353;">${emailHeading}</h1>
         
-        <p>Thank you for your purchase! Here ${codes.length === 1 ? 'is your access code' : 'are your access codes'} to get started:</p>
+        <p>${emailIntro}</p>
         
         ${codesList}
         
@@ -110,22 +124,30 @@ export async function sendAccessCodesEmail(
         </div>
         ` : '')}
         
-        <h2>Next Steps:</h2>
-        ${orgName ? `
+        ${isExistingOrgAdmin ? `
           <div style="background: #e0f2fe; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #0284c7;">
-            <h3 style="margin: 0 0 8px 0; color: #0369a1;">Organization Admin Access</h3>
-            <p style="margin: 0 0 12px 0;">As the organization admin, you can manage your team, view access codes, and monitor progress from the Admin Portal:</p>
-            <p style="margin: 0;"><a href="${appUrl}/admin/login" style="display: inline-block; background: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 500;">Access Admin Portal</a></p>
-            <p style="margin: 12px 0 0 0; font-size: 14px; color: #666;">Use your email (${email}) to create your admin account.</p>
+            <h3 style="margin: 0 0 8px 0; color: #0369a1;">Manage Your Licenses</h3>
+            <p style="margin: 0 0 12px 0;">Your new access codes are now available in your Admin Portal. Share them with your team members or manage them from your dashboard.</p>
+            <p style="margin: 0;"><a href="${appUrl}/admin/dashboard/access-codes" style="display: inline-block; background: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 500;">View Access Codes</a></p>
           </div>
-        ` : ''}
-        
-        <h3>For Journey Participants:</h3>
-        <ol>
-          <li>Go to <a href="${appUrl}/auth/signup">Sign Up</a></li>
-          <li>Enter your access code when prompted</li>
-          <li>Complete your profile and start your journey!</li>
-        </ol>
+        ` : `
+          <h2>Next Steps:</h2>
+          ${orgName ? `
+            <div style="background: #e0f2fe; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #0284c7;">
+              <h3 style="margin: 0 0 8px 0; color: #0369a1;">Organization Admin Access</h3>
+              <p style="margin: 0 0 12px 0;">As the organization admin, you can manage your team, view access codes, and monitor progress from the Admin Portal:</p>
+              <p style="margin: 0;"><a href="${appUrl}/admin/login" style="display: inline-block; background: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 500;">Access Admin Portal</a></p>
+              <p style="margin: 12px 0 0 0; font-size: 14px; color: #666;">Use your email (${email}) to create your admin account.</p>
+            </div>
+          ` : ''}
+          
+          <h3>For Journey Participants:</h3>
+          <ol>
+            <li>Go to <a href="${appUrl}/auth/signup">Sign Up</a></li>
+            <li>Enter your access code when prompted</li>
+            <li>Complete your profile and start your journey!</li>
+          </ol>
+        `}
         
         ${codes.length > 1 ? `
           <div style="background: #fef3c7; padding: 16px; border-radius: 8px; margin: 20px 0;">
