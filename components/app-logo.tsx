@@ -35,7 +35,7 @@ export function AppLogo({
 
   return (
     <span className={cn("flex items-center gap-2", className)}>
-      <span className={cn("relative overflow-hidden rounded-lg", iconClassName || "h-8 w-8 sm:h-9 sm:w-9")}>
+      <span className={cn("relative overflow-hidden rounded-sm", iconClassName || "h-8 w-8 sm:h-9 sm:w-9")}>
         {logoUrl ? (
           <Image
             src={logoUrl}
@@ -78,7 +78,7 @@ export function AppLogoStatic({
 }: Omit<AppLogoProps, 'showSubtitle'>) {
   return (
     <span className={cn("flex items-center gap-2", className)}>
-      <span className={cn("relative overflow-hidden rounded-lg", iconClassName || "h-8 w-8 sm:h-9 sm:w-9")}>
+      <span className={cn("relative overflow-hidden rounded-sm", iconClassName || "h-8 w-8 sm:h-9 sm:w-9")}>
         {/* Using img tag for better cross-platform hosting compatibility */}
         <img
           src="/icon.png"
