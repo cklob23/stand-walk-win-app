@@ -22,6 +22,8 @@ interface MemberWithPairedLearner {
     is_paired_learner?: boolean
     paired_with_leader?: string | null
     subscription_tier?: { name: string; display_name: string } | null
+    journey_name?: string | null
+    current_week?: number | null
 }
 
 async function getMembers(organizationId: string, adminUserId: string): Promise<MemberWithPairedLearner[]> {
@@ -43,7 +45,7 @@ async function getMembers(organizationId: string, adminUserId: string): Promise<
     const leaderIds = usedCodes?.map(c => c.claimed_by).filter(Boolean) || []
 
     // Get all active pairings for these leaders (to get both leader->learner and learner->leader relationships)
-    let allPairings: { leader_id: string; learner_id: string | null; learner_name: string | null; leader_name: string | null }[] = []
+    let allPairings: { leader_id: string; learner_id: string | null; learner_name: string | null; leader_name: string | null; journey_name: string | null; current_week: number | null }[] = []
 
     if (leaderIds.length > 0) {
         const { data: pairings } = await supabase
@@ -51,8 +53,10 @@ async function getMembers(organizationId: string, adminUserId: string): Promise<
             .select(`
         leader_id,
         learner_id,
+        current_week,
         learner:profiles!pairings_learner_id_fkey(full_name),
-        leader:profiles!pairings_leader_id_fkey(full_name)
+        leader:profiles!pairings_leader_id_fkey(full_name),
+        journey:journeys(name)
       `)
             .in('leader_id', leaderIds)
             .eq('status', 'active')
@@ -62,14 +66,19 @@ async function getMembers(organizationId: string, adminUserId: string): Promise<
             allPairings = pairings.map(p => {
                 const learnerData = p.learner as unknown
                 const leaderData = p.leader as unknown
+                const journeyData = p.journey as unknown
                 return {
                     leader_id: p.leader_id,
                     learner_id: p.learner_id,
+                    current_week: p.current_week,
                     learner_name: learnerData && typeof learnerData === 'object' && 'full_name' in learnerData
                         ? (learnerData as { full_name: string | null }).full_name
                         : null,
                     leader_name: leaderData && typeof leaderData === 'object' && 'full_name' in leaderData
                         ? (leaderData as { full_name: string | null }).full_name
+                        : null,
+                    journey_name: journeyData && typeof journeyData === 'object' && 'name' in journeyData
+                        ? (journeyData as { name: string }).name
                         : null,
                 }
             })
@@ -97,6 +106,8 @@ async function getMembers(organizationId: string, adminUserId: string): Promise<
                     .filter(Boolean)
                     .join(', ')
                 const tierData = p.subscription_tier as unknown
+                // Get journey info from first pairing
+                const firstPairing = leaderPairings[0]
                 return {
                     ...p,
                     is_paired_learner: false,
@@ -104,6 +115,8 @@ async function getMembers(organizationId: string, adminUserId: string): Promise<
                     subscription_tier: tierData && typeof tierData === 'object' && 'name' in tierData
                         ? tierData as { name: string; display_name: string }
                         : null,
+                    journey_name: firstPairing?.journey_name || null,
+                    current_week: firstPairing?.current_week || null,
                 }
             })
         }
@@ -137,6 +150,8 @@ async function getMembers(organizationId: string, adminUserId: string): Promise<
                         subscription_tier: tierData && typeof tierData === 'object' && 'name' in tierData
                             ? tierData as { name: string; display_name: string }
                             : null,
+                        journey_name: pairing?.journey_name || null,
+                        current_week: pairing?.current_week || null,
                     }
                 })
                 leaders = [...leaders, ...learners]
@@ -236,6 +251,8 @@ export default async function AdminMembersPage() {
                                     <TableHead className="whitespace-nowrap">Name</TableHead>
                                     <TableHead className="whitespace-nowrap">Email</TableHead>
                                     <TableHead className="whitespace-nowrap">Role</TableHead>
+                                    <TableHead className="whitespace-nowrap">Journey</TableHead>
+                                    <TableHead className="whitespace-nowrap">Week</TableHead>
                                     <TableHead className="whitespace-nowrap">Tier</TableHead>
                                     <TableHead className="whitespace-nowrap">Paired With</TableHead>
                                     <TableHead className="whitespace-nowrap">Status</TableHead>
@@ -245,7 +262,7 @@ export default async function AdminMembersPage() {
                             <TableBody>
                                 {members.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                                        <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                                             No members yet. Share your access codes to invite team members.
                                         </TableCell>
                                     </TableRow>
@@ -265,6 +282,22 @@ export default async function AdminMembersPage() {
                                                     </Badge>
                                                 ) : (
                                                     <Badge variant="outline">Not assigned</Badge>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-sm">
+                                                {member.journey_name ? (
+                                                    <span className="font-medium">{member.journey_name}</span>
+                                                ) : (
+                                                    <span className="text-muted-foreground">-</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {member.current_week ? (
+                                                    <Badge variant="outline" className="text-xs">
+                                                        Week {member.current_week}/6
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-muted-foreground">-</span>
                                                 )}
                                             </TableCell>
                                             <TableCell>

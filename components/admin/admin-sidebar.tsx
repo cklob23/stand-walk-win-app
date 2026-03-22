@@ -12,6 +12,7 @@ import {
     CreditCard,
     BarChart3,
     Shield,
+    Inbox,
 } from 'lucide-react'
 
 interface AdminSidebarProps {
@@ -28,6 +29,11 @@ const orgAdminLinks = [
         title: 'Members',
         href: '/admin/dashboard/members',
         icon: Users,
+    },
+    {
+        title: 'Requests',
+        href: '/admin/dashboard/requests',
+        icon: Inbox,
     },
     {
         title: 'Access Codes',

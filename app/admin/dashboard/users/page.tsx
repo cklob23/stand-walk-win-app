@@ -32,20 +32,24 @@ async function getAllUsers() {
         return []
     }
 
-    // Get all active pairings with leader and learner names
+    // Get all active pairings with leader and learner names, journey info, and current week
     const { data: pairings } = await supabase
         .from('pairings')
         .select(`
       leader_id,
       learner_id,
+      current_week,
+      journey_id,
       leader:profiles!pairings_leader_id_fkey(id, full_name),
-      learner:profiles!pairings_learner_id_fkey(id, full_name)
+      learner:profiles!pairings_learner_id_fkey(id, full_name),
+      journey:journeys(id, name)
     `)
         .eq('status', 'active')
 
     // Create maps for quick lookup
     const leaderToLearners = new Map<string, string[]>()
     const learnerToLeader = new Map<string, string>()
+    const userToJourney = new Map<string, { journeyName: string; currentWeek: number }>()
 
     if (pairings) {
         for (const pairing of pairings) {
@@ -72,16 +76,46 @@ async function getAllUsers() {
             if (pairing.learner_id && leaderName) {
                 learnerToLeader.set(pairing.learner_id, leaderName)
             }
+
+            // Get journey name for this pairing
+            const journeyData = pairing.journey as unknown
+            const journeyName = journeyData && typeof journeyData === 'object' && 'name' in journeyData
+                ? (journeyData as { name: string }).name
+                : null
+
+            // Map users to their journey info (both learner and leader)
+            if (journeyName && pairing.current_week) {
+                if (pairing.learner_id) {
+                    userToJourney.set(pairing.learner_id, {
+                        journeyName,
+                        currentWeek: pairing.current_week
+                    })
+                }
+                if (pairing.leader_id) {
+                    // For leaders, only track if they don't have one yet (use first/primary)
+                    if (!userToJourney.has(pairing.leader_id)) {
+                        userToJourney.set(pairing.leader_id, {
+                            journeyName,
+                            currentWeek: pairing.current_week
+                        })
+                    }
+                }
+            }
         }
     }
 
     // Attach pairing info to users
-    return (users || []).map(user => ({
-        ...user,
-        paired_with: user.role === 'leader'
-            ? leaderToLearners.get(user.id)?.join(', ') || null
-            : learnerToLeader.get(user.id) || null
-    }))
+    return (users || []).map(user => {
+        const journeyInfo = userToJourney.get(user.id)
+        return {
+            ...user,
+            paired_with: user.role === 'leader'
+                ? leaderToLearners.get(user.id)?.join(', ') || null
+                : learnerToLeader.get(user.id) || null,
+            journey_name: journeyInfo?.journeyName || null,
+            current_week: journeyInfo?.currentWeek || null
+        }
+    })
 }
 
 export default async function MasterUsersPage() {
@@ -165,6 +199,8 @@ export default async function MasterUsersPage() {
                                 <TableRow>
                                     <TableHead className="whitespace-nowrap">User</TableHead>
                                     <TableHead className="whitespace-nowrap">Role</TableHead>
+                                    <TableHead className="whitespace-nowrap">Journey</TableHead>
+                                    <TableHead className="whitespace-nowrap">Week</TableHead>
                                     <TableHead className="whitespace-nowrap">Paired With</TableHead>
                                     <TableHead className="whitespace-nowrap">Admin Role</TableHead>
                                     <TableHead className="whitespace-nowrap">Organization</TableHead>
@@ -194,6 +230,22 @@ export default async function MasterUsersPage() {
                                             {user.role ? (
                                                 <Badge variant={user.role === 'leader' ? 'default' : 'secondary'}>
                                                     {user.role === 'leader' ? 'Leader' : 'Learner'}
+                                                </Badge>
+                                            ) : (
+                                                <span className="text-muted-foreground">-</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-sm">
+                                            {user.journey_name ? (
+                                                <span className="font-medium">{user.journey_name}</span>
+                                            ) : (
+                                                <span className="text-muted-foreground">-</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {user.current_week ? (
+                                                <Badge variant="outline" className="text-xs">
+                                                    Week {user.current_week}/6
                                                 </Badge>
                                             ) : (
                                                 <span className="text-muted-foreground">-</span>
@@ -249,7 +301,7 @@ export default async function MasterUsersPage() {
                                 ))}
                                 {users.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                                        <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                                             No users found
                                         </TableCell>
                                     </TableRow>

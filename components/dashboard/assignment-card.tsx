@@ -44,6 +44,8 @@ import { cn } from '@/lib/utils'
 import { notifyAssignmentCompleted, advanceToNextWeek } from '@/lib/notifications'
 import { extractScriptureReferences, extractBookReferences } from '@/lib/bible-utils'
 import { toggleAssignmentReaction, replyToAssignment, deleteAssignmentReply } from '@/lib/assignment-actions'
+import { WeekCelebrationModal } from '@/components/celebration/week-celebration-modal'
+import { GraduationModal } from '@/components/graduation/graduation-modal'
 import {
   Popover,
   PopoverContent,
@@ -93,6 +95,14 @@ interface AssignmentCardProps {
   hasWeeklyMeeting?: boolean
   weekTitle?: string
   defaultOpen?: boolean
+  // Graduation modal props
+  userName?: string
+  journeyName?: string
+  canBeLeader?: boolean
+  subscriptionTier?: { max_learners: number } | null
+  // Organization context for graduation modal
+  organizationId?: string | null
+  organizationName?: string | null
 }
 
 const typeIcons: Record<string, typeof BookOpen> = {
@@ -147,7 +157,13 @@ export function AssignmentCard({
   completedWeekAssignments,
   hasWeeklyMeeting,
   weekTitle,
-  defaultOpen = false
+  defaultOpen = false,
+  userName,
+  journeyName,
+  canBeLeader = true,
+  subscriptionTier,
+  organizationId,
+  organizationName,
 }: AssignmentCardProps) {
   const router = useRouter()
   const cardRef = useRef<HTMLDivElement>(null)
@@ -181,6 +197,12 @@ export function AssignmentCard({
   const [isSendingReply, setIsSendingReply] = useState(false)
   const [isReacting, setIsReacting] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+
+  // Celebration modal state
+  const [showWeekCelebration, setShowWeekCelebration] = useState(false)
+  const [showGraduationModal, setShowGraduationModal] = useState(false)
+  const [celebrationWeek, setCelebrationWeek] = useState<number>(0)
+  const [celebrationWeekTitle, setCelebrationWeekTitle] = useState<string>('')
 
   const supabase = createClient()
 
@@ -494,14 +516,31 @@ export function AssignmentCard({
           .order('week_number')
 
         if (weeklyContent) {
-          await advanceToNextWeek(
+          const result = await advanceToNextWeek(
             pairingId,
             currentWeek,
             learnerName || 'Learner',
             leaderId || '',
             weeklyContent
           )
-          toast.success('Congratulations! Week ' + currentWeek + ' complete. Next week unlocked!')
+
+          if (result.success) {
+            // Set celebration data
+            setCelebrationWeek(result.completedWeek || currentWeek)
+            setCelebrationWeekTitle(result.completedWeekTitle || weekTitle || '')
+
+            // Don't refresh yet - wait for modal to close
+            setIsLoading(false)
+
+            if (result.journeyComplete) {
+              // Show graduation modal for journey completion
+              setShowGraduationModal(true)
+            } else {
+              // Show week celebration modal
+              setShowWeekCelebration(true)
+            }
+            return // Don't refresh - modal onClose will handle it
+          }
         }
       }
     }
@@ -1285,6 +1324,34 @@ export function AssignmentCard({
           </div>
         </CollapsibleContent>
       </div>
+
+      {/* Week Celebration Modal */}
+      <WeekCelebrationModal
+        isOpen={showWeekCelebration}
+        onClose={() => setShowWeekCelebration(false)}
+        weekNumber={celebrationWeek}
+        weekTitle={celebrationWeekTitle}
+        onContinue={() => {
+          router.refresh()
+        }}
+      />
+
+      {/* Graduation Modal (Journey Complete) */}
+      <GraduationModal
+        isOpen={showGraduationModal}
+        onClose={() => {
+          setShowGraduationModal(false)
+          router.refresh()
+        }}
+        userId={userId}
+        userName={userName || learnerName || 'Learner'}
+        pairingId={pairingId}
+        journeyName={journeyName}
+        canBeLeader={canBeLeader}
+        subscriptionTier={subscriptionTier}
+        organizationId={organizationId}
+        organizationName={organizationName}
+      />
     </Collapsible>
   )
 }

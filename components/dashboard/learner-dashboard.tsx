@@ -55,6 +55,10 @@ interface LearnerDashboardProps {
   hasWeeklyMeeting: boolean
   hasJournalEntryToday: boolean
   expandedAssignmentId?: string | null
+  // Journey and org context for graduation
+  journeyName?: string
+  organizationId?: string | null
+  organizationName?: string | null
 }
 
 export function LearnerDashboard({
@@ -71,6 +75,9 @@ export function LearnerDashboard({
   hasWeeklyMeeting,
   hasJournalEntryToday,
   expandedAssignmentId,
+  journeyName,
+  organizationId,
+  organizationName,
 }: LearnerDashboardProps) {
   const [showGraduationModal, setShowGraduationModal] = useState(false)
   const [hasShownGraduation, setHasShownGraduation] = useState(false)
@@ -268,6 +275,10 @@ export function LearnerDashboard({
                     hasWeeklyMeeting={hasWeeklyMeeting}
                     weekTitle={currentWeekContent?.title}
                     defaultOpen={expandedAssignmentId === assignment.id}
+                    userName={profile.full_name || 'Learner'}
+                    journeyName={journeyName}
+                    organizationId={organizationId}
+                    organizationName={organizationName}
                   />
                 ))}
                 {currentWeekAssignments.length === 0 && (

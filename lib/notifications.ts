@@ -323,13 +323,19 @@ export async function advanceToNextWeek(
 ) {
   const supabase = createClient()
 
+  const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
   const nextWeek = currentWeek + 1
   const nextWeekContent = weeklyContent.find(w => w.week_number === nextWeek)
 
   // Only advance if there's a next week (max 6 weeks)
   if (nextWeek > 6 || !nextWeekContent) {
-    // Journey complete!
-    return { success: true, journeyComplete: true }
+    // Journey complete! Return celebration info for the final week
+    return {
+      success: true,
+      journeyComplete: true,
+      completedWeek: currentWeek,
+      completedWeekTitle: currentWeekContent?.title || `Week ${currentWeek}`,
+    }
   }
 
   // Update the pairing's current week
@@ -347,5 +353,11 @@ export async function advanceToNextWeek(
   await notifyWeekUnlocked(leaderId, pairingId, nextWeek, nextWeekContent.title)
   await notifyWeekUnlocked(leaderId, pairingId, nextWeek, nextWeekContent.title)
 
-  return { success: true, newWeek: nextWeek }
+  // Return celebration info for the completed week
+  return {
+    success: true,
+    newWeek: nextWeek,
+    completedWeek: currentWeek,
+    completedWeekTitle: currentWeekContent?.title || `Week ${currentWeek}`,
+  }
 }

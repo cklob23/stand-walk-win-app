@@ -139,6 +139,32 @@ export default async function DashboardPage({
     .select('*')
     .order('week_number', { ascending: true })
 
+  // Get journey name for the pairing
+  let journeyName: string | undefined
+  if (pairing?.journey_id) {
+    const { data: journey } = await supabase
+      .from('journeys')
+      .select('name')
+      .eq('id', pairing.journey_id)
+      .single()
+    journeyName = journey?.name
+  }
+
+  // Get organization info for the user
+  let organizationId: string | null = null
+  let organizationName: string | null = null
+  if (profile.organization_id) {
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('id, name')
+      .eq('id', profile.organization_id)
+      .single()
+    if (org) {
+      organizationId = org.id
+      organizationName = org.name
+    }
+  }
+
   // Get assignments for current week
   const currentWeek = pairing?.current_week || 1
   const { data: assignments } = await supabase
@@ -355,5 +381,5 @@ export default async function DashboardPage({
     )
   }
 
-  return <LearnerDashboard {...dashboardProps} assignmentReactions={assignmentReactions} hasJournalEntryToday={hasJournalEntryToday} expandedAssignmentId={params.assignmentId} />
+  return <LearnerDashboard {...dashboardProps} assignmentReactions={assignmentReactions} hasJournalEntryToday={hasJournalEntryToday} expandedAssignmentId={params.assignmentId} journeyName={journeyName} organizationId={organizationId} organizationName={organizationName} />
 }

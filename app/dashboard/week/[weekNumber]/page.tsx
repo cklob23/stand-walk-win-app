@@ -153,6 +153,32 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
     .eq('week_number', weekNum)
     .order('created_at', { ascending: false })
 
+  // Get journey name for the pairing
+  let journeyName: string | undefined
+  if (pairing?.journey_id) {
+    const { data: journey } = await supabase
+      .from('journeys')
+      .select('name')
+      .eq('id', pairing.journey_id)
+      .single()
+    journeyName = journey?.name
+  }
+
+  // Get organization info for the user
+  let organizationId: string | null = null
+  let organizationName: string | null = null
+  if (profile.organization_id) {
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('id, name')
+      .eq('id', profile.organization_id)
+      .single()
+    if (org) {
+      organizationId = org.id
+      organizationName = org.name
+    }
+  }
+
   // Check if meeting is completed for this journey week.
   // Only meetings marked "Done" count — merely scheduled meetings do not.
   // For week N, the learner needs at least N completed meetings total.
@@ -182,6 +208,9 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
       bibleTranslation={profile.bible_translation_preference || 'ESV'}
       bibleTextSize={profile.bible_text_size || 'base'}
       expandedAssignmentId={assignmentId}
+      journeyName={journeyName}
+      organizationId={organizationId}
+      organizationName={organizationName}
     />
   )
 }

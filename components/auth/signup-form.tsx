@@ -209,7 +209,8 @@ export function SignupForm({ isOrgAdmin = false }: SignupFormProps) {
       setOtpValues(['', '', '', '', '', '', '', ''])
       inputRefs.current[0]?.focus()
     } else if (result.success) {
-      router.push('/onboarding')
+      // Use window.location for hard navigation to ensure session is properly loaded
+      window.location.href = '/onboarding'
     }
   }
 

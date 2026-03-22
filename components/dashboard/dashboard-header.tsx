@@ -21,7 +21,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { Bell, BookOpen, Calendar, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check, BookMarked, PenLine, UserPlus, Loader2, Shield, Crown, PanelLeftClose, PanelLeft } from 'lucide-react'
+import { Bell, BookOpen, Calendar, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check, BookMarked, PenLine, UserPlus, Loader2, Shield, Crown, PanelLeftClose, PanelLeft, Archive } from 'lucide-react'
 import { useSplitScreen } from '@/contexts/split-screen-context'
 import { AppLogo } from '@/components/app-logo'
 import { useBranding } from '@/contexts/branding-context'
@@ -644,6 +644,12 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                     <Link href="/dashboard/profile" className="flex items-center">
                       <User className="mr-2 h-4 w-4" />
                       Profile
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard/history" className="flex items-center">
+                      <Archive className="mr-2 h-4 w-4" />
+                      Journey History
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>

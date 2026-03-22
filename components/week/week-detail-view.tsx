@@ -51,6 +51,10 @@ interface WeekDetailViewProps {
   bibleTranslation?: string
   bibleTextSize?: string
   expandedAssignmentId?: string
+  // Journey and org context for graduation
+  journeyName?: string
+  organizationId?: string | null
+  organizationName?: string | null
 }
 
 export function WeekDetailView({
@@ -67,6 +71,9 @@ export function WeekDetailView({
   bibleTranslation = 'ESV',
   bibleTextSize = 'base',
   expandedAssignmentId,
+  journeyName,
+  organizationId,
+  organizationName,
 }: WeekDetailViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -246,6 +253,10 @@ export function WeekDetailView({
                   hasWeeklyMeeting={hasWeeklyMeeting}
                   weekTitle={weekContent.title}
                   defaultOpen={expandedAssignmentId === assignment.id}
+                  userName={profile.role === 'learner' ? (profile.full_name || 'Learner') : (partner?.full_name || 'Learner')}
+                  journeyName={journeyName}
+                  organizationId={organizationId}
+                  organizationName={organizationName}
                 />
               ))}
               {assignments.length === 0 && (
