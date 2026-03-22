@@ -215,15 +215,6 @@ export function AssignmentCard({
     }
   }, [response, draftKey, progress?.notes])
 
-  const [showResponseBox, setShowResponseBox] = useState(() => {
-    // Show response box if there's a draft or saved notes
-    if (typeof window !== 'undefined') {
-      const draft = localStorage.getItem(draftKey)
-      if (draft) return true
-    }
-    return !!progress?.notes
-  })
-
   // Prayer timer state
   const isPrayerType = assignment.assignment_type === 'prayer'
   const prayerDuration = isPrayerType ? extractDurationSeconds(assignment.description || '') : null
@@ -368,10 +359,10 @@ export function AssignmentCard({
   }, [meetingAutoCompleted, isMeetingType])
 
   // Check if this assignment type requires a written response
-  // Reflection/Discussion always require response
-  // Reading/Action types require response if the response box is shown (user clicked "Write a response")
+  // All assignment types except meeting and prayer require a response
   const isReflectionOrDiscussion = assignment.assignment_type === 'reflection' || assignment.assignment_type === 'discussion'
-  const requiresResponse = isReflectionOrDiscussion || showResponseBox
+  const isReadingOrAction = assignment.assignment_type === 'reading' || assignment.assignment_type === 'action'
+  const requiresResponse = isReflectionOrDiscussion || isReadingOrAction
 
   // Available emojis for reactions
   const availableEmojis = ['❤️', '🙏', '👏', '💪', '🔥', '✨']
@@ -1187,32 +1178,18 @@ export function AssignmentCard({
                 </div>
               )}
 
-            {/* Learner view: Optional response for reading/action types */}
+            {/* Learner view: Response input for reading/action types (always shown) */}
             {!isLeader && !isMeetingType && !isPrayerType &&
               assignment.assignment_type !== 'reflection' &&
               assignment.assignment_type !== 'discussion' && (
                 <div className="space-y-2">
-                  {!showResponseBox && !progress?.notes ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground -ml-2"
-                      onClick={() => setShowResponseBox(true)}
-                    >
-                      <PenLine className="h-3 w-3" />
-                      Write a response
-                    </Button>
-                  ) : (
-                    <>
-                      <label className="text-sm font-medium text-foreground">Your Response</label>
-                      <Textarea
-                        value={response}
-                        onChange={(e) => setResponse(e.target.value)}
-                        placeholder="Write your response here..."
-                        rows={3}
-                      />
-                    </>
-                  )}
+                  <label className="text-sm font-medium text-foreground">Your Response</label>
+                  <Textarea
+                    value={response}
+                    onChange={(e) => setResponse(e.target.value)}
+                    placeholder="Write your response here..."
+                    rows={3}
+                  />
                 </div>
               )}
 

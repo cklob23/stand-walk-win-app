@@ -53,17 +53,23 @@ async function getAllUsers() {
 
     if (pairings) {
         for (const pairing of pairings) {
-            // Get learner name for this pairing
+            // Get learner name for this pairing - handle both single object and array from Supabase joins
             const learnerData = pairing.learner as unknown
-            const learnerName = learnerData && typeof learnerData === 'object' && 'full_name' in learnerData
-                ? (learnerData as { full_name: string | null }).full_name
-                : null
+            let learnerName: string | null = null
+            if (Array.isArray(learnerData) && learnerData[0] && 'full_name' in learnerData[0]) {
+                learnerName = learnerData[0].full_name
+            } else if (learnerData && typeof learnerData === 'object' && 'full_name' in learnerData) {
+                learnerName = (learnerData as { full_name: string | null }).full_name
+            }
 
-            // Get leader name for this pairing
+            // Get leader name for this pairing - handle both single object and array from Supabase joins
             const leaderData = pairing.leader as unknown
-            const leaderName = leaderData && typeof leaderData === 'object' && 'full_name' in leaderData
-                ? (leaderData as { full_name: string | null }).full_name
-                : null
+            let leaderName: string | null = null
+            if (Array.isArray(leaderData) && leaderData[0] && 'full_name' in leaderData[0]) {
+                leaderName = leaderData[0].full_name
+            } else if (leaderData && typeof leaderData === 'object' && 'full_name' in leaderData) {
+                leaderName = (leaderData as { full_name: string | null }).full_name
+            }
 
             // Map leader to their learners
             if (pairing.leader_id && learnerName) {
@@ -77,11 +83,14 @@ async function getAllUsers() {
                 learnerToLeader.set(pairing.learner_id, leaderName)
             }
 
-            // Get journey name for this pairing
+            // Get journey name for this pairing - handle both single object and array from Supabase joins
             const journeyData = pairing.journey as unknown
-            const journeyName = journeyData && typeof journeyData === 'object' && 'name' in journeyData
-                ? (journeyData as { name: string }).name
-                : null
+            let journeyName: string | null = null
+            if (Array.isArray(journeyData) && journeyData[0] && 'name' in journeyData[0]) {
+                journeyName = journeyData[0].name
+            } else if (journeyData && typeof journeyData === 'object' && 'name' in journeyData) {
+                journeyName = (journeyData as { name: string }).name
+            }
 
             // Map users to their journey info (both learner and leader)
             if (journeyName && pairing.current_week) {

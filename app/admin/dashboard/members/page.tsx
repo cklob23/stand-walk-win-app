@@ -67,19 +67,37 @@ async function getMembers(organizationId: string, adminUserId: string): Promise<
                 const learnerData = p.learner as unknown
                 const leaderData = p.leader as unknown
                 const journeyData = p.journey as unknown
+
+                // Handle both single object and array from Supabase joins for journey
+                let journeyName: string | null = null
+                if (Array.isArray(journeyData) && journeyData[0] && 'name' in journeyData[0]) {
+                    journeyName = journeyData[0].name
+                } else if (journeyData && typeof journeyData === 'object' && 'name' in journeyData) {
+                    journeyName = (journeyData as { name: string }).name
+                }
+
+                // Handle arrays for learner/leader too
+                let learnerName: string | null = null
+                if (Array.isArray(learnerData) && learnerData[0] && 'full_name' in learnerData[0]) {
+                    learnerName = learnerData[0].full_name
+                } else if (learnerData && typeof learnerData === 'object' && 'full_name' in learnerData) {
+                    learnerName = (learnerData as { full_name: string | null }).full_name
+                }
+
+                let leaderName: string | null = null
+                if (Array.isArray(leaderData) && leaderData[0] && 'full_name' in leaderData[0]) {
+                    leaderName = leaderData[0].full_name
+                } else if (leaderData && typeof leaderData === 'object' && 'full_name' in leaderData) {
+                    leaderName = (leaderData as { full_name: string | null }).full_name
+                }
+
                 return {
                     leader_id: p.leader_id,
                     learner_id: p.learner_id,
                     current_week: p.current_week,
-                    learner_name: learnerData && typeof learnerData === 'object' && 'full_name' in learnerData
-                        ? (learnerData as { full_name: string | null }).full_name
-                        : null,
-                    leader_name: leaderData && typeof leaderData === 'object' && 'full_name' in leaderData
-                        ? (leaderData as { full_name: string | null }).full_name
-                        : null,
-                    journey_name: journeyData && typeof journeyData === 'object' && 'name' in journeyData
-                        ? (journeyData as { name: string }).name
-                        : null,
+                    learner_name: learnerName,
+                    leader_name: leaderName,
+                    journey_name: journeyName,
                 }
             })
         }
