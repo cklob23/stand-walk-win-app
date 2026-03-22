@@ -54,27 +54,34 @@ async function getMembers(organizationId: string, adminUserId: string): Promise<
         leader_id,
         learner_id,
         current_week,
+        journey_id,
         learner:profiles!pairings_learner_id_fkey(full_name),
-        leader:profiles!pairings_leader_id_fkey(full_name),
-        journey:journeys(name)
+        leader:profiles!pairings_leader_id_fkey(full_name)
       `)
             .in('leader_id', leaderIds)
             .eq('status', 'active')
             .not('learner_id', 'is', null)
 
+        // Get all journeys for lookup
+        const { data: journeys } = await supabase
+            .from('journeys')
+            .select('id, name')
+
+        // Create a journey lookup map
+        const journeyLookup = new Map<string, string>()
+        if (journeys) {
+            for (const journey of journeys) {
+                journeyLookup.set(journey.id, journey.name)
+            }
+        }
+
         if (pairings) {
             allPairings = pairings.map(p => {
                 const learnerData = p.learner as unknown
                 const leaderData = p.leader as unknown
-                const journeyData = p.journey as unknown
 
-                // Handle both single object and array from Supabase joins for journey
-                let journeyName: string | null = null
-                if (Array.isArray(journeyData) && journeyData[0] && 'name' in journeyData[0]) {
-                    journeyName = journeyData[0].name
-                } else if (journeyData && typeof journeyData === 'object' && 'name' in journeyData) {
-                    journeyName = (journeyData as { name: string }).name
-                }
+                // Get journey name from the lookup map
+                const journeyName = p.journey_id ? journeyLookup.get(p.journey_id) || null : null
 
                 // Handle arrays for learner/leader too
                 let learnerName: string | null = null
@@ -310,7 +317,7 @@ export default async function AdminMembersPage() {
                                                 )}
                                             </TableCell>
                                             <TableCell>
-                                                {member.current_week ? (
+                                                {member.current_week != null ? (
                                                     <Badge variant="outline" className="text-xs">
                                                         Week {member.current_week}/6
                                                     </Badge>

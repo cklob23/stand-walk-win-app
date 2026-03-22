@@ -21,7 +21,7 @@ export default async function RequestsPage() {
       user_id,
       request_type,
       status,
-      notes,
+      message,
       admin_response,
       created_at,
       updated_at,

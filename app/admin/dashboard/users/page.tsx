@@ -32,8 +32,8 @@ async function getAllUsers() {
         return []
     }
 
-    // Get all active pairings with leader and learner names, journey info, and current week
-    const { data: pairings } = await supabase
+    // Get all active pairings with leader and learner names
+    const { data: pairings, error: pairingsError } = await supabase
         .from('pairings')
         .select(`
       leader_id,
@@ -41,10 +41,24 @@ async function getAllUsers() {
       current_week,
       journey_id,
       leader:profiles!pairings_leader_id_fkey(id, full_name),
-      learner:profiles!pairings_learner_id_fkey(id, full_name),
-      journey:journeys(id, name)
+      learner:profiles!pairings_learner_id_fkey(id, full_name)
     `)
         .eq('status', 'active')
+
+    // Get all journeys for lookup
+    const { data: journeys } = await supabase
+        .from('journeys')
+        .select('id, name')
+
+    // Create a journey lookup map
+    const journeyMap = new Map<string, string>()
+    if (journeys) {
+        for (const journey of journeys) {
+            journeyMap.set(journey.id, journey.name)
+        }
+    }
+
+
 
     // Create maps for quick lookup
     const leaderToLearners = new Map<string, string[]>()
@@ -83,17 +97,12 @@ async function getAllUsers() {
                 learnerToLeader.set(pairing.learner_id, leaderName)
             }
 
-            // Get journey name for this pairing - handle both single object and array from Supabase joins
-            const journeyData = pairing.journey as unknown
-            let journeyName: string | null = null
-            if (Array.isArray(journeyData) && journeyData[0] && 'name' in journeyData[0]) {
-                journeyName = journeyData[0].name
-            } else if (journeyData && typeof journeyData === 'object' && 'name' in journeyData) {
-                journeyName = (journeyData as { name: string }).name
-            }
+            // Get journey name from the lookup map
+            const journeyName = pairing.journey_id ? journeyMap.get(pairing.journey_id) || null : null
 
             // Map users to their journey info (both learner and leader)
-            if (journeyName && pairing.current_week) {
+            // Note: current_week can be 0 which is falsy, so use != null check
+            if (journeyName && pairing.current_week != null) {
                 if (pairing.learner_id) {
                     userToJourney.set(pairing.learner_id, {
                         journeyName,
@@ -122,7 +131,7 @@ async function getAllUsers() {
                 ? leaderToLearners.get(user.id)?.join(', ') || null
                 : learnerToLeader.get(user.id) || null,
             journey_name: journeyInfo?.journeyName || null,
-            current_week: journeyInfo?.currentWeek || null
+            current_week: journeyInfo?.currentWeek ?? null
         }
     })
 }
@@ -252,7 +261,7 @@ export default async function MasterUsersPage() {
                                             )}
                                         </TableCell>
                                         <TableCell>
-                                            {user.current_week ? (
+                                            {user.current_week != null ? (
                                                 <Badge variant="outline" className="text-xs">
                                                     Week {user.current_week}/6
                                                 </Badge>
