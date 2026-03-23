@@ -55,11 +55,40 @@ async function getAllOrganizations() {
             const availableCodes = codes?.filter(c => c.status === 'available').length || 0
             const usedCodes = codes?.filter(c => c.status === 'used').length || 0
 
+            // Get all subscriptions for this org with tier info
+            const { data: subscriptions } = await supabase
+                .from('subscriptions')
+                .select(`
+          id,
+          license_count,
+          status,
+          tier:subscription_tiers(id, name, display_name)
+        `)
+                .eq('organization_id', org.id)
+                .eq('status', 'active')
+
+            // Extract unique tiers from subscriptions
+            const tiers = subscriptions?.map(sub => {
+                const tierData = sub.tier as unknown
+                if (Array.isArray(tierData) && tierData[0]) {
+                    return tierData[0] as { id: string; name: string; display_name: string }
+                } else if (tierData && typeof tierData === 'object' && 'display_name' in tierData) {
+                    return tierData as { id: string; name: string; display_name: string }
+                }
+                return null
+            }).filter(Boolean) || []
+
+            // Remove duplicate tiers by id
+            const uniqueTiers = tiers.filter((tier, index, self) =>
+                tier && self.findIndex(t => t?.id === tier.id) === index
+            )
+
             return {
                 ...org,
                 member_count: Math.max(membersCount || 0, profilesCount || 0),
                 available_codes: availableCodes,
                 used_codes: usedCodes,
+                all_tiers: uniqueTiers,
             }
         })
     )
@@ -180,9 +209,21 @@ export default async function MasterOrganizationsPage() {
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <Badge variant="secondary">
-                                                {org.subscription_tier?.display_name || 'No Tier'}
-                                            </Badge>
+                                            <div className="flex flex-wrap gap-1">
+                                                {org.all_tiers && org.all_tiers.length > 0 ? (
+                                                    org.all_tiers.map((tier: { id: string; display_name: string } | null) => (
+                                                        tier && (
+                                                            <Badge key={tier.id} variant="secondary">
+                                                                {tier.display_name}
+                                                            </Badge>
+                                                        )
+                                                    ))
+                                                ) : (
+                                                    <Badge variant="outline" className="text-muted-foreground">
+                                                        No Tier
+                                                    </Badge>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant={org.is_active ? 'default' : 'secondary'}>

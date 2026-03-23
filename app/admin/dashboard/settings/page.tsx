@@ -1,12 +1,12 @@
 import { redirect } from 'next/navigation'
 import { getAdminUser } from '@/lib/admin-auth-actions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Building2, Mail, Calendar, Shield } from 'lucide-react'
 import { OrgSettings } from '@/components/admin/org-settings'
+import { OrgDangerZone } from '@/components/admin/org-danger-zone'
 import { createAdminClient } from '@/lib/supabase/server'
 
 // Map admin_role values to display names
@@ -47,6 +47,20 @@ export default async function AdminSettingsPage() {
         primary_color: branding?.branding_primary_color || null,
         secondary_color: branding?.branding_secondary_color || null,
     }
+
+    // Fetch organization members for the transfer ownership dropdown
+    const { data: members } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('organization_id', organization.id)
+        .not('id', 'eq', profile?.id || '')
+        .order('full_name', { ascending: true })
+
+    const orgMembers = (members || []).map(m => ({
+        id: m.id,
+        full_name: m.full_name,
+        email: m.email || '',
+    }))
 
     return (
         <div className="space-y-6">
@@ -176,41 +190,12 @@ export default async function AdminSettingsPage() {
             </div>
 
             {/* Danger Zone */}
-            <Card className="border-destructive/50">
-                <CardHeader>
-                    <CardTitle className="text-destructive">Danger Zone</CardTitle>
-                    <CardDescription>
-                        Irreversible actions that affect your organization
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="font-medium">Transfer Ownership</p>
-                            <p className="text-sm text-muted-foreground">
-                                Transfer admin rights to another team member
-                            </p>
-                        </div>
-                        <Button variant="outline" disabled>
-                            Transfer
-                        </Button>
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="font-medium">Delete Organization</p>
-                            <p className="text-sm text-muted-foreground">
-                                Permanently delete this organization and all data
-                            </p>
-                        </div>
-                        <Button variant="destructive" disabled>
-                            Delete
-                        </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                        These features are coming soon. Contact support for assistance.
-                    </p>
-                </CardContent>
-            </Card>
+            <OrgDangerZone
+                organizationId={organization.id}
+                organizationName={organization.name}
+                currentAdminId={profile?.id || ''}
+                members={orgMembers}
+            />
         </div>
     )
 }
