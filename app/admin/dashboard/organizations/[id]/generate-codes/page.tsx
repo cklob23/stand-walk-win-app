@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Key, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Ticket, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
 import { revalidatePath } from 'next/cache'
 
@@ -143,7 +143,7 @@ export default async function GenerateCodesPage({
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <Key className="h-5 w-5" />
+                            <Ticket className="h-5 w-5" />
                             Generate New Codes
                         </CardTitle>
                         <CardDescription>
@@ -174,7 +174,7 @@ export default async function GenerateCodesPage({
                             </div>
 
                             <Button type="submit" className="w-full">
-                                <Key className="mr-2 h-4 w-4" />
+                                <Ticket className="mr-2 h-4 w-4" />
                                 Generate Codes
                             </Button>
                         </form>

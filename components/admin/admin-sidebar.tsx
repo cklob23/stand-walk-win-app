@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import {
     LayoutDashboard,
     Users,
-    Key,
+    Ticket,
     Settings,
     Building2,
     CreditCard,
@@ -38,7 +38,7 @@ const orgAdminLinks = [
     {
         title: 'Access Codes',
         href: '/admin/dashboard/access-codes',
-        icon: Key,
+        icon: Ticket,
     },
     {
         title: 'Subscription',

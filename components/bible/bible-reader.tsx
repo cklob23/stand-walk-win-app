@@ -1061,8 +1061,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 body: JSON.stringify({ text, voice, speakingRate: speechRateRef.current }),
             })
         }
-        if (!res.ok) throw new Error('TTS failed')
+        if (!res.ok) {
+            throw new Error(`TTS failed: ${res.status}`)
+        }
         const blob = await res.blob()
+        if (blob.size === 0) {
+            throw new Error('TTS returned empty audio')
+        }
         const blobUrl = URL.createObjectURL(blob)
         const audio = new Audio(blobUrl)
         // Preload the audio data
@@ -1224,13 +1229,14 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
         audio.onerror = () => {
             if (mobileStoppedRef.current) return
-            toast.error('Audio playback error.')
+            toast.error('Audio playback error. Please try again.')
             setIsPlaying(false)
             setCurrentReadingVerse(null)
             mobilePlayingRef.current = false
         }
 
         audio.play().catch(() => {
+            toast.error('Failed to play audio. Please try again.')
             setIsPlaying(false)
             setCurrentReadingVerse(null)
             mobilePlayingRef.current = false
@@ -1404,7 +1410,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         else handlePlayDesktop(initialStartVerse)
     }
     const handlePauseAudio = () => {
-        if (useCloudVoices) handlePauseMobile()
+        // Use cloud pause if on mobile/Apple OR if a cloud voice is selected
+        if (useCloudVoices || isCloudVoiceSelected) handlePauseMobile()
         else handlePauseDesktop()
     }
     const clearAutoAdvance = useCallback(() => {
@@ -1412,7 +1419,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }, [])
 
     const handleStopAudio = () => {
-        if (useCloudVoices) handleStopMobile()
+        // Use cloud stop if on mobile/Apple OR if a cloud voice is selected
+        if (useCloudVoices || isCloudVoiceSelected) handleStopMobile()
         else handleStopDesktop()
         setTtsProgress(0)
         clearAutoAdvance()
@@ -1973,7 +1981,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                 disabled={previewLoading}
                                 onClick={async () => {
                                     const previewText = 'For God so loved the world, that he gave his only begotten Son.'
-                                    if (useCloudVoices) {
+                                    // Use cloud TTS if on mobile/Apple OR if a cloud voice is selected on desktop
+                                    if (useCloudVoices || isCloudVoiceSelected) {
                                         setPreviewLoading(true)
                                         try {
                                             const provider = getVoiceProvider(selectedCloudVoice)

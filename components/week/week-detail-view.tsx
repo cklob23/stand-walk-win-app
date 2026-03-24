@@ -28,6 +28,7 @@ import { scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { weekDetailSteps } from '@/lib/tour-steps'
+import { WeekCelebrationPopup } from '@/components/celebration/week-celebration-popup'
 
 interface AssignmentReaction {
   id: string
@@ -53,8 +54,12 @@ interface WeekDetailViewProps {
   expandedAssignmentId?: string
   // Journey and org context for graduation
   journeyName?: string
+  journeySubtitle?: string
   organizationId?: string | null
   organizationName?: string | null
+  // Celebration data
+  celebrationWeek?: number | null
+  celebrationWeekTitle?: string | null
 }
 
 export function WeekDetailView({
@@ -72,8 +77,11 @@ export function WeekDetailView({
   bibleTextSize = 'base',
   expandedAssignmentId,
   journeyName,
+  journeySubtitle,
   organizationId,
   organizationName,
+  celebrationWeek,
+  celebrationWeekTitle,
 }: WeekDetailViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -255,6 +263,7 @@ export function WeekDetailView({
                   defaultOpen={expandedAssignmentId === assignment.id}
                   userName={profile.role === 'learner' ? (profile.full_name || 'Learner') : (partner?.full_name || 'Learner')}
                   journeyName={journeyName}
+                  journeySubtitle={journeySubtitle}
                   organizationId={organizationId}
                   organizationName={organizationName}
                 />
@@ -388,6 +397,15 @@ export function WeekDetailView({
 
       {/* Onboarding Tour */}
       <FeatureTour tourId="week-detail" steps={weekDetailSteps} />
+
+      {/* Week Celebration Popup */}
+      {profile.role === 'learner' && (
+        <WeekCelebrationPopup
+          pairingId={pairing.id}
+          celebrationWeek={celebrationWeek || null}
+          celebrationWeekTitle={celebrationWeekTitle || null}
+        />
+      )}
     </div>
   )
 }

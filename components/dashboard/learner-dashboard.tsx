@@ -8,13 +8,17 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import {
-  MessageSquare,
+  Sparkles,
+  Calendar,
   BookOpen,
+  ArrowRight,
+  MessageSquare,
   CheckCircle2,
   Circle,
-  ArrowRight,
-  Calendar,
-  Sparkles,
+  PenLine,
+  Zap,
+  MessageCircle,
+  Heart,
   AlertTriangle,
   BookMarked,
   GraduationCap
@@ -23,7 +27,6 @@ import type { Profile, Pairing, WeeklyContent, Assignment, Message, Notification
 import { Video, Phone, MapPin, Monitor } from 'lucide-react'
 import { WeeklyTimeline } from './weekly-timeline'
 import { QuickChat } from './quick-chat'
-import { AssignmentCard } from './assignment-card'
 import { AddToCalendarButton } from '@/components/add-to-calendar-button'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
 import { scriptureToUrl } from '@/lib/bible-utils'
@@ -31,14 +34,7 @@ import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { learnerDashboardSteps } from '@/lib/tour-steps'
 import { GraduationModal } from '@/components/graduation/graduation-modal'
-
-interface AssignmentReaction {
-  id: string
-  assignment_progress_id: string
-  user_id: string
-  emoji: string
-  created_at: string
-}
+import { WeekCelebrationPopup } from '@/components/celebration/week-celebration-popup'
 
 interface LearnerDashboardProps {
   profile: Profile
@@ -47,18 +43,15 @@ interface LearnerDashboardProps {
   weeklyContent: WeeklyContent[]
   assignments: Assignment[]
   assignmentProgress: { id?: string; assignment_id: string; status: string; notes: string | null; completed_at: string | null; leader_reply?: string | null; leader_reply_at?: string | null }[]
-  assignmentReactions?: AssignmentReaction[]
   recentMessages: Message[]
   notifications: Notification[]
   currentWeek: number
   nextMeeting: ScheduledMeeting | null
   hasWeeklyMeeting: boolean
   hasJournalEntryToday: boolean
-  expandedAssignmentId?: string | null
-  // Journey and org context for graduation
-  journeyName?: string
-  organizationId?: string | null
-  organizationName?: string | null
+  // Celebration data from server
+  celebrationWeek?: number | null
+  celebrationWeekTitle?: string | null
 }
 
 export function LearnerDashboard({
@@ -68,16 +61,13 @@ export function LearnerDashboard({
   weeklyContent,
   assignments,
   assignmentProgress,
-  assignmentReactions = [],
   recentMessages,
   currentWeek,
   nextMeeting,
   hasWeeklyMeeting,
   hasJournalEntryToday,
-  expandedAssignmentId,
-  journeyName,
-  organizationId,
-  organizationName,
+  celebrationWeek,
+  celebrationWeekTitle,
 }: LearnerDashboardProps) {
   const [showGraduationModal, setShowGraduationModal] = useState(false)
   const [hasShownGraduation, setHasShownGraduation] = useState(false)
@@ -241,7 +231,7 @@ export function LearnerDashboard({
             </CardContent>
           </Card>
 
-          {/* Current Assignments */}
+          {/* Current Assignments Overview */}
           <Card data-tour="learner-assignments" className="overflow-hidden w-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
@@ -253,34 +243,68 @@ export function LearnerDashboard({
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="space-y-3 w-full">
-                {currentWeekAssignments.map((assignment) => (
-                  <AssignmentCard
-                    key={assignment.id}
-                    assignment={assignment}
-                    progress={assignment.progress}
-                    progressReactions={assignment.progress?.id
-                      ? assignmentReactions.filter(r => r.assignment_progress_id === assignment.progress?.id)
-                      : []
-                    }
-                    pairingId={pairing.id}
-                    userId={profile.id}
-                    userRole="learner"
-                    leaderId={pairing.leader_id}
-                    learnerName={profile.full_name || 'Learner'}
-                    leaderName={partner?.full_name || 'your leader'}
-                    currentWeek={currentWeek}
-                    totalWeekAssignments={currentWeekAssignments.length}
-                    completedWeekAssignments={currentWeekAssignments.filter(a => a.progress?.status === 'completed').length}
-                    hasWeeklyMeeting={hasWeeklyMeeting}
-                    weekTitle={currentWeekContent?.title}
-                    defaultOpen={expandedAssignmentId === assignment.id}
-                    userName={profile.full_name || 'Learner'}
-                    journeyName={journeyName}
-                    organizationId={organizationId}
-                    organizationName={organizationName}
-                  />
-                ))}
+              <div className="space-y-2 w-full">
+                {currentWeekAssignments.map((assignment) => {
+                  const isCompleted = assignment.progress?.status === 'completed'
+                  const typeColors: Record<string, string> = {
+                    reading: 'bg-blue-100 text-blue-700',
+                    reflection: 'bg-amber-100 text-amber-700',
+                    action: 'bg-green-100 text-green-700',
+                    discussion: 'bg-purple-100 text-purple-700',
+                    prayer: 'bg-pink-100 text-pink-700',
+                    meeting: 'bg-primary/10 text-primary',
+                  }
+                  const typeIcons: Record<string, typeof BookOpen> = {
+                    reading: BookOpen,
+                    reflection: PenLine,
+                    action: Zap,
+                    discussion: MessageCircle,
+                    prayer: Heart,
+                    meeting: Calendar,
+                  }
+                  const Icon = typeIcons[assignment.assignment_type] || Circle
+                  const colorClass = isCompleted
+                    ? 'bg-success/20 text-success'
+                    : (typeColors[assignment.assignment_type] || 'bg-muted text-muted-foreground')
+
+                  return (
+                    <Link
+                      key={assignment.id}
+                      href={`/dashboard/week/${currentWeek}?assignment=${assignment.id}`}
+                      className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 hover:border-primary/30 transition-colors group cursor-pointer"
+                    >
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${colorClass}`}>
+                        {isCompleted ? (
+                          <CheckCircle2 className="h-4 w-4" />
+                        ) : (
+                          <Icon className="h-4 w-4" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className={`text-sm font-medium ${isCompleted ? 'text-muted-foreground line-through' : 'text-foreground group-hover:text-primary'
+                            }`}>
+                            {assignment.title}
+                          </p>
+                          {isCompleted && (
+                            <Badge variant="secondary" className="shrink-0 text-xs bg-success/10 text-success border-0">
+                              Done
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground capitalize mb-1">
+                          {assignment.assignment_type.replace('_', ' ')}
+                        </p>
+                        {assignment.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-2">
+                            {assignment.description}
+                          </p>
+                        )}
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary shrink-0 mt-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </Link>
+                  )
+                })}
                 {currentWeekAssignments.length === 0 && (
                   <div className="text-center py-8">
                     <p className="text-muted-foreground">No assignments for this week yet.</p>
@@ -539,6 +563,13 @@ export function LearnerDashboard({
         </div>
       </div>
 
+      {/* Week Celebration Popup - shows when a week is completed */}
+      <WeekCelebrationPopup
+        pairingId={pairing.id}
+        celebrationWeek={celebrationWeek || null}
+        celebrationWeekTitle={celebrationWeekTitle || null}
+      />
+
       {/* Daily Journal Popup */}
       <DailyJournalPopup
         pairingId={pairing.id}
@@ -556,9 +587,13 @@ export function LearnerDashboard({
         userId={profile.id}
         userName={profile.full_name?.split(' ')[0] || 'Graduate'}
         pairingId={pairing.id}
+        journeyId={pairing.journey_id || undefined}
         journeyName={pairing.journey?.name || 'Stand Walk Run'}
+        journeySubtitle={pairing.journey?.description || undefined}
         canBeLeader={profile.can_be_leader !== false}
         subscriptionTier={profile.subscription_tier}
+        organizationId={profile.organization_id}
+        organizationName={profile.organization?.name}
       />
     </div>
   )

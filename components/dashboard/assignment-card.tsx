@@ -98,6 +98,7 @@ interface AssignmentCardProps {
   // Graduation modal props
   userName?: string
   journeyName?: string
+  journeySubtitle?: string
   canBeLeader?: boolean
   subscriptionTier?: { max_learners: number } | null
   // Organization context for graduation modal
@@ -160,6 +161,7 @@ export function AssignmentCard({
   defaultOpen = false,
   userName,
   journeyName,
+  journeySubtitle,
   canBeLeader = true,
   subscriptionTier,
   organizationId,
@@ -506,7 +508,7 @@ export function AssignmentCard({
           .select('week_number, title')
           .order('week_number')
 
-        if (weeklyContent) {
+        if (weeklyContent && weeklyContent.length > 0) {
           const result = await advanceToNextWeek(
             pairingId,
             currentWeek,
@@ -1324,6 +1326,7 @@ export function AssignmentCard({
         userName={userName || learnerName || 'Learner'}
         pairingId={pairingId}
         journeyName={journeyName}
+        journeySubtitle={journeySubtitle}
         canBeLeader={canBeLeader}
         subscriptionTier={subscriptionTier}
         organizationId={organizationId}

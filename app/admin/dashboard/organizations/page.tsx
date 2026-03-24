@@ -12,7 +12,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table'
-import { Building2, Users, Key, CreditCard } from 'lucide-react'
+import { Building2, Users, Ticket, CreditCard } from 'lucide-react'
 import Link from 'next/link'
 
 async function getAllOrganizations() {
@@ -34,38 +34,60 @@ async function getAllOrganizations() {
     // Get member counts for each org
     const orgsWithCounts = await Promise.all(
         (organizations || []).map(async (org) => {
-            // Count from organization_members or profiles with journey role
-            const { count: membersCount } = await supabase
-                .from('organization_members')
-                .select('*', { count: 'exact', head: true })
-                .eq('organization_id', org.id)
-
-            const { count: profilesCount } = await supabase
-                .from('profiles')
-                .select('*', { count: 'exact', head: true })
-                .eq('organization_id', org.id)
-                .not('role', 'is', null)
-
-            // Count access codes
+            // Count access codes - 'claimed' means the code has been used by a leader
             const { data: codes } = await supabase
                 .from('access_codes')
-                .select('status')
+                .select('status, claimed_by')
                 .eq('organization_id', org.id)
 
             const availableCodes = codes?.filter(c => c.status === 'available').length || 0
-            const usedCodes = codes?.filter(c => c.status === 'used').length || 0
+            const usedCodes = codes?.filter(c => c.status === 'claimed').length || 0
+            const totalCodes = codes?.length || 0
 
-            // Get all subscriptions for this org with tier info
+            // Get leaders who have claimed access codes (they are members of this org)
+            const claimedByIds = codes?.filter(c => c.status === 'claimed' && c.claimed_by).map(c => c.claimed_by) || []
+
+            // Count unique learners paired with leaders in this org
+            // Exclude learners who have also become leaders (they're already counted as leaders)
+            let learnerCount = 0
+            if (claimedByIds.length > 0) {
+                const { data: pairings } = await supabase
+                    .from('pairings')
+                    .select('learner_id')
+                    .in('leader_id', claimedByIds)
+                    .in('status', ['active', 'completed'])
+
+                // Get unique learner IDs who are NOT also leaders (not in claimedByIds)
+                const uniqueLearnerIds = [...new Set(pairings?.map(p => p.learner_id) || [])]
+                const pureLearnersOnly = uniqueLearnerIds.filter(id => !claimedByIds.includes(id))
+                learnerCount = pureLearnersOnly.length
+            }
+
+            // Actual members = 1 org admin + leaders using codes + their learners (who aren't also leaders)
+            const actualMembers = 1 + usedCodes + learnerCount
+
+            // Get all subscriptions for this org with tier info to calculate max members
             const { data: subscriptions } = await supabase
                 .from('subscriptions')
                 .select(`
           id,
           license_count,
           status,
-          tier:subscription_tiers(id, name, display_name)
+          tier:subscription_tiers(id, name, display_name, max_learners)
         `)
                 .eq('organization_id', org.id)
                 .eq('status', 'active')
+
+            // Calculate max possible members based on subscriptions
+            // Total possible = 1 org admin + sum of (license_count × (1 leader + max_learners)) for each subscription
+            let maxPossibleMembers = 1 // 1 org admin
+            subscriptions?.forEach(sub => {
+                const tierData = Array.isArray(sub.tier) ? sub.tier[0] : sub.tier
+                const maxLearners = (tierData as any)?.max_learners || 1
+                const licenseCount = sub.license_count || 0
+                // Each license = 1 leader + max_learners
+                maxPossibleMembers += licenseCount * (1 + maxLearners)
+            })
 
             // Extract unique tiers from subscriptions
             const tiers = subscriptions?.map(sub => {
@@ -85,7 +107,8 @@ async function getAllOrganizations() {
 
             return {
                 ...org,
-                member_count: Math.max(membersCount || 0, profilesCount || 0),
+                member_count: actualMembers,
+                max_possible_members: maxPossibleMembers,
                 available_codes: availableCodes,
                 used_codes: usedCodes,
                 all_tiers: uniqueTiers,
@@ -195,7 +218,7 @@ export default async function MasterOrganizationsPage() {
                                         <TableCell>
                                             <div className="flex items-center gap-1">
                                                 <Users className="h-4 w-4 text-muted-foreground" />
-                                                {org.member_count} / {org.max_users || '∞'}
+                                                {org.member_count} / {org.max_possible_members || '∞'}
                                             </div>
                                         </TableCell>
                                         <TableCell>

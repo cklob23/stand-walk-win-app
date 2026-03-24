@@ -141,31 +141,60 @@ export async function approveOrgMemberRequest(params: ApproveRequestParams) {
                 .from('pairings')
                 .select('id')
                 .eq('learner_id', request.user_id)
-                .eq('status', 'active')
+                .or('status.eq.active,current_week.gte.6')
                 .single()
 
             if (activePairing) {
                 await adminClient
                     .from('pairings')
                     .update({
-                        status: 'graduated',
-                        graduated_at: new Date().toISOString(),
+                        status: 'completed',
+                        completed_at: new Date().toISOString(),
                     })
                     .eq('id', activePairing.id)
-
-                // Update their profile to leader role
-                await adminClient
-                    .from('profiles')
-                    .update({ role: 'leader' })
-                    .eq('id', request.user_id)
             }
+
+            // Get the access code details to determine the correct tier
+            let tierId: string | null = null
+            if (accessCodeId) {
+                const { data: accessCode } = await adminClient
+                    .from('access_codes')
+                    .select('tier_id, journey_id')
+                    .eq('id', accessCodeId)
+                    .single()
+
+                tierId = accessCode?.tier_id || null
+
+                // Mark access code as claimed
+                await adminClient
+                    .from('access_codes')
+                    .update({
+                        status: 'claimed',
+                        claimed_by: request.user_id,
+                        claimed_at: new Date().toISOString(),
+                    })
+                    .eq('id', accessCodeId)
+            }
+
+            // Update their profile to leader role with the correct tier from access code
+            const updateData: Record<string, unknown> = { role: 'leader' }
+            if (tierId) {
+                updateData.subscription_tier_id = tierId
+            }
+
+            await adminClient
+                .from('profiles')
+                .update(updateData)
+                .eq('id', request.user_id)
+
         } else if (request.request_type === 'new_journey' && accessCodeId) {
-            // Assign the access code to the user
+            // Assign the access code to the user (mark as claimed)
             await adminClient
                 .from('access_codes')
                 .update({
-                    assigned_to_email: request.user?.email,
-                    assigned_at: new Date().toISOString(),
+                    status: 'claimed',
+                    claimed_by: request.user_id,
+                    claimed_at: new Date().toISOString(),
                 })
                 .eq('id', accessCodeId)
         }

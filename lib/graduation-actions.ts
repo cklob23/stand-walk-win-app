@@ -169,7 +169,7 @@ export async function startNewJourney(pairingId: string, journeyId: string) {
     return { success: true, needsNewPairing: true }
 }
 
-export async function getAvailableJourneys(userId: string): Promise<{ success: boolean; journeys: Array<{ id: string; name: string; description: string | null; total_weeks: number; is_default: boolean; price: number; isCompleted: boolean; isPurchased: boolean; canStart: boolean }> }> {
+export async function getAvailableJourneys(userId: string, currentJourneyId?: string): Promise<{ success: boolean; journeys: Array<{ id: string; name: string; description: string | null; total_weeks: number; is_default: boolean; price: number; isCompleted: boolean; isPurchased: boolean; canStart: boolean }> }> {
     const supabase = await createClient()
 
     // Get all available journeys
@@ -201,15 +201,17 @@ export async function getAvailableJourneys(userId: string): Promise<{ success: b
 
     const purchasedIds = new Set(purchases?.map(p => p.journey_id) || [])
 
-    // Mark journeys with status
+    // Filter out current journey and mark journeys with status
     return {
         success: true,
-        journeys: journeys.map(journey => ({
-            ...journey,
-            isCompleted: completedIds.has(journey.id),
-            isPurchased: purchasedIds.has(journey.id) || journey.is_default || journey.price === 0,
-            canStart: !completedIds.has(journey.id) && (purchasedIds.has(journey.id) || journey.is_default || journey.price === 0)
-        }))
+        journeys: journeys
+            .filter(journey => journey.id !== currentJourneyId) // Exclude current journey
+            .map(journey => ({
+                ...journey,
+                isCompleted: completedIds.has(journey.id),
+                isPurchased: purchasedIds.has(journey.id) || journey.is_default || journey.price === 0,
+                canStart: !completedIds.has(journey.id) && (purchasedIds.has(journey.id) || journey.is_default || journey.price === 0)
+            }))
     }
 }
 

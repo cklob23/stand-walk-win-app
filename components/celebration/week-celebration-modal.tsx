@@ -84,33 +84,41 @@ export function WeekCelebrationModal({
     useEffect(() => {
         if (isOpen && !hasTriggeredConfetti) {
             // Trigger confetti when modal opens
-            const duration = 2000
-            const end = Date.now() + duration
+            try {
+                const duration = 2000
+                const end = Date.now() + duration
 
-            const colors = ['#0f6353', '#f0ede6', '#fbbf24', '#10b981']
+                const colors = ['#0f6353', '#f0ede6', '#fbbf24', '#10b981']
 
-            const frame = () => {
-                confetti({
-                    particleCount: 3,
-                    angle: 60,
-                    spread: 55,
-                    origin: { x: 0 },
-                    colors: colors,
-                })
-                confetti({
-                    particleCount: 3,
-                    angle: 120,
-                    spread: 55,
-                    origin: { x: 1 },
-                    colors: colors,
-                })
+                const frame = () => {
+                    try {
+                        confetti({
+                            particleCount: 3,
+                            angle: 60,
+                            spread: 55,
+                            origin: { x: 0 },
+                            colors: colors,
+                        })
+                        confetti({
+                            particleCount: 3,
+                            angle: 120,
+                            spread: 55,
+                            origin: { x: 1 },
+                            colors: colors,
+                        })
 
-                if (Date.now() < end) {
-                    requestAnimationFrame(frame)
+                        if (Date.now() < end) {
+                            requestAnimationFrame(frame)
+                        }
+                    } catch {
+                        // Confetti failed, ignore
+                    }
                 }
-            }
 
-            frame()
+                frame()
+            } catch {
+                // Confetti setup failed, ignore
+            }
             setHasTriggeredConfetti(true)
         }
     }, [isOpen, hasTriggeredConfetti])
@@ -128,7 +136,7 @@ export function WeekCelebrationModal({
     }
 
     return (
-        <Dialog open={isOpen} onOpenChange={(open: any) => !open && onClose()}>
+        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <DialogContent className="sm:max-w-lg overflow-hidden p-0">
                 {/* Header with gradient background */}
                 <div className={`bg-gradient-to-br ${celebration.bgGradient} dark:from-muted dark:to-muted/50 px-6 pt-8 pb-6`}>

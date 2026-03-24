@@ -5,12 +5,14 @@ import { getSelectedPairingId } from '@/lib/selected-pairing'
 
 interface WeekPageProps {
   params: Promise<{ weekNumber: string }>
-  searchParams: Promise<{ pairing?: string; assignmentId?: string }>
+  searchParams: Promise<{ pairing?: string; assignmentId?: string; assignment?: string }>
 }
 
 export default async function WeekPage({ params, searchParams }: WeekPageProps) {
   const { weekNumber } = await params
-  const { pairing: urlPairingId, assignmentId } = await searchParams
+  const { pairing: urlPairingId, assignmentId, assignment } = await searchParams
+  // Support both ?assignmentId= and ?assignment= query params
+  const expandedAssignment = assignmentId || assignment
   // Use URL param first, then fall back to cookie
   const cookiePairingId = await getSelectedPairingId()
   const selectedPairingId = urlPairingId || cookiePairingId
@@ -153,15 +155,17 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
     .eq('week_number', weekNum)
     .order('created_at', { ascending: false })
 
-  // Get journey name for the pairing
+  // Get journey name and description for the pairing
   let journeyName: string | undefined
+  let journeySubtitle: string | undefined
   if (pairing?.journey_id) {
     const { data: journey } = await supabase
       .from('journeys')
-      .select('name')
+      .select('name, description')
       .eq('id', pairing.journey_id)
       .single()
     journeyName = journey?.name
+    journeySubtitle = journey?.description || undefined
   }
 
   // Get organization info for the user
@@ -193,6 +197,46 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
     hasWeeklyMeeting = (count ?? 0) >= weekNum
   }
 
+  // Check for pending week celebration (learners only)
+  let celebrationWeek: number | null = null
+  let celebrationWeekTitle: string | null = null
+
+  if (profile.role === 'learner') {
+    const currentWeek = pairing.current_week || 1
+    const lastCelebratedWeek = pairing.last_celebrated_week || 0
+
+    // If there's an uncelebrated week (weeks 1-5 only)
+    if (currentWeek > lastCelebratedWeek + 1 && currentWeek <= 6) {
+      const weekToCheck = currentWeek - 1
+
+      // Get assignments for this week
+      const { data: weekAssignments } = await supabase
+        .from('assignments')
+        .select('id')
+        .eq('week_number', weekToCheck)
+
+      if (weekAssignments && weekAssignments.length > 0) {
+        const { data: completedProgress } = await supabase
+          .from('assignment_progress')
+          .select('id')
+          .eq('pairing_id', pairing.id)
+          .eq('status', 'completed')
+          .in('assignment_id', weekAssignments.map(a => a.id))
+
+        if ((completedProgress?.length || 0) >= weekAssignments.length) {
+          celebrationWeek = weekToCheck
+          // Get week title
+          const { data: celebrationWeekContent } = await supabase
+            .from('weekly_content')
+            .select('title')
+            .eq('week_number', weekToCheck)
+            .single()
+          celebrationWeekTitle = celebrationWeekContent?.title || `Week ${weekToCheck}`
+        }
+      }
+    }
+  }
+
   return (
     <WeekDetailView
       profile={profile}
@@ -207,10 +251,13 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
       hasWeeklyMeeting={hasWeeklyMeeting}
       bibleTranslation={profile.bible_translation_preference || 'ESV'}
       bibleTextSize={profile.bible_text_size || 'base'}
-      expandedAssignmentId={assignmentId}
+      expandedAssignmentId={expandedAssignment}
       journeyName={journeyName}
+      journeySubtitle={journeySubtitle}
       organizationId={organizationId}
       organizationName={organizationName}
+      celebrationWeek={celebrationWeek}
+      celebrationWeekTitle={celebrationWeekTitle}
     />
   )
 }

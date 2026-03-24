@@ -6,6 +6,7 @@ import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { BrandingProvider, type OrgBranding } from '@/contexts/branding-context'
 import { SplitScreenProvider } from '@/contexts/split-screen-context'
+import { DynamicFavicon } from '@/components/dynamic-favicon'
 import { DashboardContent } from '@/components/dashboard/dashboard-content'
 import type { Profile, Pairing } from '@/lib/types'
 
@@ -162,6 +163,7 @@ export default async function DashboardLayout({
   return (
     <BrandingProvider initialBranding={orgBranding}>
       <SplitScreenProvider>
+        <DynamicFavicon />
         <div className="min-h-screen bg-background overflow-x-hidden">
           <DashboardHeader
             profile={profile}

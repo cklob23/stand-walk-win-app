@@ -12,7 +12,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table'
-import { Building2, Users, Key, CreditCard, Mail, Calendar, ArrowLeft, ExternalLink } from 'lucide-react'
+import { Building2, Users, Ticket, CreditCard, Mail, Calendar, ArrowLeft, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 
 // Display name mapping for admin roles
@@ -59,7 +59,7 @@ async function getOrganizationDetails(orgId: string) {
         .from('subscriptions')
         .select(`
       *,
-      tier:subscription_tiers(id, name, display_name, price_monthly, features)
+      tier:subscription_tiers(id, name, display_name, price_monthly, features, max_learners)
     `)
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false })
@@ -131,9 +131,34 @@ export default async function ManageOrganizationPage({
         sub.tier?.display_name || sub.tier?.name
     ).filter(Boolean))]
 
-    const availableCodes = accessCodes.filter(c => c.claimed_by === null).length
-    const usedCodes = accessCodes.filter(c => c.claimed_by !== null).length
-    const activeMembers = members.filter(m => m.role).length
+    const availableCodes = accessCodes.filter(c => c.status === 'available').length
+    const usedCodes = accessCodes.filter(c => c.status === 'claimed').length
+
+    // Get leader IDs (people who have claimed access codes)
+    const leaderIds = accessCodes.filter(c => c.status === 'claimed' && c.claimed_by).map(c => c.claimed_by)
+
+    // Count org admins (1 owner)
+    const orgAdminCount = 1
+
+    // Count leaders who have claimed access codes
+    const leaderCount = usedCodes
+
+    // Count learners who are NOT also leaders (to avoid double counting graduated learners)
+    const learnerCount = members.filter(m => m.role === 'learner' && !leaderIds.includes(m.id)).length
+
+    // Actual members = 1 org admin + leaders using codes + their learners (who aren't also leaders)
+    const actualMembers = orgAdminCount + leaderCount + learnerCount
+
+    // Calculate max possible members based on subscriptions
+    // Max = 1 org admin + sum of (license_count × (1 leader + max_learners)) for each subscription
+    let maxPossibleMembers = 1 // 1 org admin
+    subscriptions.forEach(sub => {
+        const tierData = sub.tier as any
+        const maxLearners = tierData?.max_learners || 1
+        const licenseCount = sub.license_count || 0
+        // Each license = 1 leader + max_learners
+        maxPossibleMembers += licenseCount * (1 + maxLearners)
+    })
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-US', {
@@ -168,15 +193,19 @@ export default async function ManageOrganizationPage({
                         <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{activeMembers}</div>
-                        <p className="text-xs text-muted-foreground">of {org.max_users || '∞'} limit</p>
+                        <div className="text-2xl font-bold">{actualMembers} <span className="text-base font-normal text-muted-foreground">/ {maxPossibleMembers}</span></div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1">
+                            <span>{orgAdminCount} admin</span>
+                            <span>{leaderCount} leaders</span>
+                            <span>{learnerCount} learners</span>
+                        </div>
                     </CardContent>
                 </Card>
 
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-medium">Available Codes</CardTitle>
-                        <Key className="h-4 w-4 text-green-500" />
+                        <Ticket className="h-4 w-4 text-green-500" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{availableCodes}</div>
@@ -187,7 +216,7 @@ export default async function ManageOrganizationPage({
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-medium">Used Codes</CardTitle>
-                        <Key className="h-4 w-4 text-muted-foreground" />
+                        <Ticket className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{usedCodes}</div>
@@ -344,7 +373,7 @@ export default async function ManageOrganizationPage({
                     <CardContent className="space-y-3">
                         <Button variant="outline" className="w-full justify-start" asChild>
                             <Link href={`/admin/dashboard/organizations/${id}/generate-codes`}>
-                                <Key className="mr-2 h-4 w-4" />
+                                <Ticket className="mr-2 h-4 w-4" />
                                 Generate Access Codes
                             </Link>
                         </Button>

@@ -27,8 +27,9 @@ export default async function JourneyHistoryPage() {
         redirect('/auth/login')
     }
 
-    // Fetch completed pairings (where journey is complete)
-    const { data: completedPairings } = await supabase
+    // Fetch completed pairings where user is leader or learner
+    // A journey is complete if status='completed' OR current_week >= 6
+    const { data: allUserPairings } = await supabase
         .from('pairings')
         .select(`
       id,
@@ -39,7 +40,6 @@ export default async function JourneyHistoryPage() {
       journey_id,
       leader_id,
       learner_id,
-      access_code_id,
       journey:journeys(
         id,
         name,
@@ -58,11 +58,15 @@ export default async function JourneyHistoryPage() {
       )
     `)
         .or(`leader_id.eq.${user.id},learner_id.eq.${user.id}`)
-        .eq('status', 'completed')
-        .order('completed_at', { ascending: false })
+        .order('completed_at', { ascending: false, nullsFirst: false })
+
+    // Filter to only show completed journeys
+    const completedPairings = allUserPairings?.filter(p => {
+        return p.status === 'completed' || (p.current_week && p.current_week >= 6)
+    }) || []
 
     // Get assignment progress for completed journeys
-    const completedPairingIds = completedPairings?.map(p => p.id) || []
+    const completedPairingIds = completedPairings.map(p => p.id)
 
     let assignmentProgress: Record<string, any[]> = {}
 
@@ -98,12 +102,33 @@ export default async function JourneyHistoryPage() {
         })
     }
 
+    // Fetch weekly content for scripture references
+    const journeyIds = [...new Set(completedPairings.map(p => p.journey_id))]
+    let weeklyContent: Record<string, any[]> = {}
+
+    if (journeyIds.length > 0) {
+        const { data: content } = await supabase
+            .from('weekly_content')
+            .select('week_number, title, description, scripture_reference, journey_id')
+            .in('journey_id', journeyIds)
+            .order('week_number', { ascending: true })
+
+        // Group by journey_id
+        content?.forEach(c => {
+            if (!weeklyContent[c.journey_id]) {
+                weeklyContent[c.journey_id] = []
+            }
+            weeklyContent[c.journey_id].push(c)
+        })
+    }
+
     return (
         <div className="min-h-screen bg-background">
             <main className="container mx-auto px-4 py-8">
                 <CompletedJourneysContent
                     completedPairings={completedPairings || []}
                     assignmentProgress={assignmentProgress}
+                    weeklyContent={weeklyContent}
                     userId={user.id}
                     userRole={profile.role}
                 />

@@ -3,7 +3,8 @@ import { getAdminUser } from '@/lib/admin-auth-actions'
 import { createAdminClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Users, Key, TrendingUp, Building2, Copy, ExternalLink } from 'lucide-react'
+import { Users, Ticket, TrendingUp, Building2, Copy, ExternalLink, Bell, GraduationCap, BookOpen } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 
 async function getOrgStats(organizationId: string) {
@@ -32,6 +33,21 @@ async function getOrgStats(organizationId: string) {
     const totalLicenses = subscriptions?.reduce((sum, sub) => sum + (sub.license_count || 0), 0) || 0
     const planNames = [...new Set(subscriptions?.map(sub => sub.subscription_tiers?.display_name).filter(Boolean))] as string[]
 
+    // Get pending member requests
+    const { data: pendingRequests } = await supabase
+        .from('org_member_requests')
+        .select(`
+      id,
+      user_id,
+      request_type,
+      created_at,
+      user:profiles!org_member_requests_user_id_fkey(full_name, email)
+    `)
+        .eq('organization_id', organizationId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(5)
+
     return {
         memberCount: memberCount || 0,
         availableCodes,
@@ -40,6 +56,7 @@ async function getOrgStats(organizationId: string) {
         subscriptions,
         totalLicenses,
         planNames,
+        pendingRequests: pendingRequests || [],
     }
 }
 
@@ -161,7 +178,7 @@ export default async function AdminDashboardPage() {
                             </Button>
                             <Button asChild className="w-full justify-start" variant="outline">
                                 <Link href="/admin/dashboard/subscriptions">
-                                    <Key className="mr-2 h-4 w-4" />
+                                    <Ticket className="mr-2 h-4 w-4" />
                                     Manage Subscriptions
                                 </Link>
                             </Button>
@@ -247,7 +264,7 @@ export default async function AdminDashboardPage() {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-medium">Available Codes</CardTitle>
-                        <Key className="h-4 w-4 text-muted-foreground" />
+                        <Ticket className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{stats.availableCodes}</div>
@@ -258,7 +275,7 @@ export default async function AdminDashboardPage() {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="text-sm font-medium">Used Codes</CardTitle>
-                        <Key className="h-4 w-4 text-muted-foreground" />
+                        <Ticket className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{stats.usedCodes}</div>
@@ -289,6 +306,53 @@ export default async function AdminDashboardPage() {
                 </Card>
             </div>
 
+            {/* Pending Requests Notification */}
+            {stats.pendingRequests.length > 0 && (
+                <Card className="border-amber-200 bg-amber-50/50">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-amber-800">
+                            <Bell className="h-5 w-5" />
+                            Pending Member Requests
+                            <Badge variant="secondary" className="bg-amber-200 text-amber-800">
+                                {stats.pendingRequests.length}
+                            </Badge>
+                        </CardTitle>
+                        <CardDescription className="text-amber-700">
+                            Members waiting for your approval
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-3">
+                            {stats.pendingRequests.map((req: any) => {
+                                const user = Array.isArray(req.user) ? req.user[0] : req.user
+                                return (
+                                    <div key={req.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-amber-200">
+                                        <div className="flex items-center gap-3">
+                                            {req.request_type === 'become_leader' ? (
+                                                <GraduationCap className="h-5 w-5 text-primary" />
+                                            ) : (
+                                                <BookOpen className="h-5 w-5 text-blue-600" />
+                                            )}
+                                            <div>
+                                                <p className="font-medium text-sm">{user?.full_name || user?.email || 'Unknown'}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {req.request_type === 'become_leader' ? 'Wants to become a leader' : 'Wants a new journey'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                        <Button asChild className="w-full mt-4">
+                            <Link href="/admin/dashboard/requests">
+                                Review All Requests
+                            </Link>
+                        </Button>
+                    </CardContent>
+                </Card>
+            )}
+
             <div className="grid gap-6 md:grid-cols-2">
                 <Card>
                     <CardHeader>
@@ -298,7 +362,7 @@ export default async function AdminDashboardPage() {
                     <CardContent className="space-y-3">
                         <Button asChild className="w-full justify-start" variant="outline">
                             <Link href="/admin/dashboard/access-codes">
-                                <Key className="mr-2 h-4 w-4" />
+                                <Ticket className="mr-2 h-4 w-4" />
                                 View & Copy Access Codes
                             </Link>
                         </Button>
@@ -306,6 +370,12 @@ export default async function AdminDashboardPage() {
                             <Link href="/admin/dashboard/members">
                                 <Users className="mr-2 h-4 w-4" />
                                 Manage Members
+                            </Link>
+                        </Button>
+                        <Button asChild className="w-full justify-start" variant="outline">
+                            <Link href="/admin/dashboard/requests">
+                                <Bell className="mr-2 h-4 w-4" />
+                                Member Requests
                             </Link>
                         </Button>
                         <Button asChild className="w-full justify-start" variant="outline">

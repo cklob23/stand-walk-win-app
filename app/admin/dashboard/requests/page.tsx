@@ -21,8 +21,9 @@ export default async function RequestsPage() {
       user_id,
       request_type,
       status,
-      message,
-      admin_response,
+      notes,
+      admin_notes,
+      assigned_access_code_id,
       created_at,
       updated_at,
       user:profiles!org_member_requests_user_id_fkey(
@@ -39,20 +40,22 @@ export default async function RequestsPage() {
         console.error('Error fetching requests:', error)
     }
 
-    // Fetch available access codes for assigning
-    const { data: availableCodes } = await supabase
+    // Fetch ALL access codes for this organization (so we can show assigned codes in history)
+    const { data: allCodes } = await supabase
         .from('access_codes')
         .select(`
       id,
       code,
       tier_id,
       journey_id,
+      status,
       tier:subscription_tiers(name),
       journey:journeys(name)
     `)
         .eq('organization_id', adminUser.organization.id)
-        .is('claimed_by', null)
-        .eq('is_active', true)
+
+    // Filter to only available codes for assignment
+    const availableCodes = allCodes?.filter(c => c.status === 'available') || []
 
     // Helper to extract first element from Supabase join arrays
     function extractFirst<T>(data: T | T[] | null): T | null {
@@ -66,8 +69,15 @@ export default async function RequestsPage() {
         user: extractFirst(req.user as any),
     }))
 
-    // Transform access codes data
-    const transformedCodes = (availableCodes || []).map(code => ({
+    // Transform all access codes data (for history display)
+    const transformedAllCodes = (allCodes || []).map(code => ({
+        ...code,
+        tier: extractFirst(code.tier as any),
+        journey: extractFirst(code.journey as any),
+    }))
+
+    // Transform available codes (for assignment dropdown)
+    const transformedAvailableCodes = availableCodes.map(code => ({
         ...code,
         tier: extractFirst(code.tier as any),
         journey: extractFirst(code.journey as any),
@@ -76,7 +86,8 @@ export default async function RequestsPage() {
     return (
         <RequestsContent
             requests={transformedRequests as any}
-            availableCodes={transformedCodes as any}
+            availableCodes={transformedAvailableCodes as any}
+            allCodes={transformedAllCodes as any}
             organizationId={adminUser.organization.id}
         />
     )

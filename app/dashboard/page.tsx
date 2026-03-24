@@ -5,7 +5,7 @@ import { LearnerDashboard } from '@/components/dashboard/learner-dashboard'
 import { NoPairingState } from '@/components/dashboard/no-pairing-state'
 import { CovenantRequired } from '@/components/dashboard/covenant-required'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
-import type { Message, Profile, Pairing } from '@/lib/types'
+import type { Message, Profile, Pairing, Journey } from '@/lib/types'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -139,15 +139,21 @@ export default async function DashboardPage({
     .select('*')
     .order('week_number', { ascending: true })
 
-  // Get journey name for the pairing
+  // Get journey details for the pairing
   let journeyName: string | undefined
+  let journeyDescription: string | undefined
   if (pairing?.journey_id) {
     const { data: journey } = await supabase
       .from('journeys')
-      .select('name')
+      .select('name, description')
       .eq('id', pairing.journey_id)
       .single()
     journeyName = journey?.name
+    journeyDescription = journey?.description || undefined
+    // Attach journey to pairing for components that expect it
+    if (pairing && journey) {
+      (pairing as Pairing).journey = journey as Journey
+    }
   }
 
   // Get organization info for the user
@@ -340,6 +346,48 @@ export default async function DashboardPage({
     hasJournalEntryToday = (journalEntry?.length ?? 0) > 0
   }
 
+  // Check for pending week celebration (learners only)
+  let celebrationWeek: number | null = null
+  let celebrationWeekTitle: string | null = null
+
+  if (profile.role === 'learner' && pairing) {
+    const currentWeek = pairing.current_week || 1
+    const lastCelebratedWeek = pairing.last_celebrated_week || 0
+
+    // If there's an uncelebrated week (current > last + 1 means a week was completed but not celebrated)
+    // Only for weeks 1-5 (week 6 completion triggers graduation modal instead)
+    if (currentWeek > lastCelebratedWeek + 1 && currentWeek <= 6) {
+      const weekToCheck = currentWeek - 1
+
+      // Get the week content for the title
+      const { data: weekContent } = await supabase
+        .from('weekly_content')
+        .select('id, title')
+        .eq('week_number', weekToCheck)
+        .single()
+
+      // Get assignments for this week using week_number
+      const { data: weekAssignments } = await supabase
+        .from('assignments')
+        .select('id')
+        .eq('week_number', weekToCheck)
+
+      if (weekAssignments && weekAssignments.length > 0) {
+        const { data: completedProgress } = await supabase
+          .from('assignment_progress')
+          .select('id')
+          .eq('pairing_id', pairing.id)
+          .eq('status', 'completed')
+          .in('assignment_id', weekAssignments.map(a => a.id))
+
+        if ((completedProgress?.length || 0) >= weekAssignments.length) {
+          celebrationWeek = weekToCheck
+          celebrationWeekTitle = weekContent?.title || `Week ${weekToCheck}`
+        }
+      }
+    }
+  }
+
   // Get shared journal entries for leader view
   let sharedJournalEntries: { id: string; entry_date: string; prayer_items: string; god_saying: string }[] = []
   if (profile.role === 'leader' && pairing && pairing.learner_id) {
@@ -381,5 +429,5 @@ export default async function DashboardPage({
     )
   }
 
-  return <LearnerDashboard {...dashboardProps} assignmentReactions={assignmentReactions} hasJournalEntryToday={hasJournalEntryToday} expandedAssignmentId={params.assignmentId} journeyName={journeyName} organizationId={organizationId} organizationName={organizationName} />
+  return <LearnerDashboard {...dashboardProps} hasJournalEntryToday={hasJournalEntryToday} celebrationWeek={celebrationWeek} celebrationWeekTitle={celebrationWeekTitle} />
 }

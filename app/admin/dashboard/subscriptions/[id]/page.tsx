@@ -16,7 +16,7 @@ import {
     DollarSign,
     Mail,
     User,
-    Package,
+    Ticket,
     Clock,
     CheckCircle,
     XCircle,
@@ -173,7 +173,7 @@ export default async function SubscriptionDetailPage({
                             )}
 
                             <div className="flex items-start gap-3">
-                                <Package className="h-4 w-4 text-muted-foreground mt-1" />
+                                <Ticket className="h-4 w-4 text-muted-foreground mt-1" />
                                 <div>
                                     <p className="text-sm font-medium">Subscription Tier</p>
                                     <Badge variant="secondary" className="mt-1">
@@ -374,7 +374,7 @@ export default async function SubscriptionDetailPage({
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <Package className="h-5 w-5" />
+                            <Ticket className="h-5 w-5" />
                             Access Codes
                         </CardTitle>
                         <CardDescription>

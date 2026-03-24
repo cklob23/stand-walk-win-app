@@ -287,9 +287,9 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
                     </div>
                 </div>
 
-                <DialogFooter className="gap-2 sm:gap-0">
+                <DialogFooter className="gap-2 sm:gap-1">
                     <Button variant="ghost" onClick={handleDismiss} disabled={isSaving}>
-                        Skip for today
+                        Skip for now
                     </Button>
                     <Button onClick={handleSave} disabled={isSaving}>
                         {isSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}

@@ -33,7 +33,9 @@ interface GraduationModalProps {
     userId: string
     userName: string
     pairingId: string
+    journeyId?: string // Current journey ID to filter from available journeys
     journeyName?: string
+    journeySubtitle?: string // e.g., "New Believer Foundations" - displays after the main name
     canBeLeader?: boolean
     subscriptionTier?: { max_learners: number } | null
     organizationId?: string | null
@@ -46,7 +48,9 @@ export function GraduationModal({
     userId,
     userName,
     pairingId,
-    journeyName = 'New Believer Foundations',
+    journeyId,
+    journeyName = 'Stand Walk Run',
+    journeySubtitle,
     canBeLeader = true,
     subscriptionTier,
     organizationId,
@@ -113,7 +117,7 @@ export function GraduationModal({
 
     const loadJourneys = async () => {
         setLoadingJourneys(true)
-        const result = await getAvailableJourneys(userId)
+        const result = await getAvailableJourneys(userId, journeyId)
         if (result.success && result.journeys) {
             setAvailableJourneys(result.journeys)
         }
@@ -319,12 +323,6 @@ export function GraduationModal({
                                             <p className="text-sm text-muted-foreground">
                                                 Request a new journey assignment from your organization admin.
                                             </p>
-                                            <div className="rounded-lg bg-muted/50 p-3 text-sm">
-                                                <div className="flex items-center gap-2">
-                                                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                                                    <span>{organizationName}</span>
-                                                </div>
-                                            </div>
                                             <Button className="w-full" variant="outline" disabled={isLoading}>
                                                 <Send className="mr-2 h-4 w-4" />
                                                 Request New Journey
@@ -337,42 +335,51 @@ export function GraduationModal({
                                                 <div className="flex items-center justify-center py-8">
                                                     <Spinner />
                                                 </div>
-                                            ) : availableJourneys.length > 0 ? (
+                                            ) : availableJourneys.filter(j => j.canStart).length > 0 ? (
                                                 <div className="space-y-2">
-                                                    {availableJourneys.slice(0, 3).map((journey) => (
+                                                    {availableJourneys.filter(j => j.canStart).slice(0, 3).map((journey) => (
                                                         <button
                                                             key={journey.id}
                                                             onClick={(e) => {
                                                                 e.stopPropagation()
                                                                 handleStartNewJourney(journey.id)
                                                             }}
-                                                            disabled={isLoading || !journey.canStart}
+                                                            disabled={isLoading}
                                                             className="w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted disabled:opacity-50"
                                                         >
-                                                            <div className="flex items-center justify-between">
+                                                            <div className="flex items-center justify-between mb-1">
                                                                 <span className="font-medium text-sm">{journey.name}</span>
-                                                                {journey.isPurchased ? (
-                                                                    <Badge variant="secondary">Available</Badge>
-                                                                ) : journey.price > 0 ? (
-                                                                    <Badge variant="outline">${journey.price}</Badge>
-                                                                ) : (
-                                                                    <Badge variant="secondary">Free</Badge>
-                                                                )}
+                                                                <Badge variant="secondary" className="text-xs">Available</Badge>
                                                             </div>
+                                                            {journey.description && (
+                                                                <p className="text-xs text-muted-foreground line-clamp-2">{journey.description}</p>
+                                                            )}
                                                         </button>
                                                     ))}
+                                                    {availableJourneys.filter(j => !j.canStart && !j.isCompleted).length > 0 && (
+                                                        <Button asChild className="w-full mt-2" variant="outline" size="sm">
+                                                            <Link href="/pricing">
+                                                                <ShoppingCart className="mr-2 h-3 w-3" />
+                                                                Browse More Journeys
+                                                            </Link>
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <div className="space-y-3">
                                                     <p className="text-sm text-muted-foreground text-center">
-                                                        Purchase additional journeys to continue growing.
+                                                        {availableJourneys.length > 0
+                                                            ? "Purchase access to start a new journey."
+                                                            : "No additional journeys available at this time."}
                                                     </p>
-                                                    <Button asChild className="w-full" variant="outline">
-                                                        <Link href="/pricing">
-                                                            <ShoppingCart className="mr-2 h-4 w-4" />
-                                                            View Available Journeys
-                                                        </Link>
-                                                    </Button>
+                                                    {availableJourneys.length > 0 && (
+                                                        <Button asChild className="w-full" variant="outline">
+                                                            <Link href="/pricing">
+                                                                <ShoppingCart className="mr-2 h-4 w-4" />
+                                                                View Available Journeys
+                                                            </Link>
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             )}
                                         </>

@@ -33,7 +33,8 @@ interface Request {
     request_type: 'become_leader' | 'new_journey'
     status: 'pending' | 'approved' | 'denied'
     notes: string | null
-    admin_response: string | null
+    admin_notes: string | null
+    assigned_access_code_id: string | null
     created_at: string
     updated_at: string
     user: {
@@ -56,10 +57,11 @@ interface AccessCode {
 interface RequestsContentProps {
     requests: Request[]
     availableCodes: AccessCode[]
+    allCodes: AccessCode[]
     organizationId: string
 }
 
-export function RequestsContent({ requests, availableCodes, organizationId }: RequestsContentProps) {
+export function RequestsContent({ requests, availableCodes, allCodes, organizationId }: RequestsContentProps) {
     const router = useRouter()
     const [selectedRequest, setSelectedRequest] = useState<Request | null>(null)
     const [actionType, setActionType] = useState<'approve' | 'deny' | null>(null)
@@ -289,27 +291,57 @@ export function RequestsContent({ requests, availableCodes, organizationId }: Re
                             {processedRequests.map((request) => {
                                 const typeInfo = getRequestTypeInfo(request.request_type)
                                 const TypeIcon = typeInfo.icon
+                                const assignedCode = request.assigned_access_code_id
+                                    ? allCodes.find(c => c.id === request.assigned_access_code_id)
+                                    : null
                                 return (
                                     <div
                                         key={request.id}
-                                        className="flex items-center gap-4 p-3 rounded-lg border bg-muted/30"
+                                        className="flex items-start gap-4 p-4 rounded-lg border bg-muted/30"
                                     >
-                                        <Avatar className="h-8 w-8">
+                                        <Avatar className="h-10 w-10">
                                             <AvatarImage src={request.user?.avatar_url || undefined} />
-                                            <AvatarFallback className="text-xs">
+                                            <AvatarFallback className="text-sm">
                                                 {(request.user?.full_name || request.user?.email || 'U')[0].toUpperCase()}
                                             </AvatarFallback>
                                         </Avatar>
 
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm font-medium">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="font-medium">
                                                     {request.user?.full_name || request.user?.email || 'Unknown User'}
                                                 </span>
-                                                <TypeIcon className={`h-4 w-4 ${typeInfo.color}`} />
+                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${typeInfo.bgColor} ${typeInfo.color}`}>
+                                                    <TypeIcon className="h-3 w-3" />
+                                                    {typeInfo.label}
+                                                </span>
                                             </div>
+
+                                            <p className="text-sm text-muted-foreground mb-2">
+                                                {typeInfo.description}
+                                            </p>
+
+                                            {/* Show what was assigned */}
+                                            {request.status === 'approved' && assignedCode && (
+                                                <div className="text-sm bg-green-50 text-green-700 p-2 rounded-md mb-2">
+                                                    <span className="font-medium">Assigned:</span>{' '}
+                                                    <span className="font-mono">{assignedCode.code}</span>
+                                                    <span className="text-green-600 ml-1">
+                                                        ({assignedCode.tier?.name}{assignedCode.journey?.name ? ` - ${assignedCode.journey.name}` : ''})
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {/* Show admin response if any */}
+                                            {request.admin_notes && (
+                                                <div className="text-sm bg-muted p-2 rounded-md mb-2">
+                                                    <span className="font-medium">Response:</span>{' '}
+                                                    <span className="text-muted-foreground italic">"{request.admin_notes}"</span>
+                                                </div>
+                                            )}
+
                                             <p className="text-xs text-muted-foreground">
-                                                {formatDistanceToNow(new Date(request.updated_at), { addSuffix: true })}
+                                                Processed {formatDistanceToNow(new Date(request.updated_at), { addSuffix: true })}
                                             </p>
                                         </div>
 
@@ -359,42 +391,90 @@ export function RequestsContent({ requests, availableCodes, organizationId }: Re
                             </div>
                         )}
 
-                        {availableCodes.length > 0 ? (
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Assign Access Code (Optional)</label>
-                                <Select value={selectedCodeId} onValueChange={setSelectedCodeId}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select an access code to assign" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {getAvailableCodesForRequest(selectedRequest!).map((code) => (
-                                            <SelectItem key={code.id} value={code.id}>
-                                                <span className="font-mono">{code.code}</span>
-                                                <span className="text-muted-foreground ml-2">
-                                                    ({code.tier?.name}{code.journey?.name ? ` - ${code.journey.name}` : ''})
-                                                </span>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-muted-foreground">
-                                    You can assign a code now or later from the Access Codes page
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                                <div className="flex items-center gap-2 text-amber-800">
-                                    <ShoppingCart className="h-4 w-4" />
-                                    <span className="font-medium">No access codes available</span>
+                        {selectedRequest?.request_type === 'become_leader' ? (
+                            // For become_leader requests, access code is REQUIRED
+                            availableCodes.length > 0 ? (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">
+                                        Assign Access Code <span className="text-red-500">*</span>
+                                    </label>
+                                    <Select value={selectedCodeId} onValueChange={setSelectedCodeId}>
+                                        <SelectTrigger className={!selectedCodeId ? 'border-red-300' : ''}>
+                                            <SelectValue placeholder="Select an access code (required)" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {getAvailableCodesForRequest(selectedRequest!).map((code) => (
+                                                <SelectItem key={code.id} value={code.id}>
+                                                    <span className="font-mono">{code.code}</span>
+                                                    <span className="text-muted-foreground ml-2">
+                                                        ({code.tier?.name}{code.journey?.name ? ` - ${code.journey.name}` : ''})
+                                                    </span>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        An access code is required to grant leader privileges
+                                    </p>
                                 </div>
-                                <p className="text-sm text-amber-700 mt-1">
-                                    You can still approve this request and assign a code later, or{' '}
-                                    <Link href="/pricing" className="underline font-medium">
-                                        purchase more licenses
-                                    </Link>
-                                    .
-                                </p>
-                            </div>
+                            ) : (
+                                <div className="p-4 bg-red-50 border border-red-200 rounded-lg space-y-3">
+                                    <div className="flex items-center gap-2 text-red-800">
+                                        <ShoppingCart className="h-4 w-4" />
+                                        <span className="font-medium">No access codes available</span>
+                                    </div>
+                                    <p className="text-sm text-red-700">
+                                        An access code is required to approve leader requests. Please purchase a license to fulfill this request.
+                                    </p>
+                                    <Button asChild className="w-full" variant="outline">
+                                        <Link href="/pricing">
+                                            <ShoppingCart className="h-4 w-4 mr-2" />
+                                            Purchase License
+                                        </Link>
+                                    </Button>
+                                </div>
+                            )
+                        ) : (
+                            // For new_journey requests, access code is optional
+                            availableCodes.length > 0 ? (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Assign Access Code (Optional)</label>
+                                    <Select value={selectedCodeId} onValueChange={setSelectedCodeId}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select an access code to assign" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {getAvailableCodesForRequest(selectedRequest!).map((code) => (
+                                                <SelectItem key={code.id} value={code.id}>
+                                                    <span className="font-mono">{code.code}</span>
+                                                    <span className="text-muted-foreground ml-2">
+                                                        ({code.tier?.name}{code.journey?.name ? ` - ${code.journey.name}` : ''})
+                                                    </span>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        You can assign a code now or later from the Access Codes page
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                                    <div className="flex items-center gap-2 text-amber-800">
+                                        <ShoppingCart className="h-4 w-4" />
+                                        <span className="font-medium">No access codes available</span>
+                                    </div>
+                                    <p className="text-sm text-amber-700">
+                                        You can still approve this request and assign a code later, or purchase more licenses.
+                                    </p>
+                                    <Button asChild className="w-full" variant="outline">
+                                        <Link href="/pricing">
+                                            <ShoppingCart className="h-4 w-4 mr-2" />
+                                            Purchase License
+                                        </Link>
+                                    </Button>
+                                </div>
+                            )
                         )}
 
                         <div className="space-y-2">
@@ -418,7 +498,10 @@ export function RequestsContent({ requests, availableCodes, organizationId }: Re
                         >
                             Cancel
                         </Button>
-                        <Button onClick={handleApprove} disabled={isSubmitting}>
+                        <Button
+                            onClick={handleApprove}
+                            disabled={isSubmitting || (selectedRequest?.request_type === 'become_leader' && !selectedCodeId)}
+                        >
                             {isSubmitting ? <Spinner className="h-4 w-4 mr-2" /> : <Check className="h-4 w-4 mr-2" />}
                             Approve Request
                         </Button>

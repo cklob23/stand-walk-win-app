@@ -19,7 +19,9 @@ import {
     FileText,
     Edit3,
     BookMarked,
-    Archive
+    Archive,
+    Heart,
+    Sparkles
 } from 'lucide-react'
 import { format } from 'date-fns'
 import Link from 'next/link'
@@ -46,7 +48,6 @@ interface CompletedPairing {
     journey_id: string
     leader_id: string
     learner_id: string
-    access_code_id: string | null
     journey: Journey | Journey[] | null
     leader: Profile | Profile[] | null
     learner: Profile | Profile[] | null
@@ -58,6 +59,14 @@ interface Assignment {
     description: string
     assignment_type: string
     week_number: number
+    scripture_reference?: string
+}
+
+interface WeeklyContent {
+    week_number: number
+    title: string
+    description: string
+    scripture_reference: string | null
 }
 
 interface AssignmentProgressItem {
@@ -75,6 +84,7 @@ interface AssignmentProgressItem {
 interface CompletedJourneysContentProps {
     completedPairings: CompletedPairing[]
     assignmentProgress: Record<string, AssignmentProgressItem[]>
+    weeklyContent: Record<string, WeeklyContent[]>
     userId: string
     userRole: string
 }
@@ -88,10 +98,24 @@ function extractFirst<T>(data: T | T[] | null): T | null {
 export function CompletedJourneysContent({
     completedPairings,
     assignmentProgress,
+    weeklyContent,
     userId,
     userRole,
 }: CompletedJourneysContentProps) {
     const [selectedPairing, setSelectedPairing] = useState<CompletedPairing | null>(null)
+
+    // Parse ACCEPTED_CHRIST tag from notes and return clean response
+    const parseAcceptedChrist = (notes: string | null): { acceptedChrist: boolean | null; cleanText: string } => {
+        if (!notes) return { acceptedChrist: null, cleanText: '' }
+
+        const match = notes.match(/\[ACCEPTED_CHRIST:(yes|no)\]\s*/i)
+        if (match) {
+            const acceptedChrist = match[1].toLowerCase() === 'yes'
+            const cleanText = notes.replace(/\[ACCEPTED_CHRIST:(yes|no)\]\s*/i, '').trim()
+            return { acceptedChrist, cleanText }
+        }
+        return { acceptedChrist: null, cleanText: notes }
+    }
 
     const getAssignmentTypeIcon = (type: string) => {
         switch (type) {
@@ -312,12 +336,61 @@ export function CompletedJourneysContent({
                                                                         </Badge>
                                                                     </div>
 
-                                                                    {item.notes && (
-                                                                        <div className="mt-2 p-2 bg-muted/50 rounded text-sm">
-                                                                            <p className="text-xs text-muted-foreground mb-1">Your Response:</p>
-                                                                            <p className="whitespace-pre-wrap">{item.notes}</p>
-                                                                        </div>
+                                                                    {/* Assignment description */}
+                                                                    {item.assignment?.description && (
+                                                                        <p className="text-sm text-muted-foreground mt-1">
+                                                                            {item.assignment.description}
+                                                                        </p>
                                                                     )}
+
+                                                                    {/* Scripture reference from weekly content */}
+                                                                    {(() => {
+                                                                        const journeyId = selectedPairing?.journey_id
+                                                                        const weekContent = journeyId && weeklyContent[journeyId]
+                                                                            ? weeklyContent[journeyId].find(w => w.week_number === item.assignment?.week_number)
+                                                                            : null
+                                                                        return weekContent?.scripture_reference ? (
+                                                                            <div className="mt-2 flex items-center gap-2 text-sm">
+                                                                                <BookOpen className="h-7 w-7 text-primary" />
+                                                                                <span className="text-primary font-medium">{weekContent.scripture_reference}</span>
+                                                                            </div>
+                                                                        ) : null
+                                                                    })()}
+
+                                                                    {/* User response with parsed ACCEPTED_CHRIST */}
+                                                                    {item.notes && (() => {
+                                                                        const { acceptedChrist, cleanText } = parseAcceptedChrist(item.notes)
+                                                                        return (
+                                                                            <div className="mt-2 p-2 bg-muted/50 rounded text-sm">
+                                                                                <p className="text-xs text-muted-foreground mb-1">Your Response:</p>
+
+                                                                                {/* Show accepted Christ badge if present */}
+                                                                                {acceptedChrist !== null && (
+                                                                                    <div className={`mb-2 p-2 rounded-md flex items-center gap-2 ${acceptedChrist
+                                                                                            ? 'bg-green-50 text-green-700 border border-green-200'
+                                                                                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                                                        }`}>
+                                                                                        {acceptedChrist ? (
+                                                                                            <>
+                                                                                                <Sparkles className="h-4 w-4" />
+                                                                                                <span className="font-medium">Accepted Christ as Savior</span>
+                                                                                                <Heart className="h-4 w-4 fill-current" />
+                                                                                            </>
+                                                                                        ) : (
+                                                                                            <>
+                                                                                                <Heart className="h-4 w-4" />
+                                                                                                <span className="font-medium">Still on the journey</span>
+                                                                                            </>
+                                                                                        )}
+                                                                                    </div>
+                                                                                )}
+
+                                                                                {cleanText && (
+                                                                                    <p className="whitespace-pre-wrap">{cleanText}</p>
+                                                                                )}
+                                                                            </div>
+                                                                        )
+                                                                    })()}
 
                                                                     {item.leader_reply && (
                                                                         <div className="mt-2 p-2 bg-primary/5 rounded text-sm border-l-2 border-primary">
