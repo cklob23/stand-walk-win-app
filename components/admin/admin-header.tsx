@@ -19,7 +19,7 @@ import {
     SheetTitle,
     SheetTrigger,
 } from '@/components/ui/sheet'
-import { Building2, LogOut, Settings, User as UserIcon, Shield, Menu, LayoutDashboard, Users, Key, CreditCard, BarChart3, Inbox } from 'lucide-react'
+import { Building2, LogOut, Settings, User as UserIcon, Shield, Menu, LayoutDashboard, Users, Ticket, CreditCard, BarChart3, Inbox } from 'lucide-react'
 import { adminSignOut } from '@/lib/admin-auth-actions'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -44,7 +44,7 @@ const orgAdminLinks = [
     { title: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { title: 'Members', href: '/admin/dashboard/members', icon: Users },
     { title: 'Requests', href: '/admin/dashboard/requests', icon: Inbox },
-    { title: 'Access Codes', href: '/admin/dashboard/access-codes', icon: Key },
+    { title: 'Access Codes', href: '/admin/dashboard/access-codes', icon: Ticket },
     { title: 'Subscription', href: '/admin/dashboard/subscription', icon: CreditCard },
     { title: 'Settings', href: '/admin/dashboard/settings', icon: Settings },
 ]
