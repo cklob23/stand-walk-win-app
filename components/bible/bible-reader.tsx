@@ -1230,17 +1230,27 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
         audio.onerror = () => {
             if (mobileStoppedRef.current) return
-            toast.error('Audio playback error. Please try again.')
-            setIsPlaying(false)
-            setCurrentReadingVerse(null)
-            mobilePlayingRef.current = false
+            // Retry: try to continue with the next item instead of stopping completely
+            console.log('[v0] Audio error, attempting to continue with next item')
+            if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
+            // Small delay before retry/continue
+            setTimeout(() => {
+                if (!mobileStoppedRef.current) {
+                    playMobileQueueItem(queueIdx + 1, voice)
+                }
+            }, 500)
         }
 
-        audio.play().catch(() => {
-            toast.error('Failed to play audio. Please try again.')
-            setIsPlaying(false)
-            setCurrentReadingVerse(null)
-            mobilePlayingRef.current = false
+        audio.play().catch((err) => {
+            if (mobileStoppedRef.current) return
+            console.log('[v0] Audio play failed, attempting to continue:', err)
+            // Retry: try to continue with the next item
+            if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
+            setTimeout(() => {
+                if (!mobileStoppedRef.current) {
+                    playMobileQueueItem(queueIdx + 1, voice)
+                }
+            }, 500)
         })
     }
 
@@ -1455,11 +1465,25 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             // Time's up -- navigate to next chapter
             setAutoAdvanceCountdown(null)
             setTtsProgress(0)
-            const next = selectedChapter + 1
-            setWeekVerseRange(null)
-            setSelectedChapter(next)
-            updateURL(selectedBook, next, translation)
-            setAutoPlayNextChapter(true)
+
+            // Fully stop current playback before transitioning
+            handleStopMobile()
+            mobileStoppedRef.current = true
+            mobilePlayingRef.current = false
+            setIsPlaying(false)
+            setIsPaused(false)
+            setCurrentReadingVerse(null)
+
+            // Small delay to ensure audio is fully stopped
+            setTimeout(() => {
+                const next = selectedChapter + 1
+                setWeekVerseRange(null)
+                setSelectedChapter(next)
+                updateURL(selectedBook, next, translation)
+                // Reset the stopped flag so new chapter can play
+                mobileStoppedRef.current = false
+                setAutoPlayNextChapter(true)
+            }, 200)
             return
         }
         // Tick down every second
@@ -1475,10 +1499,19 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         if (autoPlayNextChapter && verses.length > 0 && !versesLoading) {
             setAutoPlayNextChapter(false)
             setTtsProgress(0)
-            // Small delay to let the new chapter render
-            setTimeout(() => {
-                handlePlayChapter()
-            }, 300)
+
+            // Ensure previous audio is fully stopped before starting new chapter
+            handleStopMobile()
+
+            // Longer delay to let the new chapter fully render and audio context reset
+            const playTimer = setTimeout(() => {
+                // Double-check we still have verses and conditions are met
+                if (verses.length > 0) {
+                    handlePlayChapter()
+                }
+            }, 800)
+
+            return () => clearTimeout(playTimer)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoPlayNextChapter, verses, versesLoading])
