@@ -1,13 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { ScrollText, CheckCircle2, Loader2, PenLine } from 'lucide-react'
+import { ScrollText, CheckCircle2, Loader2, PenLine, Sprout, MessageCircle, Shield, Heart, Scale, Sparkles, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Profile, Pairing } from '@/lib/types'
 import { notifyCovenantSigned, notifyCovenantComplete } from '@/lib/notifications'
@@ -18,41 +18,71 @@ interface CovenantViewProps {
   partner: Profile | null
 }
 
-const covenantPoints = [
-  {
-    title: 'Commitment to Growth',
-    description: 'I commit to actively participating in this 6-week discipleship journey, completing assignments, and engaging with the material with an open heart.',
-  },
-  {
-    title: 'Regular Communication',
-    description: 'I will maintain regular communication with my discipleship partner, responding to messages within a reasonable timeframe and being honest about my progress.',
-  },
-  {
-    title: 'Confidentiality',
-    description: 'I will keep all personal conversations and shared reflections confidential, creating a safe space for vulnerable and honest dialogue.',
-  },
-  {
-    title: 'Prayer & Support',
-    description: 'I commit to praying for my discipleship partner regularly and offering encouragement throughout our journey together.',
-  },
-  {
-    title: 'Accountability',
-    description: 'I welcome accountability in my spiritual growth and will be honest about both struggles and victories.',
-  },
-  {
-    title: 'Grace & Understanding',
-    description: 'I will extend grace when challenges arise and approach our relationship with patience, understanding, and love.',
-  },
-]
+const covenantPoints: {
+  title: string
+  description: string
+  icon: LucideIcon
+  color: string
+  bgColor: string
+}[] = [
+    {
+      title: 'Commitment to Growth',
+      description: 'I commit to actively participating in this 6-week discipleship journey, completing assignments, and engaging with the material with an open heart.',
+      icon: Sprout,
+      color: 'text-emerald-600',
+      bgColor: 'bg-emerald-50 border-emerald-200',
+    },
+    {
+      title: 'Regular Communication',
+      description: 'I will maintain regular communication with my discipleship partner, responding to messages within a reasonable timeframe and being honest about my progress.',
+      icon: MessageCircle,
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50 border-blue-200',
+    },
+    {
+      title: 'Confidentiality',
+      description: 'I will keep all personal conversations and shared reflections confidential, creating a safe space for vulnerable and honest dialogue.',
+      icon: Shield,
+      color: 'text-indigo-600',
+      bgColor: 'bg-indigo-50 border-indigo-200',
+    },
+    {
+      title: 'Prayer & Support',
+      description: 'I commit to praying for my discipleship partner regularly and offering encouragement throughout our journey together.',
+      icon: Heart,
+      color: 'text-rose-600',
+      bgColor: 'bg-rose-50 border-rose-200',
+    },
+    {
+      title: 'Accountability',
+      description: 'I welcome accountability in my spiritual growth and will be honest about both struggles and victories.',
+      icon: Scale,
+      color: 'text-amber-600',
+      bgColor: 'bg-amber-50 border-amber-200',
+    },
+    {
+      title: 'Grace & Understanding',
+      description: 'I will extend grace when challenges arise and approach our relationship with patience, understanding, and love.',
+      icon: Sparkles,
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-50 border-purple-200',
+    },
+  ]
 
 export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
   const router = useRouter()
   const [agreements, setAgreements] = useState<boolean[]>(new Array(covenantPoints.length).fill(false))
   const [isLoading, setIsLoading] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   const supabase = createClient()
 
-  const isLeader = profile.role === 'leader'
+  // Ensure hydration is complete before rendering interactive elements
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isLeader = profile?.role === 'leader'
   const hasSigned = isLeader ? pairing.covenant_accepted_leader : pairing.covenant_accepted_learner
   const partnerHasSigned = isLeader ? pairing.covenant_accepted_learner : pairing.covenant_accepted_leader
   const allAgreed = agreements.every(Boolean)
@@ -111,6 +141,23 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
     toast.success('Covenant signed successfully!')
     setIsLoading(false)
     router.refresh()
+  }
+
+  // Show loading while hydrating to prevent blank flash
+  if (!mounted || !profile || !pairing) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="flex justify-center mb-4">
+            <div className="flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-primary/10">
+              <ScrollText className="h-7 w-7 sm:h-8 sm:w-8 text-primary" />
+            </div>
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Discipleship Covenant</h1>
+          <p className="text-muted-foreground mt-2">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -180,34 +227,43 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {covenantPoints.map((point, index) => (
-            <div
-              key={index}
-              className="flex gap-4 p-4 rounded-lg border bg-card hover:bg-muted/30 transition-colors"
-            >
-              <div className="shrink-0 pt-0.5">
-                {hasSigned ? (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-success text-success-foreground">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                ) : (
-                  <Checkbox
-                    id={`agreement-${index}`}
-                    checked={agreements[index]}
-                    onCheckedChange={(checked) => handleAgreementChange(index, checked as boolean)}
-                    className="h-6 w-6"
-                  />
-                )}
-              </div>
-              <label
-                htmlFor={`agreement-${index}`}
-                className="flex-1 cursor-pointer"
+          {covenantPoints.map((point, index) => {
+            const IconComponent = point.icon
+            return (
+              <div
+                key={index}
+                className={`flex gap-4 p-4 rounded-lg border transition-all ${agreements[index] || hasSigned
+                    ? point.bgColor
+                    : 'bg-card hover:bg-muted/30'
+                  }`}
               >
-                <h3 className="font-medium text-foreground">{point.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1">{point.description}</p>
-              </label>
-            </div>
-          ))}
+                <div className="shrink-0 pt-0.5">
+                  {hasSigned ? (
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-success text-success-foreground">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </div>
+                  ) : (
+                    <Checkbox
+                      id={`agreement-${index}`}
+                      checked={agreements[index]}
+                      onCheckedChange={(checked) => handleAgreementChange(index, checked as boolean)}
+                      className="h-6 w-6"
+                    />
+                  )}
+                </div>
+                <label
+                  htmlFor={`agreement-${index}`}
+                  className="flex-1 cursor-pointer"
+                >
+                  <h3 className={`font-semibold flex items-center gap-2 ${agreements[index] || hasSigned ? point.color : 'text-foreground'}`}>
+                    <IconComponent className={`h-4 w-4 ${agreements[index] || hasSigned ? point.color : 'text-muted-foreground'}`} />
+                    {point.title}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-1">{point.description}</p>
+                </label>
+              </div>
+            )
+          })}
         </CardContent>
       </Card>
 

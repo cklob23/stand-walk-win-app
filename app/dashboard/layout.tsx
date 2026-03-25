@@ -40,11 +40,22 @@ export default async function DashboardLayout({
     redirect('/onboarding')
   }
 
-  // Get current pathname to check if we're on the covenant page
+  // Get current pathname to check if we're on certain pages
   const headersList = await headers()
   const pathname = headersList.get('x-pathname') || ''
-  const isCovenantPage = pathname.includes('/dashboard/covenant')
-  const isAdminPage = pathname.includes('/dashboard/admin')
+  const fullUrl = headersList.get('x-url') || ''
+  const referer = headersList.get('referer') || ''
+
+  // Detect special pages that should skip covenant redirect
+  // Check multiple sources since x-pathname may not always be available
+  const isCovenantPage = pathname.includes('/dashboard/covenant') ||
+    fullUrl.includes('/dashboard/covenant') ||
+    referer.includes('/dashboard/covenant')
+  const isAdminPage = pathname.includes('/dashboard/admin') ||
+    fullUrl.includes('/dashboard/admin') ||
+    referer.includes('/dashboard/admin')
+
+  console.log('[v0] Dashboard layout - pathname:', pathname, 'fullUrl:', fullUrl, 'isCovenantPage:', isCovenantPage, 'role:', profile.role)
 
   // Fetch organization branding if user belongs to an org
   let orgBranding: OrgBranding | null = null
@@ -132,21 +143,23 @@ export default async function DashboardLayout({
       }
 
       // Check if covenant needs to be signed (for leaders)
-      // Find active pairing with a learner that hasn't had covenant signed by both
+      // Find active pairing with a learner where the LEADER hasn't signed yet
       if (!isCovenantPage && !isAdminPage) {
-        const activePairingWithLearner = allPairings.find(p =>
+        const unsignedPairing = allPairings.find(p =>
           p.learner_id &&
           p.status === 'active' &&
-          (!p.covenant_accepted_leader || !p.covenant_accepted_learner)
+          !p.covenant_accepted_leader  // Leader hasn't signed
         )
-        if (activePairingWithLearner) {
-          redirect(`/dashboard/covenant?pairing=${activePairingWithLearner.id}`)
+        console.log('[v0] Leader covenant check - unsignedPairing:', unsignedPairing?.id, 'covenant_leader:', unsignedPairing?.covenant_accepted_leader)
+        if (unsignedPairing) {
+          console.log('[v0] Leader redirecting to covenant')
+          redirect(`/dashboard/covenant?pairing=${unsignedPairing.id}`)
         }
       }
     }
   }
 
-  // Check covenant for learners
+  // Check covenant for learners - redirect if LEARNER hasn't signed yet
   if (profile.role === 'learner' && !isCovenantPage && !isAdminPage) {
     const { data: learnerPairing } = await supabase
       .from('pairings')
@@ -155,7 +168,9 @@ export default async function DashboardLayout({
       .eq('status', 'active')
       .single()
 
-    if (learnerPairing && (!learnerPairing.covenant_accepted_leader || !learnerPairing.covenant_accepted_learner)) {
+    console.log('[v0] Learner covenant check - pairing:', learnerPairing?.id, 'covenant_learner:', learnerPairing?.covenant_accepted_learner)
+    if (learnerPairing && !learnerPairing.covenant_accepted_learner) {
+      console.log('[v0] Learner redirecting to covenant')
       redirect(`/dashboard/covenant?pairing=${learnerPairing.id}`)
     }
   }

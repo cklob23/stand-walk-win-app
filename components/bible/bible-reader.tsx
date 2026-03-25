@@ -237,8 +237,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         const isMacSafari = /Macintosh/.test(ua) && /Safari/.test(ua) && !/Chrome/.test(ua)
         setIsAppleDevice(isIOS || isMacSafari)
     }, [])
-    // Use cloud voices for mobile screens OR any Apple device
-    const useCloudVoices = isMobile || isAppleDevice
+    // Use cloud voices for ALL platforms - browser speechSynthesis is unreliable on desktop
+    // Cloud TTS provides consistent, high-quality audio across all devices
+    const useCloudVoices = true
 
     // Desktop: browser speechSynthesis
     const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
@@ -1401,17 +1402,23 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }
 
     // Check if current voice selection is a cloud voice (OpenAI or Google)
+    // This is only used to determine playback method on desktop when NOT using cloud voices by default
     const isCloudVoiceSelected = selectedCloudVoice.startsWith('openai-') ||
         (selectedCloudVoice.startsWith('en-') && selectedCloudVoice.includes('Wavenet'))
 
+    // Determine if we should use cloud TTS for playback
+    // On mobile/Apple: always use cloud voices
+    // On desktop: use browser speechSynthesis (don't use cloud voices even if one is "selected" in state)
+    const shouldUseCloudTTS = useCloudVoices
+
     const handlePlayChapter = (initialStartVerse?: number) => {
-        // Use cloud playback if on mobile/Apple OR if a cloud voice is selected on desktop
-        if (useCloudVoices || isCloudVoiceSelected) handlePlayMobile(initialStartVerse)
+        // Use cloud playback only for mobile/Apple devices
+        if (shouldUseCloudTTS) handlePlayMobile(initialStartVerse)
         else handlePlayDesktop(initialStartVerse)
     }
     const handlePauseAudio = () => {
-        // Use cloud pause if on mobile/Apple OR if a cloud voice is selected
-        if (useCloudVoices || isCloudVoiceSelected) handlePauseMobile()
+        // Use cloud pause only for mobile/Apple
+        if (shouldUseCloudTTS) handlePauseMobile()
         else handlePauseDesktop()
     }
     const clearAutoAdvance = useCallback(() => {
@@ -1419,8 +1426,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }, [])
 
     const handleStopAudio = () => {
-        // Use cloud stop if on mobile/Apple OR if a cloud voice is selected
-        if (useCloudVoices || isCloudVoiceSelected) handleStopMobile()
+        // Use cloud stop only for mobile/Apple
+        if (shouldUseCloudTTS) handleStopMobile()
         else handleStopDesktop()
         setTtsProgress(0)
         clearAutoAdvance()
@@ -1814,7 +1821,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     </Select>
                                 ) : (
                                     <Select
-                                        value={selectedCloudVoice.startsWith('openai-') || selectedCloudVoice.startsWith('en-') ? selectedCloudVoice : selectedVoiceURI}
+                                        value={selectedVoiceURI || ''}
                                         onValueChange={(v) => {
                                             const wasPlaying = isPlaying || isPaused
                                             const resumeVerse = currentReadingVerse
@@ -1823,12 +1830,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                 setIsPaused(true)
                                                 setPausedAtVerse(resumeVerse)
                                             }
-                                            // Check if it's a cloud voice or browser voice
-                                            if (v.startsWith('openai-') || (v.startsWith('en-') && v.includes('Wavenet'))) {
-                                                setSelectedCloudVoice(v)
-                                            } else {
-                                                setSelectedVoiceURI(v)
-                                            }
+                                            // On desktop, only use browser voices
+                                            setSelectedVoiceURI(v)
                                             savePrefs(translation, textSize, skipVerseNumbers, v, speechRate)
                                         }}
                                     >
@@ -1836,34 +1839,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             <SelectValue placeholder="Select a voice..." />
                                         </SelectTrigger>
                                         <SelectContent className="max-h-[300px]">
-                                            {/* OpenAI Cloud Voices */}
-                                            <SelectGroup>
-                                                <SelectLabel className="text-xs font-semibold text-primary/70">OpenAI Voices (Premium)</SelectLabel>
-                                                {CLOUD_TTS_VOICES.filter(v => v.provider === 'openai').map((voice) => (
-                                                    <SelectItem key={voice.id} value={voice.id}>
-                                                        <span className="flex items-center gap-1.5">
-                                                            {voice.name}
-                                                            <span className="text-muted-foreground text-xs">({voice.description})</span>
-                                                        </span>
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectGroup>
-                                            {/* Google Cloud Voices */}
-                                            <SelectGroup>
-                                                <SelectLabel className="text-xs font-semibold text-primary/70">Google Voices (Premium)</SelectLabel>
-                                                {CLOUD_TTS_VOICES.filter(v => v.provider === 'google').map((voice) => (
-                                                    <SelectItem key={voice.id} value={voice.id}>
-                                                        <span className="flex items-center gap-1.5">
-                                                            {voice.name}
-                                                            <span className="text-muted-foreground text-xs">({voice.description})</span>
-                                                        </span>
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectGroup>
-                                            {/* Browser Voices */}
-                                            {availableVoices.length > 0 && (
+                                            {/* Browser Voices for Desktop */}
+                                            {availableVoices.length > 0 ? (
                                                 <SelectGroup>
-                                                    <SelectLabel className="text-xs font-semibold text-primary/70">Browser Voices</SelectLabel>
+                                                    <SelectLabel className="text-xs font-semibold text-primary/70">Available Voices</SelectLabel>
                                                     {availableVoices.map((voice) => {
                                                         const nameLower = voice.name.toLowerCase()
                                                         const isNeural = nameLower.includes('(enhanced)') || nameLower.includes('(premium)') || nameLower.includes('natural') || nameLower.includes('neural')
@@ -1889,6 +1868,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                         )
                                                     })}
                                                 </SelectGroup>
+                                            ) : (
+                                                <SelectItem value="" disabled>Loading voices...</SelectItem>
                                             )}
                                         </SelectContent>
                                     </Select>
@@ -1981,8 +1962,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                 disabled={previewLoading}
                                 onClick={async () => {
                                     const previewText = 'For God so loved the world, that he gave his only begotten Son.'
-                                    // Use cloud TTS if on mobile/Apple OR if a cloud voice is selected on desktop
-                                    if (useCloudVoices || isCloudVoiceSelected) {
+                                    // Use cloud TTS only for mobile/Apple devices
+                                    if (shouldUseCloudTTS) {
                                         setPreviewLoading(true)
                                         try {
                                             const provider = getVoiceProvider(selectedCloudVoice)
@@ -2012,6 +1993,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             setPreviewLoading(false)
                                         }
                                     } else {
+                                        // Desktop browser speech synthesis preview (fallback, rarely used now)
+                                        setPreviewLoading(true)
                                         window.speechSynthesis.cancel()
                                         const utt = new SpeechSynthesisUtterance(previewText)
                                         utt.rate = speechRate
@@ -2020,6 +2003,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             const voice = availableVoices.find(v => v.voiceURI === selectedVoiceURI)
                                             if (voice) utt.voice = voice
                                         }
+                                        utt.onend = () => setPreviewLoading(false)
+                                        utt.onerror = () => setPreviewLoading(false)
                                         window.speechSynthesis.speak(utt)
                                     }
                                 }}

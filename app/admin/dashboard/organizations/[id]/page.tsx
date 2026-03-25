@@ -12,7 +12,8 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table'
-import { Building2, Users, Ticket, CreditCard, Mail, Calendar, ArrowLeft, ExternalLink } from 'lucide-react'
+import { Building2, Users, Ticket, CreditCard, Mail, Calendar, ArrowLeft, ExternalLink, Trash2 } from 'lucide-react'
+import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
 
 // Display name mapping for admin roles
@@ -35,6 +36,32 @@ function getAdminRoleDisplay(role: string | null): string {
 function getRoleDisplay(role: string | null): string {
     if (!role) return '-'
     return ROLE_DISPLAY[role] || role
+}
+
+// Capitalize first letter of a string
+function capitalize(str: string | null): string {
+    if (!str) return '-'
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
+}
+
+// Server action to delete an access code
+async function deleteAccessCode(formData: FormData) {
+    'use server'
+    const codeId = formData.get('codeId') as string
+    const orgId = formData.get('orgId') as string
+
+    const supabase = createAdminClient()
+
+    const { error } = await supabase
+        .from('access_codes')
+        .delete()
+        .eq('id', codeId)
+
+    if (error) {
+        console.error('Error deleting access code:', error)
+    }
+
+    revalidatePath(`/admin/dashboard/organizations/${orgId}`)
 }
 
 async function getOrganizationDetails(orgId: string) {
@@ -71,10 +98,14 @@ async function getOrganizationDetails(orgId: string) {
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false })
 
-    // Get access codes
+    // Get access codes with tier info and claimed_by profile
     const { data: accessCodes } = await supabase
         .from('access_codes')
-        .select('*')
+        .select(`
+      *,
+      tier:subscription_tiers(id, name, display_name),
+      claimed_by_profile:profiles!access_codes_claimed_by_fkey(id, full_name, email)
+    `)
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false })
 
@@ -338,7 +369,7 @@ export default async function ManageOrganizationPage({
                                         <div className="flex items-center justify-between mb-2">
                                             <Badge>{sub.tier?.display_name || 'Standard'}</Badge>
                                             <Badge variant={sub.status === 'active' ? 'default' : 'secondary'}>
-                                                {sub.status}
+                                                {capitalize(sub.status)}
                                             </Badge>
                                         </div>
                                         <div className="grid grid-cols-2 gap-2 text-sm">
@@ -468,42 +499,82 @@ export default async function ManageOrganizationPage({
                 </CardHeader>
                 <CardContent className="px-0 sm:px-6">
                     <div className="overflow-x-auto">
-                        <Table className="min-w-[500px]">
+                        <Table className="min-w-[800px]">
                             <TableHeader>
                                 <TableRow>
                                     <TableHead className="whitespace-nowrap">Code</TableHead>
+                                    <TableHead className="whitespace-nowrap">Tier</TableHead>
                                     <TableHead className="whitespace-nowrap">Status</TableHead>
+                                    <TableHead className="whitespace-nowrap">Claimed By</TableHead>
                                     <TableHead className="whitespace-nowrap">Created</TableHead>
                                     <TableHead className="whitespace-nowrap">Expires</TableHead>
+                                    <TableHead className="whitespace-nowrap w-[50px]"></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {accessCodes.slice(0, 10).map((code) => (
-                                    <TableRow key={code.id}>
-                                        <TableCell className="font-mono">{code.code}</TableCell>
-                                        <TableCell>
-                                            <Badge variant={code.status === 'available' ? 'outline' : 'secondary'}>
-                                                {code.status}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-sm text-muted-foreground">
-                                            {new Date(code.created_at).toLocaleDateString()}
-                                        </TableCell>
-                                        <TableCell className="text-sm text-muted-foreground">
-                                            {code.expires_at ? new Date(code.expires_at).toLocaleDateString() : 'Never'}
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                {accessCodes.slice(0, 10).map((code) => {
+                                    const tierData = code.tier as any
+                                    const tierName = tierData?.display_name || tierData?.name || null
+                                    const claimedByProfile = code.claimed_by_profile as any
+                                    return (
+                                        <TableRow key={code.id}>
+                                            <TableCell className="font-mono">{code.code}</TableCell>
+                                            <TableCell>
+                                                {tierName ? (
+                                                    <Badge variant="outline">{tierName}</Badge>
+                                                ) : (
+                                                    <span className="text-muted-foreground text-sm">-</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant={code.status === 'available' ? 'outline' : 'secondary'}>
+                                                    {capitalize(code.status)}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                {claimedByProfile ? (
+                                                    <div className="text-sm">
+                                                        <p className="font-medium">{claimedByProfile.full_name || 'Unknown'}</p>
+                                                        <p className="text-muted-foreground text-xs">{claimedByProfile.email}</p>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-muted-foreground text-sm">-</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-sm text-muted-foreground">
+                                                {new Date(code.created_at).toLocaleDateString()}
+                                            </TableCell>
+                                            <TableCell className="text-sm text-muted-foreground">
+                                                {code.expires_at ? new Date(code.expires_at).toLocaleDateString() : 'Never'}
+                                            </TableCell>
+                                            <TableCell>
+                                                <form action={deleteAccessCode}>
+                                                    <input type="hidden" name="codeId" value={code.id} />
+                                                    <input type="hidden" name="orgId" value={id} />
+                                                    <Button
+                                                        type="submit"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                                        title="Delete access code"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </form>
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                })}
                                 {accessCodes.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                                             No access codes found
                                         </TableCell>
                                     </TableRow>
                                 )}
                                 {accessCodes.length > 10 && (
                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-center text-muted-foreground py-4">
+                                        <TableCell colSpan={7} className="text-center text-muted-foreground py-4">
                                             Showing 10 of {accessCodes.length} codes
                                         </TableCell>
                                     </TableRow>

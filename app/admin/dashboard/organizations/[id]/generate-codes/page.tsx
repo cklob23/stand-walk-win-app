@@ -29,13 +29,48 @@ async function getOrganization(orgId: string) {
         return null
     }
 
-    // Get existing access codes count
-    const { count: existingCodesCount } = await supabase
+    // Get existing access codes with status breakdown
+    const { data: accessCodes } = await supabase
         .from('access_codes')
-        .select('*', { count: 'exact', head: true })
+        .select('id, status')
         .eq('organization_id', orgId)
 
-    return { org, existingCodesCount: existingCodesCount || 0 }
+    const existingCodesCount = accessCodes?.length || 0
+    const availableCodes = accessCodes?.filter(c => c.status === 'available').length || 0
+    const claimedCodes = accessCodes?.filter(c => c.status === 'claimed').length || 0
+
+    // Get all available subscription tiers for the dropdown
+    const { data: allTiers } = await supabase
+        .from('subscription_tiers')
+        .select('id, name, display_name')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+
+    // Get all available journeys for the dropdown
+    const { data: allJourneys } = await supabase
+        .from('journeys')
+        .select('id, name, description')
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+
+    return {
+        org,
+        existingCodesCount,
+        availableCodes,
+        claimedCodes,
+        allTiers: allTiers || [],
+        allJourneys: allJourneys || []
+    }
+}
+
+// Generate a random alphanumeric code (8 uppercase chars, no dashes)
+function generateCode(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // Excluding confusing chars like 0, O, I, 1
+    let code = ''
+    for (let i = 0; i < 8; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return code
 }
 
 async function generateAccessCodes(formData: FormData): Promise<void> {
@@ -44,17 +79,19 @@ async function generateAccessCodes(formData: FormData): Promise<void> {
     const orgId = formData.get('orgId') as string
     const count = parseInt(formData.get('count') as string) || 1
     const tierId = formData.get('tierId') as string
+    const journeyId = formData.get('journeyId') as string
 
     const supabase = createAdminClient()
 
-    // Generate unique codes
+    // Generate unique codes with format matching existing codes (8 uppercase alphanumeric)
     const codes = []
     for (let i = 0; i < count; i++) {
-        const code = `SWR-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+        const code = generateCode()
         codes.push({
             code,
             organization_id: orgId,
             tier_id: tierId || null,
+            journey_id: journeyId || null,
             status: 'available',
             created_at: new Date().toISOString(),
         })
@@ -97,9 +134,10 @@ export default async function GenerateCodesPage({
         notFound()
     }
 
-    const { org, existingCodesCount } = data
-    const subscription = Array.isArray(org.subscription) ? org.subscription[0] : org.subscription
-    const maxLicenses = subscription?.license_count || org.max_users || 10
+    const { org, existingCodesCount, availableCodes, claimedCodes, allTiers, allJourneys } = data
+    const subscriptions = Array.isArray(org.subscription) ? org.subscription : org.subscription ? [org.subscription] : []
+    const totalLicenses = subscriptions.reduce((sum: number, sub: any) => sum + (sub?.license_count || 0), 0)
+    const defaultTier = subscriptions[0]?.tier
 
     return (
         <div className="space-y-6">
@@ -125,16 +163,40 @@ export default async function GenerateCodesPage({
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">Existing Codes</span>
+                            <span className="text-muted-foreground">Total Codes</span>
                             <span className="font-bold">{existingCodesCount}</span>
                         </div>
                         <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">License Limit</span>
-                            <span className="font-bold">{maxLicenses}</span>
+                            <span className="text-muted-foreground">Available</span>
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                {availableCodes}
+                            </Badge>
                         </div>
                         <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">Subscription Tier</span>
-                            <Badge>{subscription?.tier?.display_name || 'None'}</Badge>
+                            <span className="text-muted-foreground">Claimed</span>
+                            <Badge variant="secondary">
+                                {claimedCodes}
+                            </Badge>
+                        </div>
+                        <div className="pt-2 border-t">
+                            <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">Total Licenses</span>
+                                <span className="font-bold">{totalLicenses}</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Subscription Plans</span>
+                            <div className="flex flex-wrap gap-1 justify-end">
+                                {subscriptions.length > 0 ? (
+                                    subscriptions.map((sub: any, i: number) => (
+                                        <Badge key={i} variant="outline">
+                                            {sub?.tier?.display_name || 'Unknown'} ({sub?.license_count || 0})
+                                        </Badge>
+                                    ))
+                                ) : (
+                                    <span className="text-muted-foreground text-sm">None</span>
+                                )}
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
@@ -153,7 +215,51 @@ export default async function GenerateCodesPage({
                     <CardContent>
                         <form action={generateAccessCodes} className="space-y-4">
                             <input type="hidden" name="orgId" value={id} />
-                            <input type="hidden" name="tierId" value={subscription?.tier_id || ''} />
+
+                            <div className="space-y-2">
+                                <label htmlFor="tierId" className="text-sm font-medium">
+                                    Subscription Tier
+                                </label>
+                                <select
+                                    name="tierId"
+                                    id="tierId"
+                                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    defaultValue={defaultTier?.id || ''}
+                                    required
+                                >
+                                    <option value="" disabled>Select a tier...</option>
+                                    {allTiers.map((tier: any) => (
+                                        <option key={tier.id} value={tier.id}>
+                                            {tier.display_name || tier.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-muted-foreground">
+                                    Users who redeem these codes will get this subscription tier
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label htmlFor="journeyId" className="text-sm font-medium">
+                                    Journey (Optional)
+                                </label>
+                                <select
+                                    name="journeyId"
+                                    id="journeyId"
+                                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    defaultValue=""
+                                >
+                                    <option value="">No specific journey</option>
+                                    {allJourneys.map((journey: any) => (
+                                        <option key={journey.id} value={journey.id}>
+                                            {journey.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-muted-foreground">
+                                    Optionally assign a specific journey to these access codes
+                                </p>
+                            </div>
 
                             <div className="space-y-2">
                                 <label htmlFor="count" className="text-sm font-medium">

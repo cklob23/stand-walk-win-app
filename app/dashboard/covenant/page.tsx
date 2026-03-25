@@ -54,10 +54,13 @@ export default async function CovenantPage({
 
       if (selectedPairing) {
         pairing = selectedPairing
-        partner = selectedPairing.learner
+        // Handle Supabase join which might return array or object
+        const learnerData = selectedPairing.learner
+        partner = Array.isArray(learnerData) ? learnerData[0] : learnerData
       }
     }
   } else {
+    // For learners, fetch their pairing
     const { data } = await supabase
       .from('pairings')
       .select(`
@@ -68,11 +71,13 @@ export default async function CovenantPage({
       .in('status', ['active', 'pending'])
       .order('created_at', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (data) {
       pairing = data
-      partner = data.leader
+      // Handle Supabase join which might return array or object
+      const leaderData = data.leader
+      partner = Array.isArray(leaderData) ? leaderData[0] : leaderData
     }
   }
 
