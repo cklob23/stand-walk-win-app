@@ -13,6 +13,45 @@ function getAdminClient() {
   )
 }
 
+// Check if an email is already registered
+export async function checkEmailExists(email: string) {
+  try {
+    const adminSupabase = getAdminClient()
+
+    // Check auth.users for existing email
+    const { data, error } = await adminSupabase.auth.admin.listUsers()
+
+    if (error) {
+      console.error('Error checking email:', error)
+      return { exists: false }
+    }
+
+    const existingUser = data.users.find(
+      user => user.email?.toLowerCase() === email.toLowerCase()
+    )
+
+    if (existingUser) {
+      // Get profile to check their role
+      const { data: profile } = await adminSupabase
+        .from('profiles')
+        .select('role, full_name')
+        .eq('id', existingUser.id)
+        .single()
+
+      return {
+        exists: true,
+        role: profile?.role || null,
+        name: profile?.full_name || null
+      }
+    }
+
+    return { exists: false }
+  } catch (err) {
+    console.error('Error checking email existence:', err)
+    return { exists: false }
+  }
+}
+
 // Validate a pairing code for learner signup
 export async function validatePairingCode(code: string) {
   try {
@@ -279,11 +318,12 @@ export async function redeemAccessCode(userId: string, accessCodeId: string) {
       return { error: 'Failed to redeem access code' }
     }
 
-    // Update user profile with role, tier and organization
+    // Update user profile with role, tier, access code, and organization
     // Access code users are always leaders
     const profileUpdate: Record<string, unknown> = {
       role: 'leader',
       subscription_tier_id: accessCode.tier_id,
+      access_code_id: accessCode.id,
     }
 
     if (accessCode.organization_id) {
@@ -337,6 +377,15 @@ export async function signUp(formData: FormData) {
     const accessCodeId = formData.get('accessCodeId') as string | null
     const pairingId = formData.get('pairingId') as string | null
     const codeType = formData.get('codeType') as 'access' | 'pairing' | null
+
+    // Check if email already exists before attempting signup
+    const emailCheck = await checkEmailExists(email)
+    if (emailCheck.exists) {
+      const roleText = emailCheck.role === 'leader' ? 'a Leader' : emailCheck.role === 'learner' ? 'a Learner' : 'a user'
+      return {
+        error: `This email is already registered as ${roleText}. Please sign in instead, or use a different email address.`
+      }
+    }
 
     // First, create the user account
     const { data, error } = await supabase.auth.signUp({

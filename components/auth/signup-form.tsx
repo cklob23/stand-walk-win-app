@@ -424,6 +424,13 @@ export function SignupForm({ isOrgAdmin = false }: SignupFormProps) {
             {error && (
               <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
                 {error}
+                {error.includes('already registered') && (
+                  <div className="mt-2">
+                    <a href="/auth/login" className="font-medium underline hover:no-underline">
+                      Go to Sign In
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 
