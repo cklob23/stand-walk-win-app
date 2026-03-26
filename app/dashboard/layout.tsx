@@ -1,13 +1,13 @@
 import React from "react"
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { BrandingProvider, type OrgBranding } from '@/contexts/branding-context'
 import { SplitScreenProvider } from '@/contexts/split-screen-context'
 import { DynamicFavicon } from '@/components/dynamic-favicon'
 import { DashboardContent } from '@/components/dashboard/dashboard-content'
+import { CovenantRedirectGuard } from '@/components/dashboard/covenant-redirect-guard'
 import type { Profile, Pairing } from '@/lib/types'
 
 interface LearnerWithPairing {
@@ -40,22 +40,9 @@ export default async function DashboardLayout({
     redirect('/onboarding')
   }
 
-  // Get current pathname to check if we're on certain pages
-  const headersList = await headers()
-  const pathname = headersList.get('x-pathname') || ''
-  const fullUrl = headersList.get('x-url') || ''
-  const referer = headersList.get('referer') || ''
-
-  // Detect special pages that should skip covenant redirect
-  // Check multiple sources since x-pathname may not always be available
-  const isCovenantPage = pathname.includes('/dashboard/covenant') ||
-    fullUrl.includes('/dashboard/covenant') ||
-    referer.includes('/dashboard/covenant')
-  const isAdminPage = pathname.includes('/dashboard/admin') ||
-    fullUrl.includes('/dashboard/admin') ||
-    referer.includes('/dashboard/admin')
-
-  console.log('[v0] Dashboard layout - pathname:', pathname, 'fullUrl:', fullUrl, 'isCovenantPage:', isCovenantPage, 'role:', profile.role)
+  // Track covenant state for client-side redirect guard
+  let needsCovenantSignature = false
+  let covenantPairingId: string | null = null
 
   // Fetch organization branding if user belongs to an org
   let orgBranding: OrgBranding | null = null
@@ -144,23 +131,20 @@ export default async function DashboardLayout({
 
       // Check if covenant needs to be signed (for leaders)
       // Find active pairing with a learner where the LEADER hasn't signed yet
-      if (!isCovenantPage && !isAdminPage) {
-        const unsignedPairing = allPairings.find(p =>
-          p.learner_id &&
-          p.status === 'active' &&
-          !p.covenant_accepted_leader  // Leader hasn't signed
-        )
-        console.log('[v0] Leader covenant check - unsignedPairing:', unsignedPairing?.id, 'covenant_leader:', unsignedPairing?.covenant_accepted_leader)
-        if (unsignedPairing) {
-          console.log('[v0] Leader redirecting to covenant')
-          redirect(`/dashboard/covenant?pairing=${unsignedPairing.id}`)
-        }
+      const unsignedPairing = allPairings.find(p =>
+        p.learner_id &&
+        p.status === 'active' &&
+        !p.covenant_accepted_leader  // Leader hasn't signed
+      )
+      if (unsignedPairing) {
+        needsCovenantSignature = true
+        covenantPairingId = unsignedPairing.id
       }
     }
   }
 
   // Check covenant for learners - redirect if LEARNER hasn't signed yet
-  if (profile.role === 'learner' && !isCovenantPage && !isAdminPage) {
+  if (profile.role === 'learner') {
     const { data: learnerPairing } = await supabase
       .from('pairings')
       .select('*')
@@ -168,32 +152,36 @@ export default async function DashboardLayout({
       .eq('status', 'active')
       .single()
 
-    console.log('[v0] Learner covenant check - pairing:', learnerPairing?.id, 'covenant_learner:', learnerPairing?.covenant_accepted_learner)
     if (learnerPairing && !learnerPairing.covenant_accepted_learner) {
-      console.log('[v0] Learner redirecting to covenant')
-      redirect(`/dashboard/covenant?pairing=${learnerPairing.id}`)
+      needsCovenantSignature = true
+      covenantPairingId = learnerPairing.id
     }
   }
 
   return (
     <BrandingProvider initialBranding={orgBranding}>
       <SplitScreenProvider>
-        <DynamicFavicon />
-        <div className="min-h-screen bg-background overflow-x-hidden">
-          <DashboardHeader
-            profile={profile}
-            notificationCount={count || 0}
-            recentNotifications={recentNotifications || []}
-            allLearners={allLearners}
-            currentPairingId={currentPairingId}
-            learnerNotificationCounts={learnerNotificationCounts}
-            maxLearners={(profile.subscription_tier as { max_learners?: number })?.max_learners || 1}
-            slogan={orgBranding?.slogan || null}
-          />
-          <main className="w-full overflow-x-hidden">
-            <DashboardContent>{children}</DashboardContent>
-          </main>
-        </div>
+        <CovenantRedirectGuard
+          needsCovenantSignature={needsCovenantSignature}
+          covenantPairingId={covenantPairingId}
+        >
+          <DynamicFavicon />
+          <div className="min-h-screen bg-background overflow-x-hidden">
+            <DashboardHeader
+              profile={profile}
+              notificationCount={count || 0}
+              recentNotifications={recentNotifications || []}
+              allLearners={allLearners}
+              currentPairingId={currentPairingId}
+              learnerNotificationCounts={learnerNotificationCounts}
+              maxLearners={(profile.subscription_tier as { max_learners?: number })?.max_learners || 1}
+              slogan={orgBranding?.slogan || null}
+            />
+            <main className="w-full overflow-x-hidden">
+              <DashboardContent>{children}</DashboardContent>
+            </main>
+          </div>
+        </CovenantRedirectGuard>
       </SplitScreenProvider>
     </BrandingProvider>
   )

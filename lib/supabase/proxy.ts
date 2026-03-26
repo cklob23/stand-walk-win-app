@@ -4,8 +4,13 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function updateSession(request: NextRequest) {
   // Clone the request headers and add the pathname
   const requestHeaders = new Headers(request.headers)
-  requestHeaders.set('x-pathname', request.nextUrl.pathname)
-  requestHeaders.set('x-url', request.nextUrl.href)
+  const pathname = request.nextUrl.pathname
+  const fullUrl = request.nextUrl.href
+
+  requestHeaders.set('x-pathname', pathname)
+  requestHeaders.set('x-url', fullUrl)
+  // Add additional header that Next.js uses internally
+  requestHeaders.set('x-invoke-path', pathname)
 
   let supabaseResponse = NextResponse.next({
     request: {
@@ -76,8 +81,10 @@ export async function updateSession(request: NextRequest) {
   // If this is not done, you may be causing the browser and server to go out
   // of sync and terminate the user's session prematurely!
 
-  // Add x-pathname header for server components to know the current path
-  supabaseResponse.headers.set('x-pathname', request.nextUrl.pathname)
+  // Add path headers for server components to know the current path
+  supabaseResponse.headers.set('x-pathname', pathname)
+  supabaseResponse.headers.set('x-url', fullUrl)
+  supabaseResponse.headers.set('x-invoke-path', pathname)
 
   return supabaseResponse;
 }

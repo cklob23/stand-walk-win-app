@@ -441,9 +441,31 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         }
     }, [selectedBook, selectedChapter, view])
 
+    // Ref to track if we're in auto-play mode (don't cleanup when navigating with autoplay)
+    const autoPlayingRef = useRef(false)
+
     // Cleanup speech on unmount or chapter change
     useEffect(() => {
         return () => {
+            // Skip full cleanup if we're auto-playing to the next chapter
+            // This allows playback to continue on the new chapter
+            if (autoPlayingRef.current) {
+                // Just clean up the current audio resources, but don't block future playback
+                if (mobileAudioRef.current) {
+                    mobileAudioRef.current.pause()
+                    mobileAudioRef.current = null
+                }
+                for (const item of mobileQueueRef.current) {
+                    if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
+                }
+                mobileQueueRef.current = []
+                // For desktop, cancel current speech but don't prevent new playback
+                if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                    window.speechSynthesis.cancel()
+                }
+                return
+            }
+            // Full cleanup when not auto-playing (e.g., user navigated manually without audio)
             // Desktop cleanup
             if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
                 window.speechSynthesis.cancel()
@@ -1466,9 +1488,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             setAutoAdvanceCountdown(null)
             setTtsProgress(0)
 
+            // Set flags to enable auto-play on next chapter
+            autoPlayingRef.current = true
+            pendingAutoPlayRef.current = true
+
             // Fully stop current playback before transitioning
             handleStopMobile()
-            mobileStoppedRef.current = true
             mobilePlayingRef.current = false
             setIsPlaying(false)
             setIsPaused(false)
@@ -1480,9 +1505,6 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 setWeekVerseRange(null)
                 setSelectedChapter(next)
                 updateURL(selectedBook, next, translation)
-                // Reset the stopped flag so new chapter can play
-                mobileStoppedRef.current = false
-                setAutoPlayNextChapter(true)
             }, 200)
             return
         }
@@ -1493,28 +1515,33 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         return () => clearTimeout(timer)
     }, [autoAdvanceCountdown, selectedChapter, chapters.length, selectedBook, translation, updateURL])
 
-    // Auto-play when new chapter verses load after auto-advance
+    // Ref to track pending auto-play (persists across renders, more reliable than state)
+    const pendingAutoPlayRef = useRef(false)
+
+    // Auto-play when new chapter verses load after navigation
     useEffect(() => {
         // Wait until verses are fully loaded (not loading) and we have content
-        if (autoPlayNextChapter && verses.length > 0 && !versesLoading) {
+        if (pendingAutoPlayRef.current && verses.length > 0 && !versesLoading) {
+            // Clear the pending flag immediately
+            pendingAutoPlayRef.current = false
             setAutoPlayNextChapter(false)
             setTtsProgress(0)
 
-            // Ensure previous audio is fully stopped before starting new chapter
-            handleStopMobile()
+            // Reset flags to allow playback
+            mobileStoppedRef.current = false
+            autoPlayingRef.current = false
 
-            // Longer delay to let the new chapter fully render and audio context reset
+            // Use a short delay to let the UI settle, then start playback
             const playTimer = setTimeout(() => {
-                // Double-check we still have verses and conditions are met
                 if (verses.length > 0) {
                     handlePlayChapter()
                 }
-            }, 800)
+            }, 500)
 
             return () => clearTimeout(playTimer)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [autoPlayNextChapter, verses, versesLoading])
+    }, [verses, versesLoading])
 
     const handleSelectBook = (bookId: string) => {
         setSelectedBook(bookId)
@@ -1594,7 +1621,14 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }
 
     // Navigate to next/prev chapter
+    // If audio is playing, continue playing on the new chapter
     const handlePrevChapter = () => {
+        const wasPlaying = isPlaying && !isPaused
+        // Set flags BEFORE stopping audio to enable auto-play on new chapter
+        if (wasPlaying) {
+            autoPlayingRef.current = true
+            pendingAutoPlayRef.current = true
+        }
         handleStopAudio()
         setWeekVerseRange(null)
         setTtsProgress(0)
@@ -1607,6 +1641,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }
 
     const handleNextChapter = () => {
+        const wasPlaying = isPlaying && !isPaused
+        // Set flags BEFORE stopping audio to enable auto-play on new chapter
+        if (wasPlaying) {
+            autoPlayingRef.current = true
+            pendingAutoPlayRef.current = true
+        }
         handleStopAudio()
         setWeekVerseRange(null)
         setTtsProgress(0)
@@ -3026,7 +3066,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     className="relative inline-flex items-center gap-1 rounded-md border border-border text-sm font-medium h-9 px-3 overflow-hidden transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                     onClick={() => {
                                         clearAutoAdvance()
-                                        handleStopAudio()
+                                        // handleNextChapter will check isPlaying and continue playback on new chapter
                                         handleNextChapter()
                                     }}
                                 >
