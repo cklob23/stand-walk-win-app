@@ -212,6 +212,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null) // seconds left
     const [autoPlayNextChapter, setAutoPlayNextChapter] = useState(false)
 
+    // Prefetch cache for next chapter audio (keyed by batch)
+    const prefetchedAudioRef = useRef<Map<string, { audio: HTMLAudioElement; blobUrl: string; verseNums?: number[] }>>(new Map())
+    const prefetchInProgressRef = useRef(false)
+
     // AI Explain feature
     const [showExplainDialog, setShowExplainDialog] = useState(false)
     const [explainReference, setExplainReference] = useState('')
@@ -480,6 +484,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
             }
             mobileQueueRef.current = []
+            // Clear prefetch cache when manually navigating (without autoplay)
+            for (const entry of prefetchedAudioRef.current.values()) {
+                if (entry.blobUrl) URL.revokeObjectURL(entry.blobUrl)
+            }
+            prefetchedAudioRef.current.clear()
         }
     }, [selectedBook, selectedChapter])
 
@@ -1029,6 +1038,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     setCurrentReadingVerse(null)
                     setTtsProgress(1)
                     setAutoAdvanceCountdown(3)
+                    // Start prefetching next chapter audio during countdown
+                    if (selectedChapter && selectedChapter < chapters.length) {
+                        prefetchNextChapterAudio(selectedChapter + 1)
+                    }
                 }
             }
             utt.onerror = (e) => {
@@ -1102,6 +1115,100 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         return { audio, blobUrl }
     }
 
+    // Track if we've already started prefetching for this chapter
+    const prefetchStartedForChapterRef = useRef<number | null>(null)
+
+    // Prefetch next chapter's audio - start early for seamless playback
+    // Uses BATCH_SIZE (3) to match the playback batching
+    const PREFETCH_BATCH_SIZE = 3
+
+    const prefetchNextChapterAudio = async (nextChapter: number) => {
+        if (prefetchInProgressRef.current) return
+        if (!selectedBook || nextChapter > chapters.length) return
+        // Don't re-prefetch if we already started for this chapter
+        if (prefetchStartedForChapterRef.current === nextChapter) return
+
+        prefetchStartedForChapterRef.current = nextChapter
+        prefetchInProgressRef.current = true
+
+        try {
+            // First, fetch the verses for the next chapter
+            const res = await fetch(`/api/bible?action=verses&book=${selectedBook}&chapter=${nextChapter}&translation=${translation}`)
+            if (!res.ok) return
+            const data = await res.json()
+            const nextVerses = data.verses || []
+
+            if (nextVerses.length === 0) return
+
+            // Prefetch first 3 batches (9 verses total) to match BATCH_SIZE=3 playback
+            const batchesToPrefetch = 3
+            const bookName = books.find(b => b.id === selectedBook)?.name || ''
+            const voice = selectedCloudVoice
+
+            // Fetch batches in parallel for faster prefetching
+            const fetchPromises = []
+            for (let batchIdx = 0; batchIdx < batchesToPrefetch; batchIdx++) {
+                const startIdx = batchIdx * PREFETCH_BATCH_SIZE
+                const endIdx = Math.min(startIdx + PREFETCH_BATCH_SIZE, nextVerses.length)
+                if (startIdx >= nextVerses.length) break
+
+                // Build batch text (same format as buildVerseText uses)
+                // Respect skipVerseNumbers setting
+                let batchText = ''
+                const verseNums: number[] = []
+                const skipNumbers = skipVerseNumbersRef.current
+                for (let i = startIdx; i < endIdx; i++) {
+                    const v = nextVerses[i]
+                    if (!v) continue
+                    verseNums.push(v.verse)
+                    const verseText = v.text.replace(/\n/g, ' ').trim()
+                    let intro: string
+                    if (skipNumbers) {
+                        // Only announce chapter at the very beginning, no verse numbers
+                        intro = i === 0 ? `${bookName} chapter ${nextChapter}. ` : ''
+                    } else {
+                        // Announce verse numbers
+                        intro = i === 0 ? `${bookName} chapter ${nextChapter}, verse ${v.verse}. ` : `Verse ${v.verse}. `
+                    }
+                    batchText += (i > startIdx ? ' ' : '') + intro + verseText
+                }
+
+                if (!batchText || verseNums.length === 0) continue
+
+                // Cache key includes all verse numbers in the batch
+                const cacheKey = `${selectedBook}:${nextChapter}:batch:${verseNums.join(',')}`
+
+                // Skip if already cached
+                if (prefetchedAudioRef.current.has(cacheKey)) continue
+
+                fetchPromises.push(
+                    fetchVerseAudio(batchText, voice).then(({ audio, blobUrl }) => {
+                        prefetchedAudioRef.current.set(cacheKey, { audio, blobUrl, verseNums })
+                    }).catch(() => {
+                        // Silently ignore prefetch errors
+                    })
+                )
+            }
+
+            // Wait for all prefetch requests to complete
+            await Promise.all(fetchPromises)
+        } catch {
+            // Silently ignore prefetch errors
+        } finally {
+            prefetchInProgressRef.current = false
+        }
+    }
+
+    // Trigger early prefetch when we're 70% through the chapter
+    useEffect(() => {
+        if (isPlaying && ttsProgress >= 0.7 && selectedChapter && selectedChapter < chapters.length) {
+            const nextChapter = selectedChapter + 1
+            if (prefetchStartedForChapterRef.current !== nextChapter) {
+                prefetchNextChapterAudio(nextChapter)
+            }
+        }
+    }, [ttsProgress, isPlaying, selectedChapter, chapters.length])
+
     // Build the text for a verse at a given index
     const buildVerseText = (verseIdx: number, isFirst: boolean) => {
         const v = verses[verseIdx]
@@ -1157,6 +1264,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             mobilePlayingRef.current = false
             setTtsProgress(1) // 100% complete
             setAutoAdvanceCountdown(3)
+            // Start prefetching next chapter audio during countdown
+            if (selectedChapter && selectedChapter < chapters.length) {
+                prefetchNextChapterAudio(selectedChapter + 1)
+            }
             return
         }
 
@@ -1333,11 +1444,28 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         clearAutoAdvance()
 
         // Start pre-buffering the first 3 batches immediately
+        // Check prefetch cache first for faster startup (cache uses batch keys)
         const voice = selectedCloudVoice
         const INITIAL_BUFFER = 3
         for (let i = 0; i < Math.min(INITIAL_BUFFER, queue.length); i++) {
             const item = queue[i]
             item.loading = true
+
+            // Check if we have prefetched audio for this batch
+            if (selectedChapter && item.verseNums.length > 0) {
+                const cacheKey = `${selectedBook}:${selectedChapter}:batch:${item.verseNums.join(',')}`
+                const cached = prefetchedAudioRef.current.get(cacheKey)
+                if (cached) {
+                    // Use prefetched audio - immediate playback!
+                    item.audio = cached.audio
+                    item.blobUrl = cached.blobUrl
+                    item.loading = false
+                    prefetchedAudioRef.current.delete(cacheKey) // Remove from cache after use
+                    continue
+                }
+            }
+
+            // Not in prefetch cache, fetch normally
             let text = ''
             item.verseIndices.forEach((vIdx, j) => {
                 const part = buildVerseText(vIdx, i === 0 && j === 0)
@@ -1633,6 +1761,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setWeekVerseRange(null)
         setTtsProgress(0)
         clearAutoAdvance()
+        // Reset prefetch tracking for the new chapter
+        prefetchStartedForChapterRef.current = null
         if (selectedChapter && selectedChapter > 1) {
             const prev = selectedChapter - 1
             setSelectedChapter(prev)
@@ -1651,6 +1781,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setWeekVerseRange(null)
         setTtsProgress(0)
         clearAutoAdvance()
+        // Reset prefetch tracking for the new chapter
+        prefetchStartedForChapterRef.current = null
         if (selectedChapter && chapters.length > 0 && selectedChapter < chapters.length) {
             const next = selectedChapter + 1
             setSelectedChapter(next)
