@@ -10,23 +10,39 @@ interface WeeklyTimelineProps {
   currentWeek: number
   assignments: Assignment[]
   assignmentProgress: { assignment_id: string; status: string }[]
+  completedMeetingsCount?: number // Number of completed meetings for this pairing
 }
 
-export function WeeklyTimeline({ 
-  weeklyContent, 
-  currentWeek, 
-  assignments, 
-  assignmentProgress 
+export function WeeklyTimeline({
+  weeklyContent,
+  currentWeek,
+  assignments,
+  assignmentProgress,
+  completedMeetingsCount = 0
 }: WeeklyTimelineProps) {
   return (
     <div className="space-y-1">
       {weeklyContent.map((week, index) => {
         const weekAssignments = assignments.filter(a => a.week_number === week.week_number)
-        const completedCount = assignmentProgress.filter(p => 
-          weekAssignments.some(a => a.id === p.assignment_id) && 
+
+        // Count completed from progress records
+        const completedFromProgress = assignmentProgress.filter(p =>
+          weekAssignments.some(a => a.id === p.assignment_id) &&
           p.status === 'completed'
         ).length
-        
+
+        // Check if meeting assignment should be auto-completed
+        // Week N meeting is complete if completedMeetingsCount >= N
+        const meetingAssignment = weekAssignments.find(a => a.assignment_type === 'meeting')
+        const meetingInProgress = meetingAssignment
+          ? assignmentProgress.some(p => p.assignment_id === meetingAssignment.id && p.status === 'completed')
+          : false
+        const meetingAutoCompleted = meetingAssignment &&
+          !meetingInProgress &&
+          completedMeetingsCount >= week.week_number ? 1 : 0
+
+        const completedCount = completedFromProgress + meetingAutoCompleted
+
         const isCompleted = completedCount === weekAssignments.length && weekAssignments.length > 0
         const isCurrent = week.week_number === currentWeek
         const isLocked = week.week_number > currentWeek
@@ -36,14 +52,14 @@ export function WeeklyTimeline({
           <div key={week.id} className="relative">
             {/* Connector Line */}
             {index < weeklyContent.length - 1 && (
-              <div 
+              <div
                 className={cn(
                   "absolute left-[15px] top-[40px] w-0.5 h-[calc(100%-16px)]",
                   isCompleted ? "bg-primary" : "bg-border"
                 )}
               />
             )}
-            
+
             <Link
               href={isAccessible ? `/dashboard/week/${week.week_number}` : '#'}
               className={cn(
@@ -103,7 +119,7 @@ export function WeeklyTimeline({
                 {!isLocked && weekAssignments.length > 0 && (
                   <div className="mt-2 flex items-center gap-2">
                     <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className="h-full bg-primary rounded-full transition-all"
                         style={{ width: `${(completedCount / weekAssignments.length) * 100}%` }}
                       />

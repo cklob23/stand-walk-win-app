@@ -106,7 +106,16 @@ export function WeekDetailView({
   const isLeader = profile.role === 'leader'
   const progressSource = isLeader && learnerProgress.length > 0 ? learnerProgress : assignmentProgress
   const weekProgress = progressSource.filter(p => assignmentIds.has(p.assignment_id))
-  const completedCount = weekProgress.filter(p => p.status === 'completed').length
+  const completedFromProgress = weekProgress.filter(p => p.status === 'completed').length
+
+  // Also count meeting assignment if hasWeeklyMeeting is true but not in progress records
+  const meetingAssignment = assignments.find(a => a.assignment_type === 'meeting')
+  const meetingInProgress = meetingAssignment
+    ? weekProgress.some(p => p.assignment_id === meetingAssignment.id && p.status === 'completed')
+    : false
+  const meetingAutoCompleted = hasWeeklyMeeting && meetingAssignment && !meetingInProgress ? 1 : 0
+
+  const completedCount = completedFromProgress + meetingAutoCompleted
   const progressPercentage = assignments.length > 0
     ? Math.round((completedCount / assignments.length) * 100)
     : 0

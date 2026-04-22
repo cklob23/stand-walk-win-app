@@ -16,6 +16,10 @@ import {
 } from "lucide-react";
 import type { Profile, WeeklyContent, Pairing, Assignment } from "@/lib/types";
 
+interface Partner {
+  full_name: string | null;
+}
+
 interface AssignmentProgressRecord {
   id: string;
   assignment_id: string;
@@ -41,9 +45,11 @@ export default function ProgressPage() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [pairing, setPairing] = useState<Pairing | null>(null);
+  const [partner, setPartner] = useState<Partner | null>(null);
   const [weeklyContent, setWeeklyContent] = useState<WeeklyContent[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [assignmentProgress, setAssignmentProgress] = useState<AssignmentProgressRecord[]>([]);
+  const [completedMeetingsCount, setCompletedMeetingsCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -66,34 +72,45 @@ export default function ProgressPage() {
 
       // Get pairing based on role
       let pairingData = null;
+      let partnerData: Partner | null = null;
       if (profileData?.role === 'leader') {
-        // Fetch ALL pairings for multi-learner support
+        // Fetch ALL pairings for multi-learner support with learner info
         const { data: allPairings } = await supabase
           .from("pairings")
-          .select("*")
+          .select(`
+            *,
+            learner:profiles!pairings_learner_id_fkey(full_name)
+          `)
           .eq("leader_id", user.id)
           .in("status", ["active", "pending"])
           .order("created_at", { ascending: false });
 
         if (allPairings && allPairings.length > 0) {
           // Use selected pairing from URL or default to most recent
-          pairingData = selectedPairingId
-            ? allPairings.find(p => p.id === selectedPairingId) || allPairings[0]
+          const selected = selectedPairingId
+            ? allPairings.find((p: { id: string }) => p.id === selectedPairingId) || allPairings[0]
             : allPairings[0];
+          pairingData = selected;
+          partnerData = selected.learner as Partner;
         }
       } else {
         const { data } = await supabase
           .from("pairings")
-          .select("*")
+          .select(`
+            *,
+            leader:profiles!pairings_leader_id_fkey(full_name)
+          `)
           .eq("learner_id", user.id)
           .in("status", ["active", "pending"])
           .order("created_at", { ascending: false })
           .limit(1)
           .single();
         pairingData = data;
+        partnerData = data?.leader as Partner;
       }
 
       if (pairingData) setPairing(pairingData);
+      if (partnerData) setPartner(partnerData);
 
       // Get weekly content
       const { data: contentData } = await supabase
@@ -113,13 +130,28 @@ export default function ProgressPage() {
       if (assignmentsData) setAssignments(assignmentsData);
 
       // Get assignment progress for this pairing
+      // For leaders, get the learner's progress
       if (pairingData) {
+        const progressUserId = profileData?.role === 'leader'
+          ? pairingData.learner_id
+          : user.id;
+
         const { data: progressData } = await supabase
           .from("assignment_progress")
           .select("*")
-          .eq("pairing_id", pairingData.id);
+          .eq("pairing_id", pairingData.id)
+          .eq("user_id", progressUserId);
 
         if (progressData) setAssignmentProgress(progressData);
+
+        // Get completed meetings count for auto-completing meeting assignments
+        const { count: meetingsCount } = await supabase
+          .from("scheduled_meetings")
+          .select("*", { count: "exact", head: true })
+          .eq("pairing_id", pairingData.id)
+          .eq("status", "completed");
+
+        setCompletedMeetingsCount(meetingsCount ?? 0);
       }
 
       setLoading(false);
@@ -144,21 +176,45 @@ export default function ProgressPage() {
   }
 
   const currentWeek = pairing?.current_week || 1;
+  const isLeader = profile?.role === 'leader';
 
   // Get unlocked assignments (up to current week)
   const unlockedAssignments = assignments.filter(a => a.week_number <= currentWeek);
   const unlockedAssignmentIds = new Set(unlockedAssignments.map(a => a.id));
   const allAssignmentIds = new Set(assignments.map(a => a.id));
 
-  // Calculate completed assignments - only count progress for assignments that exist
-  const completedAssignments = assignmentProgress.filter(
+  // Helper to check if a meeting assignment should be auto-completed
+  // Meeting assignments are auto-completed based on completed meetings count
+  // Week N requires N completed meetings total
+  const isMeetingAutoCompleted = (assignment: Assignment): boolean => {
+    if (assignment.assignment_type !== 'meeting') return false;
+    return completedMeetingsCount >= assignment.week_number;
+  };
+
+  // Calculate completed assignments - count progress records + auto-completed meetings
+  const completedFromProgress = assignmentProgress.filter(
     (p) => allAssignmentIds.has(p.assignment_id) && p.status === "completed"
-  ).length;
+  );
+  const completedProgressIds = new Set(completedFromProgress.map(p => p.assignment_id));
+
+  // Add meeting assignments that are auto-completed but not in progress records yet
+  const autoCompletedMeetings = assignments.filter(
+    a => isMeetingAutoCompleted(a) && !completedProgressIds.has(a.id)
+  );
+
+  const completedAssignments = completedFromProgress.length + autoCompletedMeetings.length;
 
   // Calculate completed for unlocked weeks only
-  const completedUnlocked = assignmentProgress.filter(
+  const completedUnlockedFromProgress = assignmentProgress.filter(
     (p) => unlockedAssignmentIds.has(p.assignment_id) && p.status === "completed"
-  ).length;
+  );
+  const completedUnlockedIds = new Set(completedUnlockedFromProgress.map(p => p.assignment_id));
+
+  const autoCompletedMeetingsUnlocked = unlockedAssignments.filter(
+    a => isMeetingAutoCompleted(a) && !completedUnlockedIds.has(a.id)
+  );
+
+  const completedUnlocked = completedUnlockedFromProgress.length + autoCompletedMeetingsUnlocked.length;
 
   // Calculate total assignments up to current week
   const totalAssignmentsUpToCurrentWeek = unlockedAssignments.length;
@@ -178,13 +234,19 @@ export default function ProgressPage() {
       (a) => a.week_number === week.week_number
     );
 
-    // Count completed assignments for this week
-    const completed = weekAssignments.filter((a) =>
+    // Count completed assignments for this week (from progress + auto-completed meetings)
+    const weekCompletedFromProgress = weekAssignments.filter((a) =>
       assignmentProgress.some(
         (p) => p.assignment_id === a.id && p.status === "completed"
       )
-    ).length;
+    );
+    const weekCompletedIds = new Set(weekCompletedFromProgress.map(a => a.id));
 
+    const weekAutoCompletedMeetings = weekAssignments.filter(
+      a => isMeetingAutoCompleted(a) && !weekCompletedIds.has(a.id)
+    );
+
+    const completed = weekCompletedFromProgress.length + weekAutoCompletedMeetings.length;
     const total = weekAssignments.length;
 
     return {
@@ -195,14 +257,19 @@ export default function ProgressPage() {
     };
   });
 
+  const learnerName = isLeader ? (partner?.full_name || 'Learner') : null;
+
   return (
     <div className="px-4 py-6 sm:px-6 space-y-6 max-w-7xl mx-auto">
       <div>
-        <h1 className="font-serif text-xl sm:text-2xl font-bold text-foreground">
-          Your Progress
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground">
+          {isLeader ? `${learnerName}'s Progress` : "Your Progress"}
         </h1>
         <p className="text-sm sm:text-base text-muted-foreground">
-          Track your journey through the 6-week discipleship program
+          {isLeader
+            ? `Track ${learnerName?.split(' ')[0] || 'your learner'}'s journey through the 6-week discipleship program`
+            : "Track your journey through the 6-week discipleship program"
+          }
         </p>
       </div>
 

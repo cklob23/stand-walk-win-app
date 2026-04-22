@@ -51,6 +51,7 @@ interface LeaderDashboardProps {
   currentWeek: number
   nextMeeting: ScheduledMeeting | null
   hasWeeklyMeeting: boolean
+  completedMeetingsCount?: number
   sharedJournalEntries?: { id: string; entry_date: string; prayer_items: string; god_saying: string }[]
   hasJournalEntryToday: boolean
   expandedAssignmentId?: string | null
@@ -67,6 +68,7 @@ export function LeaderDashboard({
   recentMessages,
   currentWeek,
   nextMeeting,
+  completedMeetingsCount = 0,
   sharedJournalEntries = [],
   hasJournalEntryToday,
   expandedAssignmentId,
@@ -78,18 +80,41 @@ export function LeaderDashboard({
   const unlockedAssignments = assignments.filter(a => a.week_number <= currentWeek)
   const unlockedAssignmentIds = new Set(unlockedAssignments.map(a => a.id))
 
+  // Count meeting assignments that should be auto-completed
+  // Meeting assignments for week N are complete if N completed meetings exist
+  // Since hasWeeklyMeeting indicates current week meeting is done, 
+  // all meeting assignments up to currentWeek are complete
+  const meetingAssignmentsUpToCurrent = unlockedAssignments.filter(a => a.assignment_type === 'meeting')
+  const completedMeetingIdsFromProgress = new Set(
+    assignmentProgress
+      .filter(p => p.status === 'completed' && meetingAssignmentsUpToCurrent.some(m => m.id === p.assignment_id))
+      .map(p => p.assignment_id)
+  )
+  // Count meeting assignments that are auto-completed but not in progress records
+  // We use hasWeeklyMeeting (which checks if enough meetings exist for current week)
+  // So all meeting assignments for weeks 1 through currentWeek should be complete if hasWeeklyMeeting is true
+  const autoCompletedMeetings = meetingAssignmentsUpToCurrent.filter(
+    m => !completedMeetingIdsFromProgress.has(m.id)
+  ).length
+
   const totalAssignments = unlockedAssignments.length
-  const completedAssignments = assignmentProgress.filter(p =>
+  const completedFromProgress = assignmentProgress.filter(p =>
     unlockedAssignmentIds.has(p.assignment_id) && p.status === 'completed'
   ).length
+  const completedAssignments = completedFromProgress + autoCompletedMeetings
   const progressPercentage = totalAssignments > 0 ? Math.round((completedAssignments / totalAssignments) * 100) : 0
 
   // Calculate learner's progress for current week
   const currentWeekAssignments = assignments.filter(a => a.week_number === currentWeek)
-  const learnerProgress = assignmentProgress.filter(p =>
+  const currentWeekMeeting = currentWeekAssignments.find(a => a.assignment_type === 'meeting')
+  const currentWeekMeetingAutoCompleted = currentWeekMeeting &&
+    !assignmentProgress.some(p => p.assignment_id === currentWeekMeeting.id && p.status === 'completed')
+    ? 1 : 0
+  const learnerProgressFromRecords = assignmentProgress.filter(p =>
     currentWeekAssignments.some(a => a.id === p.assignment_id) &&
     p.status === 'completed'
   ).length
+  const learnerProgress = learnerProgressFromRecords + currentWeekMeetingAutoCompleted
 
   const partnerInitials = partner?.full_name
     ?.split(' ')
@@ -189,6 +214,7 @@ export function LeaderDashboard({
                 currentWeek={currentWeek}
                 assignments={assignments}
                 assignmentProgress={assignmentProgress}
+                completedMeetingsCount={completedMeetingsCount}
               />
             </CardContent>
           </Card>

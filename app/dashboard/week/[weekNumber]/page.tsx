@@ -116,11 +116,58 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
   // For leaders viewing learner dashboard, fetch LEARNER's progress (not leader's)
   // For learners, fetch their own progress
   const progressUserId = profile.role === 'leader' ? pairing.learner_id : user.id
-  const { data: assignmentProgress } = await supabase
+  let { data: assignmentProgress } = await supabase
     .from('assignment_progress')
     .select('*')
     .eq('pairing_id', pairing.id)
     .eq('user_id', progressUserId)
+
+  // Auto-complete meeting assignment when meeting is completed
+  // This MUST happen before other progress calculations
+  if (assignments && pairing.learner_id) {
+    const { count: meetingCount } = await supabase
+      .from('scheduled_meetings')
+      .select('*', { count: 'exact', head: true })
+      .eq('pairing_id', pairing.id)
+      .eq('status', 'completed')
+
+    const completedMeetingsCount = meetingCount ?? 0
+
+    // Check if this week's meeting should be auto-completed
+    if (completedMeetingsCount >= weekNum) {
+      const meetingAssignment = assignments.find((a: { assignment_type: string }) => a.assignment_type === 'meeting')
+      if (meetingAssignment) {
+        const existingProgress = assignmentProgress?.find(
+          p => p.assignment_id === meetingAssignment.id && p.status === 'completed'
+        )
+
+        if (!existingProgress) {
+          await supabase
+            .from('assignment_progress')
+            .upsert({
+              pairing_id: pairing.id,
+              assignment_id: meetingAssignment.id,
+              user_id: pairing.learner_id,
+              status: 'completed',
+              notes: 'Meeting completed',
+              completed_at: new Date().toISOString(),
+            }, {
+              onConflict: 'pairing_id,assignment_id,user_id',
+              ignoreDuplicates: false
+            })
+
+          // Refetch assignment progress
+          const { data: refreshedProgress } = await supabase
+            .from('assignment_progress')
+            .select('*')
+            .eq('pairing_id', pairing.id)
+            .eq('user_id', progressUserId)
+
+          assignmentProgress = refreshedProgress
+        }
+      }
+    }
+  }
 
   // If user is a leader, learnerProgress is the same as assignmentProgress
   // (we're already fetching the learner's progress)

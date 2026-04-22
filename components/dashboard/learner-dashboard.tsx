@@ -48,6 +48,7 @@ interface LearnerDashboardProps {
   currentWeek: number
   nextMeeting: ScheduledMeeting | null
   hasWeeklyMeeting: boolean
+  completedMeetingsCount?: number
   hasJournalEntryToday: boolean
   // Celebration data from server
   celebrationWeek?: number | null
@@ -65,6 +66,7 @@ export function LearnerDashboard({
   currentWeek,
   nextMeeting,
   hasWeeklyMeeting,
+  completedMeetingsCount = 0,
   hasJournalEntryToday,
   celebrationWeek,
   celebrationWeekTitle,
@@ -331,6 +333,7 @@ export function LearnerDashboard({
                 currentWeek={currentWeek}
                 assignments={assignments}
                 assignmentProgress={assignmentProgress}
+                completedMeetingsCount={completedMeetingsCount}
               />
             </CardContent>
           </Card>
