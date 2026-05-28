@@ -391,7 +391,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
             {/* Right side */}
             <div className="flex items-center gap-2">
               {/* Split Screen Toggle - Desktop only */}
-              <SplitScreenToggle />
+              {/* <SplitScreenToggle /> */}
 
               {/* Notifications */}
               <Popover open={notifOpen} onOpenChange={setNotifOpen}>
