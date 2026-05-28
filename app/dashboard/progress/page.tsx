@@ -15,6 +15,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import type { Profile, WeeklyContent, Pairing, Assignment } from "@/lib/types";
+import { groupAssignments } from "@/lib/assignment-grouping";
 
 interface Partner {
   full_name: string | null;
@@ -120,12 +121,17 @@ export default function ProgressPage() {
 
       if (contentData) setWeeklyContent(contentData);
 
-      // Get all assignments
-      const { data: assignmentsData } = await supabase
+      // Get all assignments — scope to this pairing's journey so we don't
+      // inflate counts with rows from other journeys.
+      const assignmentsQuery = supabase
         .from("assignments")
         .select("*")
         .order("week_number")
         .order("order_index");
+      if (pairingData?.journey_id) {
+        assignmentsQuery.eq("journey_id", pairingData.journey_id);
+      }
+      const { data: assignmentsData } = await assignmentsQuery;
 
       if (assignmentsData) setAssignments(assignmentsData);
 
@@ -178,10 +184,13 @@ export default function ProgressPage() {
   const currentWeek = pairing?.current_week || 1;
   const isLeader = profile?.role === 'leader';
 
+  // Group multi-question assignments so each logical assignment counts once
+  const groupedAssignmentsAll = groupAssignments(assignments);
+
   // Get unlocked assignments (up to current week)
-  const unlockedAssignments = assignments.filter(a => a.week_number <= currentWeek);
+  const unlockedAssignments = groupedAssignmentsAll.filter(a => a.week_number <= currentWeek);
   const unlockedAssignmentIds = new Set(unlockedAssignments.map(a => a.id));
-  const allAssignmentIds = new Set(assignments.map(a => a.id));
+  const allAssignmentIds = new Set(groupedAssignmentsAll.map(a => a.id));
 
   // Helper to check if a meeting assignment should be auto-completed
   // Meeting assignments are auto-completed based on completed meetings count
@@ -198,7 +207,7 @@ export default function ProgressPage() {
   const completedProgressIds = new Set(completedFromProgress.map(p => p.assignment_id));
 
   // Add meeting assignments that are auto-completed but not in progress records yet
-  const autoCompletedMeetings = assignments.filter(
+  const autoCompletedMeetings = groupedAssignmentsAll.filter(
     a => isMeetingAutoCompleted(a) && !completedProgressIds.has(a.id)
   );
 
@@ -220,7 +229,7 @@ export default function ProgressPage() {
   const totalAssignmentsUpToCurrentWeek = unlockedAssignments.length;
 
   // Calculate total assignments overall (for overall progress)
-  const totalAssignmentsOverall = assignments.length;
+  const totalAssignmentsOverall = groupedAssignmentsAll.length;
 
   const overallProgress =
     totalAssignmentsOverall > 0
@@ -230,7 +239,7 @@ export default function ProgressPage() {
   // Calculate stats for each week
   const weeklyStats = weeklyContent.map((week) => {
     // Get assignments for this specific week
-    const weekAssignments = assignments.filter(
+    const weekAssignments = groupedAssignmentsAll.filter(
       (a) => a.week_number === week.week_number
     );
 

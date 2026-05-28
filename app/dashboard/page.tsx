@@ -172,13 +172,18 @@ export default async function DashboardPage({
     }
   }
 
-  // Get assignments for current week
+  // Get assignments for current week — scope to this pairing's journey so we
+  // don't inflate counts with rows from other journeys.
   const currentWeek = pairing?.current_week || 1
-  const { data: assignments } = await supabase
+  const assignmentsQuery = supabase
     .from('assignments')
     .select('*')
     .order('week_number', { ascending: true })
     .order('order_index', { ascending: true })
+  if (pairing?.journey_id) {
+    assignmentsQuery.eq('journey_id', pairing.journey_id)
+  }
+  const { data: assignments } = await assignmentsQuery
 
   // Get assignment progress
   // For leaders viewing learner dashboard, fetch LEARNER's progress (not leader's)

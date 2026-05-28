@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { CheckCircle2, Circle, Lock } from 'lucide-react'
 import type { WeeklyContent, Assignment } from '@/lib/types'
+import { groupAssignments } from '@/lib/assignment-grouping'
 import { cn } from '@/lib/utils'
 
 interface WeeklyTimelineProps {
@@ -23,7 +24,9 @@ export function WeeklyTimeline({
   return (
     <div className="space-y-1">
       {weeklyContent.map((week, index) => {
-        const weekAssignments = assignments.filter(a => a.week_number === week.week_number)
+        const weekAssignments = groupAssignments(
+          assignments.filter(a => a.week_number === week.week_number)
+        )
 
         // Count completed from progress records
         const completedFromProgress = assignmentProgress.filter(p =>

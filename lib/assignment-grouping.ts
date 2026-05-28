@@ -33,7 +33,10 @@ export function groupAssignments(assignments: Assignment[]): GroupedAssignment[]
     const orderedKeys: string[] = []
 
     for (const a of sorted) {
-        const key = `${a.week_number}::${a.assignment_type}::${a.title}`
+        // Normalize the key so trivial whitespace/casing differences in title
+        // (e.g. from manual SQL inserts) don't break grouping.
+        const normalizedTitle = (a.title ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+        const key = `${a.week_number}::${a.assignment_type}::${normalizedTitle}`
         const existing = groupMap.get(key)
         if (!existing) {
             groupMap.set(key, { ...a, additionalQuestions: [] })
