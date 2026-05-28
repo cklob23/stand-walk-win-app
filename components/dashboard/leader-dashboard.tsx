@@ -84,43 +84,22 @@ export function LeaderDashboard({
   const unlockedAssignments = groupedAll.filter(a => a.week_number <= currentWeek)
   const unlockedAssignmentIds = new Set(unlockedAssignments.map(a => a.id))
 
-  // Count meeting assignments that should be auto-completed based on actual
-  // completed meetings. Meeting assignments are ordered by week_number, so the
-  // first N meeting assignments (where N = completedMeetingsCount) are the
-  // ones that count as auto-completed — but only if they aren't already
-  // tracked as completed in assignment_progress (to avoid double counting).
-  const meetingAssignmentsUpToCurrent = unlockedAssignments
-    .filter(a => a.assignment_type === 'meeting')
-    .sort((a, b) => a.week_number - b.week_number)
-  const completedMeetingIdsFromProgress = new Set(
-    assignmentProgress
-      .filter(p => p.status === 'completed' && meetingAssignmentsUpToCurrent.some(m => m.id === p.assignment_id))
-      .map(p => p.assignment_id)
-  )
-  const autoCompletedMeetingAssignments = meetingAssignmentsUpToCurrent
-    .slice(0, completedMeetingsCount)
-    .filter(m => !completedMeetingIdsFromProgress.has(m.id))
-  const autoCompletedMeetings = autoCompletedMeetingAssignments.length
-  const autoCompletedMeetingIds = new Set(autoCompletedMeetingAssignments.map(m => m.id))
-
+  // Progress is sourced entirely from assignment_progress records (the source
+  // of truth). Meetings are no longer auto-counted from completedMeetingsCount
+  // because that produces phantom completions for past weeks after a learner's
+  // progress has been cleared.
   const totalAssignments = unlockedAssignments.length
-  const completedFromProgress = assignmentProgress.filter(p =>
+  const completedAssignments = assignmentProgress.filter(p =>
     unlockedAssignmentIds.has(p.assignment_id) && p.status === 'completed'
   ).length
-  const completedAssignments = completedFromProgress + autoCompletedMeetings
   const progressPercentage = totalAssignments > 0 ? Math.round((completedAssignments / totalAssignments) * 100) : 0
 
   // Calculate learner's progress for current week
   const currentWeekAssignments = groupedAll.filter(a => a.week_number === currentWeek)
-  const currentWeekMeeting = currentWeekAssignments.find(a => a.assignment_type === 'meeting')
-  const currentWeekMeetingAutoCompleted = currentWeekMeeting && autoCompletedMeetingIds.has(currentWeekMeeting.id) ? 1 : 0
-  const learnerProgressFromRecords = assignmentProgress.filter(p =>
+  const learnerProgress = assignmentProgress.filter(p =>
     currentWeekAssignments.some(a => a.id === p.assignment_id) &&
-    p.status === 'completed' &&
-    !(currentWeekMeeting && p.assignment_id === currentWeekMeeting.id)
+    p.status === 'completed'
   ).length
-  const learnerProgress = learnerProgressFromRecords + currentWeekMeetingAutoCompleted
-    + (currentWeekMeeting && completedMeetingIdsFromProgress.has(currentWeekMeeting.id) ? 1 : 0)
 
   const partnerInitials = partner?.full_name
     ?.split(' ')

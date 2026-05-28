@@ -28,23 +28,11 @@ export function WeeklyTimeline({
           assignments.filter(a => a.week_number === week.week_number)
         )
 
-        // Count completed from progress records
-        const completedFromProgress = assignmentProgress.filter(p =>
+        // Count completed from progress records (source of truth)
+        const completedCount = assignmentProgress.filter(p =>
           weekAssignments.some(a => a.id === p.assignment_id) &&
           p.status === 'completed'
         ).length
-
-        // Check if meeting assignment should be auto-completed
-        // Week N meeting is complete if completedMeetingsCount >= N
-        const meetingAssignment = weekAssignments.find(a => a.assignment_type === 'meeting')
-        const meetingInProgress = meetingAssignment
-          ? assignmentProgress.some(p => p.assignment_id === meetingAssignment.id && p.status === 'completed')
-          : false
-        const meetingAutoCompleted = meetingAssignment &&
-          !meetingInProgress &&
-          completedMeetingsCount >= week.week_number ? 1 : 0
-
-        const completedCount = completedFromProgress + meetingAutoCompleted
 
         const isCompleted = completedCount === weekAssignments.length && weekAssignments.length > 0
         const isCurrent = week.week_number === currentWeek
