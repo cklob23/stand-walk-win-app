@@ -61,8 +61,13 @@ interface AssignmentReaction {
   created_at: string
 }
 
+interface AdditionalQuestion {
+  id: string
+  description: string
+}
+
 interface AssignmentCardProps {
-  assignment: Assignment
+  assignment: Assignment & { additionalQuestions?: AdditionalQuestion[] }
   progress?: {
     id?: string
     assignment_id: string
@@ -599,75 +604,151 @@ export function AssignmentCard({
           <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-3 sm:space-y-4">
             <div className="h-px bg-border" />
 
-            <p className="text-sm text-muted-foreground">
-              {assignment.description}
-            </p>
+            {/* Primary question + scripture refs */}
+            <div className="space-y-2">
+              {assignment.additionalQuestions && assignment.additionalQuestions.length > 0 ? (
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Question 1
+                </p>
+              ) : null}
+              <p className="text-sm text-muted-foreground">
+                {assignment.description}
+              </p>
 
-            {/* Scripture reference buttons - verse refs, book refs, or fallback for reading type */}
-            {(() => {
-              const desc = assignment.description || ''
-              const scriptureRefs = extractScriptureReferences(desc)
-              // Collect book IDs already matched by verse-level refs to avoid duplicates
-              const matchedBookIds = new Set<string>()
-              for (const ref of scriptureRefs) {
-                const bookIdMatch = ref.url.match(/book=(\d+)/)
-                if (bookIdMatch) matchedBookIds.add(bookIdMatch[1])
-              }
-              const bookRefs = extractBookReferences(desc, matchedBookIds)
-              const isReadingType = assignment.assignment_type === 'reading'
-              const hasAnyRefs = scriptureRefs.length > 0 || bookRefs.length > 0
+              {/* Scripture reference buttons for primary question */}
+              {(() => {
+                const desc = assignment.description || ''
+                const scriptureRefs = extractScriptureReferences(desc)
+                const matchedBookIds = new Set<string>()
+                for (const ref of scriptureRefs) {
+                  const bookIdMatch = ref.url.match(/book=(\d+)/)
+                  if (bookIdMatch) matchedBookIds.add(bookIdMatch[1])
+                }
+                const bookRefs = extractBookReferences(desc, matchedBookIds)
+                const isReadingType = assignment.assignment_type === 'reading'
+                const hasAnyRefs = scriptureRefs.length > 0 || bookRefs.length > 0
 
-              if (!hasAnyRefs && !isReadingType) return null
+                if (!hasAnyRefs && !isReadingType) return null
 
-              return (
-                <div className="flex flex-wrap gap-2">
-                  {/* Verse-level references: "Read John 3:1-21" */}
-                  {scriptureRefs.map((ref) => (
-                    <Button
-                      key={ref.reference}
-                      variant="outline"
-                      size="sm"
-                      className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
-                      asChild
-                    >
-                      <Link href={ref.url}>
-                        <BookMarked className="h-3.5 w-3.5" />
-                        Read {ref.reference}
-                      </Link>
-                    </Button>
-                  ))}
-                  {/* Book-only references: "Read John" (chapter 1) */}
-                  {bookRefs.map((ref) => (
-                    <Button
-                      key={ref.bookId}
-                      variant="outline"
-                      size="sm"
-                      className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
-                      asChild
-                    >
-                      <Link href={ref.url}>
-                        <BookOpen className="h-3.5 w-3.5" />
-                        Read {ref.bookName}
-                      </Link>
-                    </Button>
-                  ))}
-                  {/* Fallback for reading assignments with no detected references */}
-                  {!hasAnyRefs && isReadingType && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
-                      asChild
-                    >
-                      <Link href="/dashboard/bible">
-                        <BookOpen className="h-3.5 w-3.5" />
-                        Open Bible
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-              )
-            })()}
+                return (
+                  <div className="flex flex-wrap gap-2">
+                    {scriptureRefs.map((ref) => (
+                      <Button
+                        key={ref.reference}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
+                        asChild
+                      >
+                        <Link href={ref.url}>
+                          <BookMarked className="h-3.5 w-3.5" />
+                          Read {ref.reference}
+                        </Link>
+                      </Button>
+                    ))}
+                    {bookRefs.map((ref) => (
+                      <Button
+                        key={ref.bookId}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
+                        asChild
+                      >
+                        <Link href={ref.url}>
+                          <BookOpen className="h-3.5 w-3.5" />
+                          Read {ref.bookName}
+                        </Link>
+                      </Button>
+                    ))}
+                    {!hasAnyRefs && isReadingType && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
+                        asChild
+                      >
+                        <Link href="/dashboard/bible">
+                          <BookOpen className="h-3.5 w-3.5" />
+                          Open Bible
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+
+            {/* Additional questions, each with its own Read buttons */}
+            {assignment.additionalQuestions && assignment.additionalQuestions.length > 0 && (
+              <div className="space-y-4">
+                {assignment.additionalQuestions.map((q, idx) => {
+                  const desc = q.description || ''
+                  const scriptureRefs = extractScriptureReferences(desc)
+                  const matchedBookIds = new Set<string>()
+                  for (const ref of scriptureRefs) {
+                    const bookIdMatch = ref.url.match(/book=(\d+)/)
+                    if (bookIdMatch) matchedBookIds.add(bookIdMatch[1])
+                  }
+                  const bookRefs = extractBookReferences(desc, matchedBookIds)
+                  const isReadingType = assignment.assignment_type === 'reading'
+                  const hasAnyRefs = scriptureRefs.length > 0 || bookRefs.length > 0
+
+                  return (
+                    <div key={q.id} className="space-y-2 pt-3 border-t border-border/60">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Question {idx + 2}
+                      </p>
+                      <p className="text-sm text-muted-foreground">{q.description}</p>
+                      {(hasAnyRefs || isReadingType) && (
+                        <div className="flex flex-wrap gap-2">
+                          {scriptureRefs.map((ref) => (
+                            <Button
+                              key={ref.reference}
+                              variant="outline"
+                              size="sm"
+                              className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
+                              asChild
+                            >
+                              <Link href={ref.url}>
+                                <BookMarked className="h-3.5 w-3.5" />
+                                Read {ref.reference}
+                              </Link>
+                            </Button>
+                          ))}
+                          {bookRefs.map((ref) => (
+                            <Button
+                              key={ref.bookId}
+                              variant="outline"
+                              size="sm"
+                              className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
+                              asChild
+                            >
+                              <Link href={ref.url}>
+                                <BookOpen className="h-3.5 w-3.5" />
+                                Read {ref.bookName}
+                              </Link>
+                            </Button>
+                          ))}
+                          {!hasAnyRefs && isReadingType && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-2 h-8 text-xs bg-primary/5 border-primary/20 text-primary hover:bg-primary/10 hover:text-primary"
+                              asChild
+                            >
+                              <Link href="/dashboard/bible">
+                                <BookOpen className="h-3.5 w-3.5" />
+                                Open Bible
+                              </Link>
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             {/* Prayer Timer */}
             {isPrayerType && prayerDuration && !isLeader && (

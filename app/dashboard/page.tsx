@@ -5,7 +5,8 @@ import { LearnerDashboard } from '@/components/dashboard/learner-dashboard'
 import { NoPairingState } from '@/components/dashboard/no-pairing-state'
 import { CovenantRequired } from '@/components/dashboard/covenant-required'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
-import type { Message, Profile, Pairing, Journey } from '@/lib/types'
+import type { Message, Profile, Pairing, Journey, Assignment } from '@/lib/types'
+import { groupAssignments } from '@/lib/assignment-grouping'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -268,17 +269,17 @@ export default async function DashboardPage({
   // Check if current week is complete and auto-advance if needed
   let effectiveCurrentWeek = currentWeek
   if (pairing && assignments && assignments.length > 0) {
-    // Get assignments for the current week
-    const currentWeekAssignments = (assignments || []).filter((a: { week_number: number }) => a.week_number === currentWeek)
+    // Get assignments for the current week, then group multi-question rows together
+    const currentWeekAssignments = (assignments as Assignment[]).filter(a => a.week_number === currentWeek)
+    const currentWeekGrouped = groupAssignments(currentWeekAssignments)
 
-    // Only count progress for assignments in the current week
-    const currentWeekAssignmentIds = new Set(currentWeekAssignments.map(a => a.id))
-    const currentWeekCompletedCount = assignmentProgress.filter(p =>
-      currentWeekAssignmentIds.has(p.assignment_id) && p.status === 'completed'
+    // A grouped assignment counts as complete when its primary row's progress is completed
+    const currentWeekCompletedCount = currentWeekGrouped.filter(g =>
+      assignmentProgress.some(p => p.assignment_id === g.id && p.status === 'completed')
     ).length
 
     // If all assignments for current week are complete, advance to next week
-    if (currentWeekAssignments.length > 0 && currentWeekCompletedCount >= currentWeekAssignments.length && currentWeek < 6) {
+    if (currentWeekGrouped.length > 0 && currentWeekCompletedCount >= currentWeekGrouped.length && currentWeek < 6) {
       const nextWeek = currentWeek + 1
 
       // Update the pairing's current week in the database
@@ -427,18 +428,22 @@ export default async function DashboardPage({
       // Get assignments for this week using week_number
       const { data: weekAssignments } = await supabase
         .from('assignments')
-        .select('id')
+        .select('*')
         .eq('week_number', weekToCheck)
 
       if (weekAssignments && weekAssignments.length > 0) {
+        // Group multi-question rows so completion is counted per logical assignment
+        const grouped = groupAssignments(weekAssignments as Assignment[])
+        const primaryIds = grouped.map(g => g.id)
+
         const { data: completedProgress } = await supabase
           .from('assignment_progress')
-          .select('id')
+          .select('assignment_id')
           .eq('pairing_id', pairing.id)
           .eq('status', 'completed')
-          .in('assignment_id', weekAssignments.map(a => a.id))
+          .in('assignment_id', primaryIds)
 
-        if ((completedProgress?.length || 0) >= weekAssignments.length) {
+        if ((completedProgress?.length || 0) >= grouped.length) {
           celebrationWeek = weekToCheck
           celebrationWeekTitle = weekContent?.title || `Week ${weekToCheck}`
         }

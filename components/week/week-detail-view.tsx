@@ -23,6 +23,7 @@ import {
 import { toast } from 'sonner'
 import type { Profile, Pairing, WeeklyContent, Assignment, Reflection } from '@/lib/types'
 import { AssignmentCard } from '@/components/dashboard/assignment-card'
+import { groupAssignments, getAllIdsForGroup } from '@/lib/assignment-grouping'
 import { formatDistanceToNow } from 'date-fns'
 import { scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
@@ -100,24 +101,29 @@ export function WeekDetailView({
 
   const supabase = createClient()
 
+  // Group assignment rows that share the same title (multi-question assignments)
+  const groupedAssignments = groupAssignments(assignments)
+
   // Only count progress for assignments that belong to THIS week
   // For leaders, show learner's progress; for learners, show own progress
-  const assignmentIds = new Set(assignments.map(a => a.id))
   const isLeader = profile.role === 'leader'
   const progressSource = isLeader && learnerProgress.length > 0 ? learnerProgress : assignmentProgress
-  const weekProgress = progressSource.filter(p => assignmentIds.has(p.assignment_id))
-  const completedFromProgress = weekProgress.filter(p => p.status === 'completed').length
+
+  // A grouped assignment counts as completed if its primary row's progress is completed.
+  const completedFromProgress = groupedAssignments.filter(g =>
+    progressSource.some(p => p.assignment_id === g.id && p.status === 'completed')
+  ).length
 
   // Also count meeting assignment if hasWeeklyMeeting is true but not in progress records
-  const meetingAssignment = assignments.find(a => a.assignment_type === 'meeting')
+  const meetingAssignment = groupedAssignments.find(a => a.assignment_type === 'meeting')
   const meetingInProgress = meetingAssignment
-    ? weekProgress.some(p => p.assignment_id === meetingAssignment.id && p.status === 'completed')
+    ? progressSource.some(p => p.assignment_id === meetingAssignment.id && p.status === 'completed')
     : false
   const meetingAutoCompleted = hasWeeklyMeeting && meetingAssignment && !meetingInProgress ? 1 : 0
 
   const completedCount = completedFromProgress + meetingAutoCompleted
-  const progressPercentage = assignments.length > 0
-    ? Math.round((completedCount / assignments.length) * 100)
+  const progressPercentage = groupedAssignments.length > 0
+    ? Math.round((completedCount / groupedAssignments.length) * 100)
     : 0
 
   const weekNumber = weekContent.week_number
@@ -154,10 +160,10 @@ export function WeekDetailView({
     router.refresh()
   }
 
-  const assignmentsWithProgress = assignments.map(assignment => ({
-    ...assignment,
-    progress: assignmentProgress.find(p => p.assignment_id === assignment.id),
-    learnerProgress: learnerProgress.find(p => p.assignment_id === assignment.id),
+  const assignmentsWithProgress = groupedAssignments.map(group => ({
+    ...group,
+    progress: assignmentProgress.find(p => p.assignment_id === group.id),
+    learnerProgress: learnerProgress.find(p => p.assignment_id === group.id),
   }))
 
   return (
@@ -236,7 +242,7 @@ export function WeekDetailView({
               <div className="flex items-center justify-between">
                 <CardTitle>Assignments</CardTitle>
                 <Badge variant="secondary">
-                  {completedCount}/{assignments.length} Complete
+                  {completedCount}/{groupedAssignments.length} Complete
                 </Badge>
               </div>
               <CardDescription>
@@ -244,7 +250,7 @@ export function WeekDetailView({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {assignmentsWithProgress.map((assignment) => (
+              {assignmentsWithProgress.map((assignment: any) => (
                 <AssignmentCard
                   key={assignment.id}
                   assignment={assignment}
@@ -265,11 +271,11 @@ export function WeekDetailView({
                   learnerName={profile.role === 'learner' ? (profile.full_name || 'Learner') : (partner?.full_name || 'Learner')}
                   leaderName={profile.role === 'learner' ? (partner?.full_name || 'your leader') : (profile.full_name || 'Leader')}
                   currentWeek={weekNumber}
-                  totalWeekAssignments={assignments.length}
+                  totalWeekAssignments={groupedAssignments.length}
                   completedWeekAssignments={completedCount}
                   hasWeeklyMeeting={hasWeeklyMeeting}
                   weekTitle={weekContent.title}
-                  defaultOpen={expandedAssignmentId === assignment.id}
+                  defaultOpen={expandedAssignmentId ? getAllIdsForGroup(assignment).includes(expandedAssignmentId) : false}
                   userName={profile.role === 'learner' ? (profile.full_name || 'Learner') : (partner?.full_name || 'Learner')}
                   journeyName={journeyName}
                   journeySubtitle={journeySubtitle}

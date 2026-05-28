@@ -24,6 +24,7 @@ import {
   GraduationCap
 } from 'lucide-react'
 import type { Profile, Pairing, WeeklyContent, Assignment, Message, Notification, ScheduledMeeting } from '@/lib/types'
+import { groupAssignments } from '@/lib/assignment-grouping'
 import { Video, Phone, MapPin, Monitor } from 'lucide-react'
 import { WeeklyTimeline } from './weekly-timeline'
 import { QuickChat } from './quick-chat'
@@ -76,8 +77,11 @@ export function LearnerDashboard({
 
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
 
-  // Get current week assignments with progress
-  const currentWeekAssignments = assignments
+  // Group multi-question assignments so each logical assignment counts once
+  const groupedAll = groupAssignments(assignments)
+
+  // Get current week assignments (grouped) with progress
+  const currentWeekAssignments = groupedAll
     .filter(a => a.week_number === currentWeek)
     .map(assignment => ({
       ...assignment,
@@ -85,7 +89,7 @@ export function LearnerDashboard({
     }))
 
   // Calculate overall progress - only count assignments from unlocked weeks
-  const unlockedAssignments = assignments.filter(a => a.week_number <= currentWeek)
+  const unlockedAssignments = groupedAll.filter(a => a.week_number <= currentWeek)
   const unlockedAssignmentIds = new Set(unlockedAssignments.map(a => a.id))
 
   const totalAssignments = unlockedAssignments.length
@@ -96,8 +100,11 @@ export function LearnerDashboard({
 
   // Calculate full journey completion (all 6 weeks)
   const TOTAL_WEEKS = 6
-  const allAssignmentsTotal = assignments.length
-  const allAssignmentsCompleted = assignmentProgress.filter(p => p.status === 'completed').length
+  const allAssignmentsTotal = groupedAll.length
+  const allPrimaryIds = new Set(groupedAll.map(a => a.id))
+  const allAssignmentsCompleted = assignmentProgress.filter(
+    p => allPrimaryIds.has(p.assignment_id) && p.status === 'completed'
+  ).length
   const journeyCompletionPercentage = allAssignmentsTotal > 0
     ? Math.round((allAssignmentsCompleted / allAssignmentsTotal) * 100)
     : 0

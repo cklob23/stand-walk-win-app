@@ -19,6 +19,7 @@ import {
   CalendarPlus
 } from 'lucide-react'
 import type { Profile, Pairing, WeeklyContent, Assignment, Message, Notification, ScheduledMeeting } from '@/lib/types'
+import { groupAssignments } from '@/lib/assignment-grouping'
 import { Video, Phone, MapPin, Monitor } from 'lucide-react'
 import { WeeklyTimeline } from './weekly-timeline'
 import { AddToCalendarButton } from '@/components/add-to-calendar-button'
@@ -76,8 +77,11 @@ export function LeaderDashboard({
   const currentPairingId = pairing.id
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
 
+  // Group multi-question assignments so each logical assignment counts once
+  const groupedAll = groupAssignments(assignments)
+
   // Calculate overall progress - only count assignments from unlocked weeks
-  const unlockedAssignments = assignments.filter(a => a.week_number <= currentWeek)
+  const unlockedAssignments = groupedAll.filter(a => a.week_number <= currentWeek)
   const unlockedAssignmentIds = new Set(unlockedAssignments.map(a => a.id))
 
   // Count meeting assignments that should be auto-completed
@@ -105,7 +109,7 @@ export function LeaderDashboard({
   const progressPercentage = totalAssignments > 0 ? Math.round((completedAssignments / totalAssignments) * 100) : 0
 
   // Calculate learner's progress for current week
-  const currentWeekAssignments = assignments.filter(a => a.week_number === currentWeek)
+  const currentWeekAssignments = groupedAll.filter(a => a.week_number === currentWeek)
   const currentWeekMeeting = currentWeekAssignments.find(a => a.assignment_type === 'meeting')
   const currentWeekMeetingAutoCompleted = currentWeekMeeting &&
     !assignmentProgress.some(p => p.assignment_id === currentWeekMeeting.id && p.status === 'completed')

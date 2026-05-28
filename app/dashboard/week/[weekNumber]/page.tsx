@@ -2,6 +2,8 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { WeekDetailView } from '@/components/week/week-detail-view'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
+import { groupAssignments } from '@/lib/assignment-grouping'
+import type { Assignment } from '@/lib/types'
 
 interface WeekPageProps {
   params: Promise<{ weekNumber: string }>
@@ -259,18 +261,21 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
       // Get assignments for this week
       const { data: weekAssignments } = await supabase
         .from('assignments')
-        .select('id')
+        .select('*')
         .eq('week_number', weekToCheck)
 
       if (weekAssignments && weekAssignments.length > 0) {
+        const grouped = groupAssignments(weekAssignments as Assignment[])
+        const primaryIds = grouped.map(g => g.id)
+
         const { data: completedProgress } = await supabase
           .from('assignment_progress')
-          .select('id')
+          .select('assignment_id')
           .eq('pairing_id', pairing.id)
           .eq('status', 'completed')
-          .in('assignment_id', weekAssignments.map(a => a.id))
+          .in('assignment_id', primaryIds)
 
-        if ((completedProgress?.length || 0) >= weekAssignments.length) {
+        if ((completedProgress?.length || 0) >= grouped.length) {
           celebrationWeek = weekToCheck
           // Get week title
           const { data: celebrationWeekContent } = await supabase

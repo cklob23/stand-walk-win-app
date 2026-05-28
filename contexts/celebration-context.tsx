@@ -4,6 +4,8 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { createClient } from '@/lib/supabase/client'
 import { WeekCelebrationModal } from '@/components/celebration/week-celebration-modal'
 import { useRouter } from 'next/navigation'
+import { groupAssignments } from '@/lib/assignment-grouping'
+import type { Assignment } from '@/lib/types'
 
 interface CelebrationContextType {
     checkForPendingCelebration: () => Promise<void>
@@ -82,22 +84,24 @@ export function CelebrationProvider({ children, initialCelebration }: Celebratio
 
                 const { data: assignments } = await supabase
                     .from('assignments')
-                    .select('id')
+                    .select('*')
                     .eq('weekly_content_id', weekContent.id)
 
                 if (!assignments || assignments.length === 0) return
 
-                const assignmentIds = assignments.map((a: { id: string }) => a.id)
+                // Group multi-question rows so that completion is counted per logical assignment
+                const grouped = groupAssignments(assignments as Assignment[])
+                const primaryIds = grouped.map(g => g.id)
 
                 const { data: progress } = await supabase
                     .from('assignment_progress')
-                    .select('status')
+                    .select('assignment_id, status')
                     .eq('pairing_id', pairing.id)
-                    .in('assignment_id', assignmentIds)
+                    .in('assignment_id', primaryIds)
 
                 const completedCount = progress?.filter((p: { status: string }) => p.status === 'completed').length || 0
 
-                if (completedCount >= assignments.length) {
+                if (completedCount >= grouped.length) {
                     setPendingCelebration({
                         weekNumber: weekToCheck,
                         weekTitle: weekContent.title,
