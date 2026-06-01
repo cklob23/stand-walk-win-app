@@ -11,7 +11,9 @@ function SuccessContent() {
     const searchParams = useSearchParams()
     const licenseCount = parseInt(searchParams.get('licenses') || '1', 10)
     const hasOrg = searchParams.get('org') === 'true'
-    const tierName = searchParams.get('tier') || 'your plan'
+    const tierParam = searchParams.get('tier')
+    // Format the plan text properly: "the Basic plan" if we have a tier, otherwise "your plan"
+    const planText = tierParam ? `the ${tierParam} plan` : 'your plan'
 
     return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -25,7 +27,7 @@ function SuccessContent() {
                             Payment Successful!
                         </CardTitle>
                         <CardDescription className="text-base mt-2">
-                            Thank you for subscribing to the {tierName} plan
+                            Thank you for subscribing to {planText}
                             {licenseCount > 1 ? ` with ${licenseCount} licenses` : ''}.
                         </CardDescription>
                     </CardHeader>
