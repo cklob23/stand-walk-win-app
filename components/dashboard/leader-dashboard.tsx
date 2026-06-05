@@ -200,6 +200,7 @@ export function LeaderDashboard({
                 assignments={assignments}
                 assignmentProgress={assignmentProgress}
                 completedMeetingsCount={completedMeetingsCount}
+                unlockAllWeeks
               />
             </CardContent>
           </Card>

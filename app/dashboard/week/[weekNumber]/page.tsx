@@ -91,8 +91,11 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
     redirect('/dashboard')
   }
 
-  // Check if week is accessible
-  if (weekNum > pairing.current_week) {
+  // Check if week is accessible.
+  // Leaders can view every week of the journey (to prepare ahead) regardless of
+  // the learner's current progress. Learners remain gated by their current week.
+  const isLeader = profile.role === 'leader'
+  if (!isLeader && weekNum > pairing.current_week) {
     redirect('/dashboard')
   }
 

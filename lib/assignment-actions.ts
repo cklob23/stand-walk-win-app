@@ -127,6 +127,7 @@ export async function replyToAssignment(
             .update({
                 leader_reply: replyText.trim(),
                 leader_reply_at: new Date().toISOString(),
+                leader_reply_user_id: user.id,
             })
             .eq('id', progressId)
 
@@ -195,6 +196,7 @@ export async function deleteAssignmentReply(
             .update({
                 leader_reply: null,
                 leader_reply_at: null,
+                leader_reply_user_id: null,
             })
             .eq('id', progressId)
 

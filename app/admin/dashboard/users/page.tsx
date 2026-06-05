@@ -48,13 +48,17 @@ async function getAllUsers() {
     // Get all journeys for lookup
     const { data: journeys } = await supabase
         .from('journeys')
-        .select('id, name')
+        .select('id, name, is_default')
 
-    // Create a journey lookup map
+    // Create a journey lookup map and capture the default journey name
     const journeyMap = new Map<string, string>()
+    let defaultJourneyName: string | null = null
     if (journeys) {
         for (const journey of journeys) {
             journeyMap.set(journey.id, journey.name)
+            if (journey.is_default) {
+                defaultJourneyName = journey.name
+            }
         }
     }
 
@@ -63,7 +67,7 @@ async function getAllUsers() {
     // Create maps for quick lookup
     const leaderToLearners = new Map<string, string[]>()
     const learnerToLeader = new Map<string, string>()
-    const userToJourney = new Map<string, { journeyName: string; currentWeek: number }>()
+    const userToJourney = new Map<string, { journeyName: string | null; currentWeek: number | null }>()
 
     if (pairings) {
         for (const pairing of pairings) {
@@ -97,26 +101,21 @@ async function getAllUsers() {
                 learnerToLeader.set(pairing.learner_id, leaderName)
             }
 
-            // Get journey name from the lookup map
-            const journeyName = pairing.journey_id ? journeyMap.get(pairing.journey_id) || null : null
+            // Get journey name from the lookup map, falling back to the default journey
+            // when the pairing has no explicit journey_id set.
+            const journeyName = (pairing.journey_id ? journeyMap.get(pairing.journey_id) : null) || defaultJourneyName
 
-            // Map users to their journey info (both learner and leader)
-            // Note: current_week can be 0 which is falsy, so use != null check
-            if (journeyName && pairing.current_week != null) {
+            // Map users to their journey info (both learner and leader).
+            // Journey and week are tracked independently so that a missing journey_id
+            // does not also hide the week. current_week can be 0, so use != null.
+            const currentWeek = pairing.current_week != null ? pairing.current_week : null
+            if (journeyName != null || currentWeek != null) {
                 if (pairing.learner_id) {
-                    userToJourney.set(pairing.learner_id, {
-                        journeyName,
-                        currentWeek: pairing.current_week
-                    })
+                    userToJourney.set(pairing.learner_id, { journeyName, currentWeek })
                 }
-                if (pairing.leader_id) {
+                if (pairing.leader_id && !userToJourney.has(pairing.leader_id)) {
                     // For leaders, only track if they don't have one yet (use first/primary)
-                    if (!userToJourney.has(pairing.leader_id)) {
-                        userToJourney.set(pairing.leader_id, {
-                            journeyName,
-                            currentWeek: pairing.current_week
-                        })
-                    }
+                    userToJourney.set(pairing.leader_id, { journeyName, currentWeek })
                 }
             }
         }

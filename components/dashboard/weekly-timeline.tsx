@@ -12,6 +12,9 @@ interface WeeklyTimelineProps {
   assignments: Assignment[]
   assignmentProgress: { assignment_id: string; status: string }[]
   completedMeetingsCount?: number // Number of completed meetings for this pairing
+  // When true, every week is accessible regardless of progress (used for leaders
+  // so they can preview content for upcoming weeks). Defaults to false.
+  unlockAllWeeks?: boolean
 }
 
 export function WeeklyTimeline({
@@ -19,7 +22,8 @@ export function WeeklyTimeline({
   currentWeek,
   assignments,
   assignmentProgress,
-  completedMeetingsCount = 0
+  completedMeetingsCount = 0,
+  unlockAllWeeks = false
 }: WeeklyTimelineProps) {
   return (
     <div className="space-y-1">
@@ -36,8 +40,8 @@ export function WeeklyTimeline({
 
         const isCompleted = completedCount === weekAssignments.length && weekAssignments.length > 0
         const isCurrent = week.week_number === currentWeek
-        const isLocked = week.week_number > currentWeek
-        const isAccessible = week.week_number <= currentWeek
+        const isLocked = !unlockAllWeeks && week.week_number > currentWeek
+        const isAccessible = unlockAllWeeks || week.week_number <= currentWeek
 
         return (
           <div key={week.id} className="relative">

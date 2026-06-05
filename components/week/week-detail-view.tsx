@@ -128,7 +128,9 @@ export function WeekDetailView({
 
   const weekNumber = weekContent.week_number
   const hasPrevWeek = weekNumber > 1
-  const hasNextWeek = weekNumber < 6 && weekNumber < pairing.current_week
+  // Leaders can navigate to every week to prepare ahead; learners are limited to
+  // weeks up to their current progress.
+  const hasNextWeek = weekNumber < 6 && (isLeader || weekNumber < pairing.current_week)
 
   const handleSubmitReflection = async () => {
     if (!reflectionText.trim()) {
@@ -250,7 +252,7 @@ export function WeekDetailView({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {assignmentsWithProgress.map((assignment: any) => (
+              {assignmentsWithProgress.map((assignment) => (
                 <AssignmentCard
                   key={assignment.id}
                   assignment={assignment}
