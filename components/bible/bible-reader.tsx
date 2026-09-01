@@ -372,6 +372,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     // tracks which chapter is currently prefetched to avoid duplicate work.
     const nextChapterAudioRef = useRef<Map<string, { audio: HTMLAudioElement; blobUrl: string }>>(new Map())
     const prefetchedChapterRef = useRef<number | null>(null)
+    // Auto-play-after-advance guards. The timer lives in a ref (not returned as an
+    // effect cleanup) so the effect re-running when we reset autoPlayNextChapter
+    // does NOT cancel the pending playback. The handled flag ensures we schedule
+    // playback exactly once per chapter transition.
+    const autoPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const autoPlayHandledRef = useRef(false)
 
     const [skipVerseNumbers, setSkipVerseNumbers] = useState(savedSkipVerseNumbers)
     const skipVerseNumbersRef = useRef(savedSkipVerseNumbers)
@@ -720,7 +726,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         try {
             const bookName = books.find(b => b.id === selectedBook)?.name || selectedBook || ''
             const updated = await shareHighlightWithPartner(
-                hl.id, !hl.shared_with_partner, pairingId, bookName, v.text, translation
+                hl.id, !hl.shared_with_partner, pairingId, bookName, v.text, translation,
+                new Date().toLocaleDateString('en-CA')
             )
             if (updated) {
                 setHighlights(prev => prev.map(h => h.id === hl.id ? updated : h))
@@ -854,7 +861,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 })
             }
             const result = await saveMultipleVersesToJournal(
-                pairingId, bookName, selectedChapter!, verseEntries, journalTitle || undefined, translation
+                pairingId, bookName, selectedChapter!, verseEntries, journalTitle || undefined, translation,
+                new Date().toLocaleDateString('en-CA')
             )
             if (result.success) {
                 toast.success('Saved to your prayer journal!')
@@ -946,7 +954,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 }
             }
             const result = await saveNoteToJournal(
-                hl.id, pairingId, bookName, v.chapter, v.verse, v.text, false, singleJournalTitle || undefined, translation
+                hl.id, pairingId, bookName, v.chapter, v.verse, v.text, false, singleJournalTitle || undefined, translation,
+                new Date().toLocaleDateString('en-CA')
             )
             if (result.success) {
                 setJournalSaved(true)
@@ -975,7 +984,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     const hl = getVerseHighlight(vn)
                     return { verse: vn, text: v?.text || '', note: hl?.note || null }
                 })
-            const result = await shareMultipleVersesWithPartner(pairingId, bookName, selectedChapter!, verseEntries, translation)
+            const result = await shareMultipleVersesWithPartner(
+                pairingId, bookName, selectedChapter!, verseEntries, translation,
+                new Date().toLocaleDateString('en-CA')
+            )
             if (result.success) {
                 toast.success('Shared with your partner!')
                 setSelectedVerses(new Set())
@@ -1635,10 +1647,16 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         return () => clearTimeout(timer)
     }, [autoAdvanceCountdown, selectedChapter, chapters.length, selectedBook, translation, updateURL])
 
-    // Auto-play when new chapter verses load after auto-advance
+    // Auto-play when new chapter verses load after auto-advance.
+    // NOTE: we intentionally do NOT return a cleanup that clears the play timer.
+    // Resetting autoPlayNextChapter below re-runs this effect, and an effect-cleanup
+    // clearTimeout would cancel the pending playback before it fires (the original
+    // bug that made audio stop on the next page). The timer is stored in a ref and
+    // only cleared on unmount; a handled flag guards against double-scheduling.
     useEffect(() => {
         // Wait until verses are fully loaded (not loading) and we have content
-        if (autoPlayNextChapter && verses.length > 0 && !versesLoading) {
+        if (autoPlayNextChapter && verses.length > 0 && !versesLoading && !autoPlayHandledRef.current) {
+            autoPlayHandledRef.current = true
             setAutoPlayNextChapter(false)
             setTtsProgress(0)
 
@@ -1647,17 +1665,25 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
             // Short delay to let the new chapter render; audio is already prefetched
             // (during the countdown) so playback resumes with virtually no gap.
-            const playTimer = setTimeout(() => {
+            autoPlayTimerRef.current = setTimeout(() => {
+                autoPlayTimerRef.current = null
                 // Double-check we still have verses and conditions are met
                 if (verses.length > 0) {
                     handlePlayChapter()
                 }
+                // Allow the next chapter transition to schedule again.
+                autoPlayHandledRef.current = false
             }, 300)
-
-            return () => clearTimeout(playTimer)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoPlayNextChapter, verses, versesLoading])
+
+    // Clear any pending auto-play timer on unmount to avoid leaks / stray playback.
+    useEffect(() => {
+        return () => {
+            if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current)
+        }
+    }, [])
 
     const handleSelectBook = (bookId: string) => {
         setSelectedBook(bookId)
@@ -3591,20 +3617,23 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             const textToSave = hasSelection
                                                 ? Array.from(selectedExplainLines).sort((a, b) => a - b).map(i => lines[i]?.trim()).filter(Boolean).join('\n\n')
                                                 : explainContent
+                                            const localDateStr = new Date().toLocaleDateString('en-CA')
                                             const result = explainJournalShareMode
                                                 ? await shareExplanationWithPartner(
                                                     pairingId,
                                                     explainReference,
                                                     textToSave,
                                                     explainJournalTitle.trim() || undefined,
-                                                    explainJournalNote.trim() || undefined
+                                                    explainJournalNote.trim() || undefined,
+                                                    localDateStr
                                                 )
                                                 : await saveExplanationToJournal(
                                                     pairingId,
                                                     explainReference,
                                                     textToSave,
                                                     explainJournalTitle.trim() || undefined,
-                                                    explainJournalNote.trim() || undefined
+                                                    explainJournalNote.trim() || undefined,
+                                                    localDateStr
                                                 )
                                             if (result.success) {
                                                 toast.success(

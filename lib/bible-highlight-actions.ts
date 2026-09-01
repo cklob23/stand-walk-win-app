@@ -152,7 +152,8 @@ export async function shareHighlightWithPartner(
     pairingId: string | null,
     bookName?: string,
     verseText?: string,
-    translationAbbr?: string
+    translationAbbr?: string,
+    localDate?: string
 ): Promise<BibleHighlight | null> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -211,6 +212,25 @@ export async function shareHighlightWithPartner(
                 note: data.note || null,
             })
 
+            // Also save a copy to the sharer's own journal and flip its share switch on.
+            if (verseText) {
+                const saveResult = await saveNoteToJournal(
+                    highlightId,
+                    pairingId,
+                    bookName || data.book_id,
+                    data.chapter,
+                    data.verse,
+                    verseText,
+                    true,
+                    undefined,
+                    translationAbbr,
+                    localDate
+                )
+                if (saveResult.success && saveResult.entryId && saveResult.sectionKey) {
+                    await markJournalSectionShared(supabase, saveResult.entryId, user.id, saveResult.sectionKey)
+                }
+            }
+
             await notifySharedVerse(partnerId!, senderName, pairingId, scriptureRef.trim(), !!data.note)
         }
     }
@@ -228,8 +248,9 @@ export async function saveNoteToJournal(
     verseText: string,
     shareWithLeader: boolean,
     customTitle?: string,
-    translationAbbr?: string
-): Promise<{ success: boolean; error?: string }> {
+    translationAbbr?: string,
+    localDate?: string
+): Promise<{ success: boolean; error?: string; entryId?: string; sectionKey?: string }> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false, error: 'Not authenticated' }
@@ -243,64 +264,75 @@ export async function saveNoteToJournal(
 
     if (!highlight.data) return { success: false, error: 'Highlight not found' }
 
-    const today = new Date().toISOString().split('T')[0]
+    // Use the user's LOCAL date so the entry files under the correct day.
+    const today = localDate || new Date().toISOString().split('T')[0]
     const now = new Date().toISOString()
     const versionTag = translationAbbr ? ` (${translationAbbr})` : ''
     const scriptureRef = `${bookName} ${chapter}:${verse}${versionTag}`
     const hasNote = !!highlight.data.note
     const defaultTitle = `Verse from ${scriptureRef}`
     const title = customTitle?.trim() || defaultTitle
-    const friendlyTime = new Date(now).toLocaleString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric',
-        hour: 'numeric', minute: '2-digit', hour12: true,
-    })
+    // Store the raw ISO timestamp; the client formats it in the device's timezone.
     const noteLine = highlight.data.note ? `\nMy notes: ${highlight.data.note}` : ''
-    const noteContent = `@@TITLE: ${title}\n@@TIME: ${friendlyTime}\n[${scriptureRef}] "${verseText.trim()}"${noteLine}`
+    const noteContent = `@@TITLE: ${title}\n@@TIME: ${now}\n[${scriptureRef}] "${verseText.trim()}"${noteLine}`
 
-    // Check if entry already exists for today
-    const { data: existing } = await supabase
+    // Check if entry already exists for today (robust to multiple rows/day)
+    const { data: existingRows } = await supabase
         .from('prayer_journal')
-        .select('id, god_speaking')
+        .select('id, god_speaking, pairing_id')
         .eq('user_id', user.id)
         .eq('journal_date', today)
-        .single()
+        .order('updated_at', { ascending: false })
+
+    const existing =
+        existingRows?.find((r) => r.pairing_id === pairingId) || existingRows?.[0] || null
+
+    let entryId: string | undefined
+    let finalGodSpeaking: string
 
     if (existing) {
         // Always append after a --- separator so verse goes into verses array, not freeText
-        const updatedGodSpeaking = existing.god_speaking
+        finalGodSpeaking = existing.god_speaking
             ? `${existing.god_speaking}\n\n---\n\n${noteContent}`
             : `\n\n---\n\n${noteContent}`
 
         const { error } = await supabase
             .from('prayer_journal')
             .update({
-                god_speaking: updatedGodSpeaking,
+                god_speaking: finalGodSpeaking,
                 shared_with_leader: shareWithLeader || undefined,
                 updated_at: now,
             })
             .eq('id', existing.id)
 
         if (error) return { success: false, error: error.message }
+        entryId = existing.id
     } else {
         // When creating a new entry, use empty freeText + separator + verse content
-        const { error } = await supabase
+        finalGodSpeaking = `\n\n---\n\n${noteContent}`
+        const { data: inserted, error } = await supabase
             .from('prayer_journal')
             .insert({
                 user_id: user.id,
                 pairing_id: pairingId,
                 journal_date: today,
                 prayer_items: '',
-                god_speaking: `\n\n---\n\n${noteContent}`,
+                god_speaking: finalGodSpeaking,
                 shared_with_leader: shareWithLeader,
                 shared_sections: {},
                 custom_entries: [],
             })
+            .select('id')
+            .single()
 
         if (error) return { success: false, error: error.message }
+        entryId = inserted?.id
     }
 
     revalidatePath('/dashboard/journal')
-    return { success: true }
+    // The newly-appended verse is the last verse section in the entry.
+    const sectionKey = `verse_${Math.max(0, countVerseSections(finalGodSpeaking) - 1)}`
+    return { success: true, entryId, sectionKey }
 }
 
 // Helper: build smart verse range string e.g. "1-3, 8" from [1,2,3,8]
@@ -322,6 +354,47 @@ function buildVerseRangeStr(verseNums: number[]): string {
     return groups.map(g => g.length === 1 ? `${g[0]}` : `${g[0]}-${g[g.length - 1]}`).join(', ')
 }
 
+// Count verse sections in a god_speaking blob. Mirrors the client's
+// parseGodSpeakingSections so a section key computed here (`verse_${idx}`) lines
+// up with what the journal renders.
+function countVerseSections(godSpeaking: string): number {
+    if (!godSpeaking?.trim()) return 0
+    const parts = godSpeaking.split('\n\n---\n\n')
+    const firstPart = (parts[0] || '').trim()
+    const firstPartIsVerse = firstPart.startsWith('@@TITLE: ') || firstPart.startsWith('@@TIME: ')
+    const verseParts = (firstPartIsVerse ? parts : parts.slice(1)).map((s) => s.trim()).filter(Boolean)
+    return verseParts.length
+}
+
+// Flip a journal section's share flag on (and mark the entry as shared), so the
+// journal UI shows the "Share with <partner>" switch already enabled.
+async function markJournalSectionShared(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    entryId: string,
+    userId: string,
+    sectionKey: string
+): Promise<void> {
+    const { data: entry } = await supabase
+        .from('prayer_journal')
+        .select('shared_sections')
+        .eq('id', entryId)
+        .eq('user_id', userId)
+        .single()
+
+    const sections: Record<string, boolean> = (entry?.shared_sections as Record<string, boolean>) || {}
+    sections[sectionKey] = true
+
+    await supabase
+        .from('prayer_journal')
+        .update({
+            shared_sections: sections,
+            shared_with_leader: true,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', entryId)
+        .eq('user_id', userId)
+}
+
 // Save multiple verses together as a single journal entry (e.g. John 3:1-5)
 export async function saveMultipleVersesToJournal(
     pairingId: string,
@@ -329,8 +402,9 @@ export async function saveMultipleVersesToJournal(
     chapter: number,
     verseEntries: { verse: number; text: string; note?: string | null }[],
     customTitle?: string,
-    translationAbbr?: string
-): Promise<{ success: boolean; error?: string }> {
+    translationAbbr?: string,
+    localDate?: string
+): Promise<{ success: boolean; error?: string; entryId?: string; sectionKey?: string }> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false, error: 'Not authenticated' }
@@ -338,7 +412,8 @@ export async function saveMultipleVersesToJournal(
     if (verseEntries.length === 0) return { success: false, error: 'No verses selected' }
 
     const sorted = [...verseEntries].sort((a, b) => a.verse - b.verse)
-    const today = new Date().toISOString().split('T')[0]
+    // Use the user's LOCAL date so the entry files under the correct day.
+    const today = localDate || new Date().toISOString().split('T')[0]
     const now = new Date().toISOString()
 
     const verseNums = sorted.map(v => v.verse)
@@ -383,54 +458,63 @@ export async function saveMultipleVersesToJournal(
         return `${line}\nMy notes: ${notes.join('; ')}`
     }).join('\n\n')
 
-    const friendlyTime = new Date(now).toLocaleString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric',
-        hour: 'numeric', minute: '2-digit', hour12: true,
-    })
-    const noteContent = `@@TITLE: ${title}\n@@TIME: ${friendlyTime}\n${verseLines}`
+    // Store the raw ISO timestamp; the client formats it in the device's timezone.
+    const noteContent = `@@TITLE: ${title}\n@@TIME: ${now}\n${verseLines}`
 
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
         .from('prayer_journal')
-        .select('id, god_speaking')
+        .select('id, god_speaking, pairing_id')
         .eq('user_id', user.id)
         .eq('journal_date', today)
-        .single()
+        .order('updated_at', { ascending: false })
+
+    const existing =
+        existingRows?.find((r) => r.pairing_id === pairingId) || existingRows?.[0] || null
+
+    let entryId: string | undefined
+    let finalGodSpeaking: string
 
     if (existing) {
         // Always append after --- so verse goes into verses array, not freeText
-        const updatedGodSpeaking = existing.god_speaking
+        finalGodSpeaking = existing.god_speaking
             ? `${existing.god_speaking}\n\n---\n\n${noteContent}`
             : `\n\n---\n\n${noteContent}`
 
         const { error } = await supabase
             .from('prayer_journal')
             .update({
-                god_speaking: updatedGodSpeaking,
+                god_speaking: finalGodSpeaking,
                 updated_at: now,
             })
             .eq('id', existing.id)
 
         if (error) return { success: false, error: error.message }
+        entryId = existing.id
     } else {
         // New entry: empty freeText + separator + verse
-        const { error } = await supabase
+        finalGodSpeaking = `\n\n---\n\n${noteContent}`
+        const { data: inserted, error } = await supabase
             .from('prayer_journal')
             .insert({
                 user_id: user.id,
                 pairing_id: pairingId,
                 journal_date: today,
                 prayer_items: '',
-                god_speaking: `\n\n---\n\n${noteContent}`,
+                god_speaking: finalGodSpeaking,
                 shared_with_leader: false,
                 shared_sections: {},
                 custom_entries: [],
             })
+            .select('id')
+            .single()
 
         if (error) return { success: false, error: error.message }
+        entryId = inserted?.id
     }
 
     revalidatePath('/dashboard/journal')
-    return { success: true }
+    const sectionKey = `verse_${Math.max(0, countVerseSections(finalGodSpeaking) - 1)}`
+    return { success: true, entryId, sectionKey }
 }
 
 // Save AI explanation to prayer journal
@@ -439,20 +523,20 @@ export async function saveExplanationToJournal(
     reference: string,
     explanationText: string,
     customTitle?: string,
-    customNote?: string
-): Promise<{ success: boolean; error?: string }> {
+    customNote?: string,
+    localDate?: string
+): Promise<{ success: boolean; error?: string; entryId?: string; sectionKey?: string }> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false, error: 'Not authenticated' }
 
-    const today = new Date().toISOString().split('T')[0]
+    // Use the user's LOCAL date (passed from the client) so the entry lands on the
+    // same day the journal displays. Falling back to UTC would file it under the
+    // wrong date (and a different date group) than the rest of today's entries.
+    const today = localDate || new Date().toISOString().split('T')[0]
     const now = new Date().toISOString()
 
     const title = customTitle?.trim() || `AI Explanation - ${reference}`
-    const friendlyTime = new Date(now).toLocaleString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric',
-        hour: 'numeric', minute: '2-digit', hour12: true,
-    })
 
     // Strip markdown formatting for clean journal content
     const cleanExplanation = explanationText
@@ -461,48 +545,64 @@ export async function saveExplanationToJournal(
         .trim()
 
     const noteLine = customNote?.trim() ? `\nMy notes: ${customNote.trim()}` : ''
-    const noteContent = `@@TITLE: ${title}\n@@TIME: ${friendlyTime}\nAI Explanation for ${reference}:\n${cleanExplanation}${noteLine}`
+    // Store the raw ISO timestamp; the client formats it in the device's timezone.
+    const noteContent = `@@TITLE: ${title}\n@@TIME: ${now}\nAI Explanation for ${reference}:\n${cleanExplanation}${noteLine}`
 
-    const { data: existing } = await supabase
+    // Reuse the user's existing entry for this local date (there is normally one),
+    // preferring the row for the passed pairing. order+limit avoids .single()
+    // throwing when more than one row exists for the day.
+    const { data: existingRows } = await supabase
         .from('prayer_journal')
-        .select('id, god_speaking')
+        .select('id, god_speaking, pairing_id')
         .eq('user_id', user.id)
         .eq('journal_date', today)
-        .single()
+        .order('updated_at', { ascending: false })
+
+    const existing =
+        existingRows?.find((r) => r.pairing_id === pairingId) || existingRows?.[0] || null
+
+    let entryId: string | undefined
+    let finalGodSpeaking: string
 
     if (existing) {
-        const updatedGodSpeaking = existing.god_speaking
+        finalGodSpeaking = existing.god_speaking
             ? `${existing.god_speaking}\n\n---\n\n${noteContent}`
             : `\n\n---\n\n${noteContent}`
 
         const { error } = await supabase
             .from('prayer_journal')
             .update({
-                god_speaking: updatedGodSpeaking,
+                god_speaking: finalGodSpeaking,
                 updated_at: now,
             })
             .eq('id', existing.id)
 
         if (error) return { success: false, error: error.message }
+        entryId = existing.id
     } else {
-        const { error } = await supabase
+        finalGodSpeaking = `\n\n---\n\n${noteContent}`
+        const { data: inserted, error } = await supabase
             .from('prayer_journal')
             .insert({
                 user_id: user.id,
                 pairing_id: pairingId,
                 journal_date: today,
                 prayer_items: '',
-                god_speaking: `\n\n---\n\n${noteContent}`,
+                god_speaking: finalGodSpeaking,
                 shared_with_leader: false,
                 shared_sections: {},
                 custom_entries: [],
             })
+            .select('id')
+            .single()
 
         if (error) return { success: false, error: error.message }
+        entryId = inserted?.id
     }
 
     revalidatePath('/dashboard/journal')
-    return { success: true }
+    const sectionKey = `verse_${Math.max(0, countVerseSections(finalGodSpeaking) - 1)}`
+    return { success: true, entryId, sectionKey }
 }
 
 interface VoicePreference {
@@ -693,8 +793,14 @@ export async function shareMultipleVersesWithPartner(
     bookName: string,
     chapter: number,
     verseEntries: { verse: number; text: string; note?: string | null }[],
-    translationAbbr?: string
+    translationAbbr?: string,
+    localDate?: string
 ): Promise<{ success: boolean }> {
+    // 1) Save a copy to the sharer's own journal (also flips the share switch below).
+    const saveResult = await saveMultipleVersesToJournal(
+        pairingId, bookName, chapter, verseEntries, undefined, translationAbbr, localDate
+    )
+
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { success: false }
@@ -723,7 +829,7 @@ export async function shareMultipleVersesWithPartner(
     const scriptureRef = `${bookName} ${chapter}:${rangeStr}${versionTag}`
     const hasAnyNotes = sorted.some(v => v.note)
 
-    // Insert into shared_items table only (no chat message)
+    // 2) Insert into shared_items table (powers the partner's "Shared With Me").
     await supabase.from('shared_items').insert({
         pairing_id: pairingId,
         sender_id: user.id,
@@ -733,6 +839,11 @@ export async function shareMultipleVersesWithPartner(
         verse_text: sorted.map(v => v.text.trim()).join(' '),
         note: sorted.filter(v => v.note).map(v => v.note).join('; ') || null,
     })
+
+    // 3) Flip the journal section's share switch on so the UI reflects it.
+    if (saveResult.success && saveResult.entryId && saveResult.sectionKey) {
+        await markJournalSectionShared(supabase, saveResult.entryId, user.id, saveResult.sectionKey)
+    }
 
     await notifySharedVerse(partnerId!, senderName, pairingId, scriptureRef, hasAnyNotes)
 
@@ -802,7 +913,8 @@ export async function shareExplanationWithPartner(
     reference: string,
     explanationText: string,
     customTitle?: string,
-    customNote?: string
+    customNote?: string,
+    localDate?: string
 ): Promise<{ success: boolean; error?: string }> {
     // 1) Save a private copy to the sharer's own journal.
     const saveResult = await saveExplanationToJournal(
@@ -810,7 +922,8 @@ export async function shareExplanationWithPartner(
         reference,
         explanationText,
         customTitle,
-        customNote
+        customNote,
+        localDate
     )
     if (!saveResult.success) return saveResult
 
@@ -850,6 +963,11 @@ export async function shareExplanationWithPartner(
         note: customNote?.trim() || `AI Explanation of ${reference}`,
     })
     if (error) return { success: false, error: error.message }
+
+    // 3) Flip the journal section's share switch on so the UI reflects it.
+    if (saveResult.entryId && saveResult.sectionKey) {
+        await markJournalSectionShared(supabase, saveResult.entryId, user.id, saveResult.sectionKey)
+    }
 
     await notifySharedVerse(partnerId!, senderName, pairingId, reference, true)
 

@@ -107,12 +107,17 @@ export default async function JournalPage({
     const partnerId = isLeader ? pairing.learner_id : pairing.leader_id
     const partnerName = isLeader ? learnerName : leaderName
 
-    // Fetch OWN journal entries (both leaders and learners have their own journals now)
+    // Fetch OWN journal entries. NOTE: prayer_journal has exactly one row per
+    // (user_id, journal_date), and that row can carry ANY of the user's pairing_ids
+    // (whichever code path created it first that day). getTodayEntry() is
+    // pairing-agnostic and writes update that single daily row, so filtering this
+    // list by pairing_id would hide entire days whose row happens to carry a
+    // different pairing (the bug where shares/reflections/custom entries vanished
+    // for leaders with more than one pairing). Scope to the user only.
     const { data: myEntriesData } = await supabase
         .from('prayer_journal')
         .select('*')
         .eq('user_id', user.id)
-        .eq('pairing_id', pairing.id)
         .order('journal_date', { ascending: false })
 
     // Fetch attachments for my entries
@@ -245,7 +250,7 @@ export default async function JournalPage({
         }
 
         // 2) Verse sections (shared_sections.verse_0, verse_1, etc.)
-        verseParts.forEach((raw: any, idx: number) => {
+        verseParts.forEach((raw: any, idx: any) => {
             if (!sections[`verse_${idx}`]) return
             let title = ''
             let scriptureRef = ''

@@ -3,7 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { BookHeart, Plus, PenLine, ArrowLeft } from 'lucide-react'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import { BookHeart, Plus, PenLine, ArrowLeft, ArrowDownWideNarrow } from 'lucide-react'
 import { JournalHistory, AddCustomEntryButton, type JournalEntry } from '@/components/journal/journal-history'
 import type { JournalAttachment } from '@/lib/journal-actions'
 import { JournalEntryEditor } from '@/components/journal/journal-entry-editor'
@@ -42,6 +49,7 @@ export function JournalPageClient({
     const searchParamsHook = useSearchParams()
     const [showEditor, setShowEditor] = useState(false)
     const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null)
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
     // Generate tour steps based on whether today's entry exists
     const journalTourSteps = useMemo(() => getJournalSteps(!!todayEntry), [todayEntry])
@@ -147,9 +155,21 @@ export function JournalPageClient({
 
             {/* Own journal entries */}
             <div data-tour="journal-history">
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                    Your Entries
-                </h2>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                    <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                        Your Entries
+                    </h2>
+                    <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as 'asc' | 'desc')}>
+                        <SelectTrigger size="sm" className="w-[150px] h-8 text-xs">
+                            <ArrowDownWideNarrow className="h-3.5 w-3.5 text-muted-foreground" />
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="desc">Newest first</SelectItem>
+                            <SelectItem value="asc">Oldest first</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
                 <div className="mb-3">
                     <AddCustomEntryButton
                         entries={entries}
@@ -164,6 +184,7 @@ export function JournalPageClient({
                     isLeaderView={false}
                     learnerName={isLeader ? learnerName : undefined}
                     onEditDaily={handleEdit}
+                    sortOrder={sortOrder}
                 />
             </div>
             {/* Daily reflection prompt -- popup manages its own open/dismissed state */}
