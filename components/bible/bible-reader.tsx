@@ -3166,7 +3166,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     </div>
 
                     {/* Scrollable content */}
-                    <div className="flex-1 overflow-y-auto px-5 py-4">
+                    <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
                         {/* Loading state */}
                         {explainLoading && !explainContent && (
                             <div className="flex items-center gap-2.5 text-sm text-muted-foreground py-6 justify-center">
@@ -3297,8 +3297,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                         })()}
                     </div>
 
-                    {/* Share with Partner button */}
-                    {explainContent && !explainLoading && !explainError && pairingId && (() => {
+                    {/* Action footer - always visible when an explanation is present */}
+                    {explainContent && !explainLoading && !explainError && (() => {
                         const hasSelection = selectedExplainLines.size > 0
                         const lines = explainContent.split('\n')
                         const textToShare = hasSelection
@@ -3306,50 +3306,52 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             : explainContent
 
                         return (
-                            <div className="px-5 py-3 border-t border-border/50 space-y-1.5">
-                                {hasSelection && (
+                            <div className="shrink-0 px-5 py-3 border-t border-border/50 space-y-1.5">
+                                {pairingId && hasSelection && (
                                     <p className="text-[10px] text-primary/70 font-sans text-center">
                                         {selectedExplainLines.size} section{selectedExplainLines.size > 1 ? 's' : ''} will be shared
                                     </p>
                                 )}
-                                {!hasSelection && (
+                                {pairingId && !hasSelection && (
                                     <p className="text-[10px] text-muted-foreground font-sans text-center">
                                         Tap sections to select specific parts, or send all
                                     </p>
                                 )}
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="w-full h-8 text-xs gap-1.5 font-sans"
-                                    onClick={async () => {
-                                        setExplainSharing(true)
-                                        const result = await sendExplanationToPartner(pairingId!, explainReference, textToShare)
-                                        if (result.success) {
-                                            toast.success(
-                                                hasSelection ? 'Selected sections sent!' : 'Explanation sent!',
-                                                {
-                                                    action: {
-                                                        label: 'Go to Messages',
-                                                        onClick: () => router.push('/dashboard/messages'),
-                                                    },
-                                                }
-                                            )
-                                            setSelectedExplainLines(new Set())
-                                        } else {
-                                            toast.error('Failed to share explanation')
-                                        }
-                                        setExplainSharing(false)
-                                    }}
-                                    disabled={explainSharing}
-                                >
-                                    {explainSharing ? (
-                                        <><Loader2 className="h-3 w-3 animate-spin" /> Sending...</>
-                                    ) : hasSelection ? (
-                                        <><Send className="h-3 w-3" /> Send Selection to Partner</>
-                                    ) : (
-                                        <><Send className="h-3 w-3" /> Send All to Partner</>
-                                    )}
-                                </Button>
+                                {pairingId && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full h-8 text-xs gap-1.5 font-sans"
+                                        onClick={async () => {
+                                            setExplainSharing(true)
+                                            const result = await sendExplanationToPartner(pairingId!, explainReference, textToShare)
+                                            if (result.success) {
+                                                toast.success(
+                                                    hasSelection ? 'Selected sections sent!' : 'Explanation sent!',
+                                                    {
+                                                        action: {
+                                                            label: 'Go to Messages',
+                                                            onClick: () => router.push('/dashboard/messages'),
+                                                        },
+                                                    }
+                                                )
+                                                setSelectedExplainLines(new Set())
+                                            } else {
+                                                toast.error('Failed to share explanation')
+                                            }
+                                            setExplainSharing(false)
+                                        }}
+                                        disabled={explainSharing}
+                                    >
+                                        {explainSharing ? (
+                                            <><Loader2 className="h-3 w-3 animate-spin" /> Sending...</>
+                                        ) : hasSelection ? (
+                                            <><Send className="h-3 w-3" /> Send Selection to Partner</>
+                                        ) : (
+                                            <><Send className="h-3 w-3" /> Send All to Partner</>
+                                        )}
+                                    </Button>
+                                )}
                                 <Button
                                     variant="outline"
                                     size="sm"
