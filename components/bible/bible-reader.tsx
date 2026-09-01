@@ -101,9 +101,27 @@ function getHighlightBg(color: string): string {
 }
 
 interface VoicePreference {
-    type: 'openai' | 'google' | 'browser'
+    type: 'elevenlabs' | 'openai' | 'google' | 'browser'
     uri: string
 }
+
+// ElevenLabs premade voices. The id IS the ElevenLabs voice_id, sent directly
+// to /api/tts-elevenlabs. Defined at module scope so it can be referenced while
+// computing initial state.
+const CLOUD_TTS_VOICES = [
+    { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', description: 'Warm storyteller', provider: 'elevenlabs' as const },
+    { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', description: 'Deep, comforting', provider: 'elevenlabs' as const },
+    { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', description: 'Steady broadcaster', provider: 'elevenlabs' as const },
+    { id: 'pqHfZKP75CvOlQylNhV4', name: 'Bill', description: 'Wise, mature', provider: 'elevenlabs' as const },
+    { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', description: 'Firm, dominant', provider: 'elevenlabs' as const },
+    { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', description: 'Mature, reassuring', provider: 'elevenlabs' as const },
+    { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', description: 'Warm, professional', provider: 'elevenlabs' as const },
+    { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice', description: 'Clear, engaging', provider: 'elevenlabs' as const },
+    { id: 'hpp4J3VqNfWAUOO0d1Us', name: 'Bella', description: 'Bright, warm', provider: 'elevenlabs' as const },
+    { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily', description: 'Velvety, soft', provider: 'elevenlabs' as const },
+]
+const CLOUD_TTS_VOICES_IDS = new Set(CLOUD_TTS_VOICES.map(v => v.id))
+const DEFAULT_CLOUD_VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb' // George
 
 interface BibleReaderProps {
     weekScripture?: string | null
@@ -212,10 +230,6 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null) // seconds left
     const [autoPlayNextChapter, setAutoPlayNextChapter] = useState(false)
 
-    // Prefetch cache for next chapter audio (keyed by batch)
-    const prefetchedAudioRef = useRef<Map<string, { audio: HTMLAudioElement; blobUrl: string; verseNums?: number[] }>>(new Map())
-    const prefetchInProgressRef = useRef(false)
-
     // AI Explain feature
     const [showExplainDialog, setShowExplainDialog] = useState(false)
     const [explainReference, setExplainReference] = useState('')
@@ -251,7 +265,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const ttsSessionRef = useRef(0) // Incremented on each new play session to ignore stale callbacks
     const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
     // Helper to get voice from preferences by type
-    const getVoiceFromPreferences = (type: 'openai' | 'google' | 'browser'): string | null => {
+    const getVoiceFromPreferences = (type: 'elevenlabs' | 'openai' | 'google' | 'browser'): string | null => {
         if (!savedVoicePreferences) return null
         const pref = savedVoicePreferences.find(p => p.type === type)
         return pref?.uri || null
@@ -261,10 +275,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const browserVoicePref = getVoiceFromPreferences('browser')
     const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(browserVoicePref || savedVoiceURI || '')
 
-    // Initialize cloud voice from preferences - prefer OpenAI Echo as default
-    const cloudVoicePref = getVoiceFromPreferences('openai') || getVoiceFromPreferences('google')
-    const initialCloudVoice = cloudVoicePref ||
-        (savedVoiceURI?.startsWith('en-') || savedVoiceURI?.startsWith('openai-') ? savedVoiceURI : 'openai-echo')
+    // Initialize the ElevenLabs cloud voice from preferences. Any stale
+    // OpenAI/Google preference no longer maps to a voice, so fall back to default.
+    const elevenLabsPref = getVoiceFromPreferences('elevenlabs')
+    const initialCloudVoice = elevenLabsPref && CLOUD_TTS_VOICES_IDS.has(elevenLabsPref)
+        ? elevenLabsPref
+        : (savedVoiceURI && CLOUD_TTS_VOICES_IDS.has(savedVoiceURI) ? savedVoiceURI : DEFAULT_CLOUD_VOICE_ID)
 
     // Cloud TTS verse-by-verse with pre-buffering
     const [selectedCloudVoice, setSelectedCloudVoice] = useState<string>(initialCloudVoice)
@@ -281,30 +297,6 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const mobilePlayingRef = useRef(false)
     const mobileCurrentIdxRef = useRef(0)
     const mobileStoppedRef = useRef(false)
-
-    const CLOUD_TTS_VOICES = [
-        // OpenAI voices (high quality, natural sounding)
-        { id: 'openai-nova', name: 'Nova', description: 'Warm female', provider: 'openai' as const },
-        { id: 'openai-echo', name: 'Echo', description: 'Clear male', provider: 'openai' as const },
-        { id: 'openai-alloy', name: 'Alloy', description: 'Neutral balanced', provider: 'openai' as const },
-        { id: 'openai-fable', name: 'Fable', description: 'Expressive male', provider: 'openai' as const },
-        { id: 'openai-onyx', name: 'Onyx', description: 'Deep male', provider: 'openai' as const },
-        { id: 'openai-shimmer', name: 'Shimmer', description: 'Gentle female', provider: 'openai' as const },
-        // Google Wavenet voices
-        { id: 'en-US-Wavenet-D', name: 'David', description: 'Warm male', provider: 'google' as const },
-        { id: 'en-US-Wavenet-C', name: 'Clara', description: 'Clear female', provider: 'google' as const },
-        { id: 'en-US-Wavenet-A', name: 'Adam', description: 'Deep male', provider: 'google' as const },
-        { id: 'en-US-Wavenet-E', name: 'Emily', description: 'Gentle female', provider: 'google' as const },
-        { id: 'en-US-Wavenet-B', name: 'Brian', description: 'Calm male', provider: 'google' as const },
-        { id: 'en-US-Wavenet-F', name: 'Fiona', description: 'Bright female', provider: 'google' as const },
-        { id: 'en-GB-Wavenet-B', name: 'James', description: 'British male', provider: 'google' as const },
-        { id: 'en-GB-Wavenet-A', name: 'Charlotte', description: 'British female', provider: 'google' as const },
-        { id: 'en-AU-Wavenet-B', name: 'Liam', description: 'Australian male', provider: 'google' as const },
-        { id: 'en-AU-Wavenet-C', name: 'Sophie', description: 'Australian female', provider: 'google' as const },
-    ]
-
-    const getVoiceProvider = (voiceId: string) => voiceId.startsWith('openai-') ? 'openai' : 'google'
-    const getOpenAIVoiceName = (voiceId: string) => voiceId.replace('openai-', '')
 
     const [skipVerseNumbers, setSkipVerseNumbers] = useState(savedSkipVerseNumbers)
     const skipVerseNumbersRef = useRef(savedSkipVerseNumbers)
@@ -420,9 +412,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const prefTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // Determine voice type from voice URI
-    const getVoiceType = (voiceUri: string): 'openai' | 'google' | 'browser' => {
-        if (voiceUri.startsWith('openai-')) return 'openai'
-        if (voiceUri.startsWith('en-') && voiceUri.includes('Wavenet')) return 'google'
+    const getVoiceType = (voiceUri: string): 'elevenlabs' | 'browser' => {
+        if (CLOUD_TTS_VOICES_IDS.has(voiceUri)) return 'elevenlabs'
         return 'browser'
     }
 
@@ -445,31 +436,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         }
     }, [selectedBook, selectedChapter, view])
 
-    // Ref to track if we're in auto-play mode (don't cleanup when navigating with autoplay)
-    const autoPlayingRef = useRef(false)
-
     // Cleanup speech on unmount or chapter change
     useEffect(() => {
         return () => {
-            // Skip full cleanup if we're auto-playing to the next chapter
-            // This allows playback to continue on the new chapter
-            if (autoPlayingRef.current) {
-                // Just clean up the current audio resources, but don't block future playback
-                if (mobileAudioRef.current) {
-                    mobileAudioRef.current.pause()
-                    mobileAudioRef.current = null
-                }
-                for (const item of mobileQueueRef.current) {
-                    if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
-                }
-                mobileQueueRef.current = []
-                // For desktop, cancel current speech but don't prevent new playback
-                if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                    window.speechSynthesis.cancel()
-                }
-                return
-            }
-            // Full cleanup when not auto-playing (e.g., user navigated manually without audio)
             // Desktop cleanup
             if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
                 window.speechSynthesis.cancel()
@@ -484,11 +453,6 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
             }
             mobileQueueRef.current = []
-            // Clear prefetch cache when manually navigating (without autoplay)
-            for (const entry of prefetchedAudioRef.current.values()) {
-                if (entry.blobUrl) URL.revokeObjectURL(entry.blobUrl)
-            }
-            prefetchedAudioRef.current.clear()
         }
     }, [selectedBook, selectedChapter])
 
@@ -1038,10 +1002,6 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     setCurrentReadingVerse(null)
                     setTtsProgress(1)
                     setAutoAdvanceCountdown(3)
-                    // Start prefetching next chapter audio during countdown
-                    if (selectedChapter && selectedChapter < chapters.length) {
-                        prefetchNextChapterAudio(selectedChapter + 1)
-                    }
                 }
             }
             utt.onerror = (e) => {
@@ -1082,21 +1042,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     // Fetch a single verse audio blob
     const fetchVerseAudio = async (text: string, voice: string): Promise<{ audio: HTMLAudioElement; blobUrl: string }> => {
-        const provider = getVoiceProvider(voice)
-        let res: Response
-        if (provider === 'openai') {
-            res = await fetch('/api/tts-openai', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, voice: getOpenAIVoiceName(voice), speed: speechRateRef.current }),
-            })
-        } else {
-            res = await fetch('/api/tts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, voice, speakingRate: speechRateRef.current }),
-            })
-        }
+        const res = await fetch('/api/tts-elevenlabs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, voice, speed: speechRateRef.current }),
+        })
         if (!res.ok) {
             throw new Error(`TTS failed: ${res.status}`)
         }
@@ -1114,100 +1064,6 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         })
         return { audio, blobUrl }
     }
-
-    // Track if we've already started prefetching for this chapter
-    const prefetchStartedForChapterRef = useRef<number | null>(null)
-
-    // Prefetch next chapter's audio - start early for seamless playback
-    // Uses BATCH_SIZE (3) to match the playback batching
-    const PREFETCH_BATCH_SIZE = 3
-
-    const prefetchNextChapterAudio = async (nextChapter: number) => {
-        if (prefetchInProgressRef.current) return
-        if (!selectedBook || nextChapter > chapters.length) return
-        // Don't re-prefetch if we already started for this chapter
-        if (prefetchStartedForChapterRef.current === nextChapter) return
-
-        prefetchStartedForChapterRef.current = nextChapter
-        prefetchInProgressRef.current = true
-
-        try {
-            // First, fetch the verses for the next chapter
-            const res = await fetch(`/api/bible?action=verses&book=${selectedBook}&chapter=${nextChapter}&translation=${translation}`)
-            if (!res.ok) return
-            const data = await res.json()
-            const nextVerses = data.verses || []
-
-            if (nextVerses.length === 0) return
-
-            // Prefetch first 3 batches (9 verses total) to match BATCH_SIZE=3 playback
-            const batchesToPrefetch = 3
-            const bookName = books.find(b => b.id === selectedBook)?.name || ''
-            const voice = selectedCloudVoice
-
-            // Fetch batches in parallel for faster prefetching
-            const fetchPromises = []
-            for (let batchIdx = 0; batchIdx < batchesToPrefetch; batchIdx++) {
-                const startIdx = batchIdx * PREFETCH_BATCH_SIZE
-                const endIdx = Math.min(startIdx + PREFETCH_BATCH_SIZE, nextVerses.length)
-                if (startIdx >= nextVerses.length) break
-
-                // Build batch text (same format as buildVerseText uses)
-                // Respect skipVerseNumbers setting
-                let batchText = ''
-                const verseNums: number[] = []
-                const skipNumbers = skipVerseNumbersRef.current
-                for (let i = startIdx; i < endIdx; i++) {
-                    const v = nextVerses[i]
-                    if (!v) continue
-                    verseNums.push(v.verse)
-                    const verseText = v.text.replace(/\n/g, ' ').trim()
-                    let intro: string
-                    if (skipNumbers) {
-                        // Only announce chapter at the very beginning, no verse numbers
-                        intro = i === 0 ? `${bookName} chapter ${nextChapter}. ` : ''
-                    } else {
-                        // Announce verse numbers
-                        intro = i === 0 ? `${bookName} chapter ${nextChapter}, verse ${v.verse}. ` : `Verse ${v.verse}. `
-                    }
-                    batchText += (i > startIdx ? ' ' : '') + intro + verseText
-                }
-
-                if (!batchText || verseNums.length === 0) continue
-
-                // Cache key includes all verse numbers in the batch
-                const cacheKey = `${selectedBook}:${nextChapter}:batch:${verseNums.join(',')}`
-
-                // Skip if already cached
-                if (prefetchedAudioRef.current.has(cacheKey)) continue
-
-                fetchPromises.push(
-                    fetchVerseAudio(batchText, voice).then(({ audio, blobUrl }) => {
-                        prefetchedAudioRef.current.set(cacheKey, { audio, blobUrl, verseNums })
-                    }).catch(() => {
-                        // Silently ignore prefetch errors
-                    })
-                )
-            }
-
-            // Wait for all prefetch requests to complete
-            await Promise.all(fetchPromises)
-        } catch {
-            // Silently ignore prefetch errors
-        } finally {
-            prefetchInProgressRef.current = false
-        }
-    }
-
-    // Trigger early prefetch when we're 70% through the chapter
-    useEffect(() => {
-        if (isPlaying && ttsProgress >= 0.7 && selectedChapter && selectedChapter < chapters.length) {
-            const nextChapter = selectedChapter + 1
-            if (prefetchStartedForChapterRef.current !== nextChapter) {
-                prefetchNextChapterAudio(nextChapter)
-            }
-        }
-    }, [ttsProgress, isPlaying, selectedChapter, chapters.length])
 
     // Build the text for a verse at a given index
     const buildVerseText = (verseIdx: number, isFirst: boolean) => {
@@ -1264,10 +1120,6 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             mobilePlayingRef.current = false
             setTtsProgress(1) // 100% complete
             setAutoAdvanceCountdown(3)
-            // Start prefetching next chapter audio during countdown
-            if (selectedChapter && selectedChapter < chapters.length) {
-                prefetchNextChapterAudio(selectedChapter + 1)
-            }
             return
         }
 
@@ -1444,28 +1296,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         clearAutoAdvance()
 
         // Start pre-buffering the first 3 batches immediately
-        // Check prefetch cache first for faster startup (cache uses batch keys)
         const voice = selectedCloudVoice
         const INITIAL_BUFFER = 3
         for (let i = 0; i < Math.min(INITIAL_BUFFER, queue.length); i++) {
             const item = queue[i]
             item.loading = true
-
-            // Check if we have prefetched audio for this batch
-            if (selectedChapter && item.verseNums.length > 0) {
-                const cacheKey = `${selectedBook}:${selectedChapter}:batch:${item.verseNums.join(',')}`
-                const cached = prefetchedAudioRef.current.get(cacheKey)
-                if (cached) {
-                    // Use prefetched audio - immediate playback!
-                    item.audio = cached.audio
-                    item.blobUrl = cached.blobUrl
-                    item.loading = false
-                    prefetchedAudioRef.current.delete(cacheKey) // Remove from cache after use
-                    continue
-                }
-            }
-
-            // Not in prefetch cache, fetch normally
             let text = ''
             item.verseIndices.forEach((vIdx, j) => {
                 const part = buildVerseText(vIdx, i === 0 && j === 0)
@@ -1563,8 +1398,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     // Check if current voice selection is a cloud voice (OpenAI or Google)
     // This is only used to determine playback method on desktop when NOT using cloud voices by default
-    const isCloudVoiceSelected = selectedCloudVoice.startsWith('openai-') ||
-        (selectedCloudVoice.startsWith('en-') && selectedCloudVoice.includes('Wavenet'))
+    const isCloudVoiceSelected = CLOUD_TTS_VOICES_IDS.has(selectedCloudVoice)
 
     // Determine if we should use cloud TTS for playback
     // On mobile/Apple: always use cloud voices
@@ -1616,12 +1450,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             setAutoAdvanceCountdown(null)
             setTtsProgress(0)
 
-            // Set flags to enable auto-play on next chapter
-            autoPlayingRef.current = true
-            pendingAutoPlayRef.current = true
-
             // Fully stop current playback before transitioning
             handleStopMobile()
+            mobileStoppedRef.current = true
             mobilePlayingRef.current = false
             setIsPlaying(false)
             setIsPaused(false)
@@ -1633,6 +1464,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 setWeekVerseRange(null)
                 setSelectedChapter(next)
                 updateURL(selectedBook, next, translation)
+                // Reset the stopped flag so new chapter can play
+                mobileStoppedRef.current = false
+                setAutoPlayNextChapter(true)
             }, 200)
             return
         }
@@ -1643,33 +1477,28 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         return () => clearTimeout(timer)
     }, [autoAdvanceCountdown, selectedChapter, chapters.length, selectedBook, translation, updateURL])
 
-    // Ref to track pending auto-play (persists across renders, more reliable than state)
-    const pendingAutoPlayRef = useRef(false)
-
-    // Auto-play when new chapter verses load after navigation
+    // Auto-play when new chapter verses load after auto-advance
     useEffect(() => {
         // Wait until verses are fully loaded (not loading) and we have content
-        if (pendingAutoPlayRef.current && verses.length > 0 && !versesLoading) {
-            // Clear the pending flag immediately
-            pendingAutoPlayRef.current = false
+        if (autoPlayNextChapter && verses.length > 0 && !versesLoading) {
             setAutoPlayNextChapter(false)
             setTtsProgress(0)
 
-            // Reset flags to allow playback
-            mobileStoppedRef.current = false
-            autoPlayingRef.current = false
+            // Ensure previous audio is fully stopped before starting new chapter
+            handleStopMobile()
 
-            // Use a short delay to let the UI settle, then start playback
+            // Longer delay to let the new chapter fully render and audio context reset
             const playTimer = setTimeout(() => {
+                // Double-check we still have verses and conditions are met
                 if (verses.length > 0) {
                     handlePlayChapter()
                 }
-            }, 500)
+            }, 800)
 
             return () => clearTimeout(playTimer)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [verses, versesLoading])
+    }, [autoPlayNextChapter, verses, versesLoading])
 
     const handleSelectBook = (bookId: string) => {
         setSelectedBook(bookId)
@@ -1749,20 +1578,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }
 
     // Navigate to next/prev chapter
-    // If audio is playing, continue playing on the new chapter
     const handlePrevChapter = () => {
-        const wasPlaying = isPlaying && !isPaused
-        // Set flags BEFORE stopping audio to enable auto-play on new chapter
-        if (wasPlaying) {
-            autoPlayingRef.current = true
-            pendingAutoPlayRef.current = true
-        }
         handleStopAudio()
         setWeekVerseRange(null)
         setTtsProgress(0)
         clearAutoAdvance()
-        // Reset prefetch tracking for the new chapter
-        prefetchStartedForChapterRef.current = null
         if (selectedChapter && selectedChapter > 1) {
             const prev = selectedChapter - 1
             setSelectedChapter(prev)
@@ -1771,18 +1591,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }
 
     const handleNextChapter = () => {
-        const wasPlaying = isPlaying && !isPaused
-        // Set flags BEFORE stopping audio to enable auto-play on new chapter
-        if (wasPlaying) {
-            autoPlayingRef.current = true
-            pendingAutoPlayRef.current = true
-        }
         handleStopAudio()
         setWeekVerseRange(null)
         setTtsProgress(0)
         clearAutoAdvance()
-        // Reset prefetch tracking for the new chapter
-        prefetchStartedForChapterRef.current = null
         if (selectedChapter && chapters.length > 0 && selectedChapter < chapters.length) {
             const next = selectedChapter + 1
             setSelectedChapter(next)
@@ -1981,7 +1793,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     Reading Voice
                                 </label>
                                 <p className="text-xs text-muted-foreground">
-                                    Choose a voice for the audio Bible. Voices marked Neural or Enhanced sound the most human.
+                                    Choose a natural ElevenLabs voice for the audio Bible.
                                 </p>
 
                                 {useCloudVoices ? (
@@ -2001,19 +1813,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         </SelectTrigger>
                                         <SelectContent className="max-h-[300px]">
                                             <SelectGroup>
-                                                <SelectLabel className="text-xs font-semibold text-primary/70">OpenAI Voices</SelectLabel>
-                                                {CLOUD_TTS_VOICES.filter(v => v.provider === 'openai').map((voice) => (
-                                                    <SelectItem key={voice.id} value={voice.id}>
-                                                        <span className="flex items-center gap-1.5">
-                                                            {voice.name}
-                                                            <span className="text-muted-foreground text-xs">{voice.description}</span>
-                                                        </span>
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectGroup>
-                                            <SelectGroup>
-                                                <SelectLabel className="text-xs font-semibold text-primary/70">Google Voices</SelectLabel>
-                                                {CLOUD_TTS_VOICES.filter(v => v.provider === 'google').map((voice) => (
+                                                <SelectLabel className="text-xs font-semibold text-primary/70">Voices</SelectLabel>
+                                                {CLOUD_TTS_VOICES.map((voice) => (
                                                     <SelectItem key={voice.id} value={voice.id}>
                                                         <span className="flex items-center gap-1.5">
                                                             {voice.name}
@@ -2171,21 +1972,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     if (shouldUseCloudTTS) {
                                         setPreviewLoading(true)
                                         try {
-                                            const provider = getVoiceProvider(selectedCloudVoice)
-                                            let res: Response
-                                            if (provider === 'openai') {
-                                                res = await fetch('/api/tts-openai', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({ text: previewText, voice: getOpenAIVoiceName(selectedCloudVoice), speed: speechRate }),
-                                                })
-                                            } else {
-                                                res = await fetch('/api/tts', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({ text: previewText, voice: selectedCloudVoice, speakingRate: speechRate }),
-                                                })
-                                            }
+                                            const res = await fetch('/api/tts-elevenlabs', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ text: previewText, voice: selectedCloudVoice, speed: speechRate }),
+                                            })
                                             if (!res.ok) throw new Error('Preview failed')
                                             const blob = await res.blob()
                                             const url = URL.createObjectURL(blob)
@@ -3198,7 +2989,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     className="relative inline-flex items-center gap-1 rounded-md border border-border text-sm font-medium h-9 px-3 overflow-hidden transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                     onClick={() => {
                                         clearAutoAdvance()
-                                        // handleNextChapter will check isPlaying and continue playback on new chapter
+                                        handleStopAudio()
                                         handleNextChapter()
                                     }}
                                 >

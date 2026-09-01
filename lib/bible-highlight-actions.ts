@@ -506,7 +506,7 @@ export async function saveExplanationToJournal(
 }
 
 interface VoicePreference {
-    type: 'openai' | 'google' | 'browser'
+    type: 'elevenlabs' | 'openai' | 'google' | 'browser'
     uri: string
 }
 
