@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { BibleReader } from '@/components/bible/bible-reader'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getSelectedPairingId } from '@/lib/selected-pairing'
 
 export const metadata = {
     title: 'Bible - Stand Walk Run',
@@ -29,16 +30,22 @@ export default async function BiblePage() {
 
     // A leader can have multiple active pairings (one per learner), so we can't use
     // .single() here — it errors on multiple rows and would drop the pairingId
-    // entirely, hiding the "Send to Partner" actions. Take the first active pairing.
+    // entirely, hiding the "Send/Share to Partner" actions. We resolve the pairing
+    // the SAME way the journal page does (selected-pairing cookie, otherwise newest
+    // active first) so anything saved/shared from the Bible reader lands in the
+    // pairing the journal actually reads back.
     const { data: pairings } = await supabase
         .from('pairings')
         .select('id, current_week')
         .match(roleFilter)
         .eq('status', 'active')
-        .order('created_at', { ascending: true })
-        .limit(1)
+        .order('created_at', { ascending: false })
 
-    const pairing = pairings?.[0] || null
+    const selectedPairingId = await getSelectedPairingId()
+    const pairing =
+        (selectedPairingId && pairings?.find((p) => p.id === selectedPairingId)) ||
+        pairings?.[0] ||
+        null
 
     let weekScripture: string | null = null
     let weekNumber: number | null = null

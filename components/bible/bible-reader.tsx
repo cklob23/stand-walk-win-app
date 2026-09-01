@@ -35,6 +35,7 @@ import {
     shareMultipleVersesWithPartner,
     sendExplanationToPartner,
     saveExplanationToJournal,
+    shareExplanationWithPartner,
 } from '@/lib/bible-highlight-actions'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
@@ -306,6 +307,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [explainSharing, setExplainSharing] = useState(false)
     const [selectedExplainLines, setSelectedExplainLines] = useState<Set<number>>(new Set())
     const [showExplainJournalDialog, setShowExplainJournalDialog] = useState(false)
+    // When true, the journal dialog also shares the entry with the partner.
+    const [explainJournalShareMode, setExplainJournalShareMode] = useState(false)
     const [explainJournalTitle, setExplainJournalTitle] = useState('')
     const [explainJournalNote, setExplainJournalNote] = useState('')
     const [explainJournalSaving, setExplainJournalSaving] = useState(false)
@@ -364,6 +367,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const mobilePlayingRef = useRef(false)
     const mobileCurrentIdxRef = useRef(0)
     const mobileStoppedRef = useRef(false)
+    // Next-chapter audio prefetched during the auto-advance countdown, keyed by the
+    // exact batch text so the new chapter can start reading instantly. prefetchedChapterRef
+    // tracks which chapter is currently prefetched to avoid duplicate work.
+    const nextChapterAudioRef = useRef<Map<string, { audio: HTMLAudioElement; blobUrl: string }>>(new Map())
+    const prefetchedChapterRef = useRef<number | null>(null)
 
     const [skipVerseNumbers, setSkipVerseNumbers] = useState(savedSkipVerseNumbers)
     const skipVerseNumbersRef = useRef(savedSkipVerseNumbers)
@@ -1160,6 +1168,68 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         return text
     }
 
+    // Prefetch the next chapter's verses + first audio batches. Called when the
+    // auto-advance countdown starts so the next chapter can begin reading with no
+    // gap once we navigate. Keyed by the exact batch text ensureItemAudio will build.
+    const prefetchNextChapter = async () => {
+        if (!shouldUseCloudTTS || !selectedBook || !selectedChapter || !chapters.length) return
+        const next = selectedChapter + 1
+        if (next > chapters.length) return
+        if (prefetchedChapterRef.current === next) return
+        prefetchedChapterRef.current = next
+
+        // Clear any stale prefetch from a previous chapter to avoid blob-URL leaks.
+        nextChapterAudioRef.current.forEach(({ blobUrl }) => URL.revokeObjectURL(blobUrl))
+        nextChapterAudioRef.current.clear()
+
+        try {
+            const res = await fetch(
+                `/api/bible?action=verses&translation=${translation}&book=${selectedBook}&chapter=${next}`
+            )
+            const data = await res.json()
+            const nextVerses: BibleVerse[] = data?.verses || []
+            if (!nextVerses.length) return
+
+            const bookName = books.find(b => b.id === selectedBook)?.name || ''
+            const voice = selectedCloudVoice
+            const PREFETCH_BATCHES = 3
+
+            for (let b = 0; b < PREFETCH_BATCHES; b++) {
+                const start = b * BATCH_SIZE
+                if (start >= nextVerses.length) break
+                // Build batch text identical to buildBatchText for the next chapter.
+                let text = ''
+                for (let j = 0; j < BATCH_SIZE && start + j < nextVerses.length; j++) {
+                    const v = nextVerses[start + j]
+                    const verseText = v.text.replace(/\n/g, ' ').trim()
+                    const isFirst = b === 0 && j === 0
+                    let part: string
+                    if (skipVerseNumbersRef.current) {
+                        part = isFirst ? `${bookName} chapter ${next}. ${verseText}` : verseText
+                    } else {
+                        part = isFirst
+                            ? `${bookName} chapter ${next}. Verse ${v.verse}. ${verseText}`
+                            : `Verse ${v.verse}. ${verseText}`
+                    }
+                    text += (j > 0 ? ' ' : '') + part
+                }
+                if (nextChapterAudioRef.current.has(text)) continue
+                fetchVerseAudio(text, voice)
+                    .then(({ audio, blobUrl }) => {
+                        // Only keep it if this is still the chapter we expect to advance to.
+                        if (prefetchedChapterRef.current === next) {
+                            nextChapterAudioRef.current.set(text, { audio, blobUrl })
+                        } else {
+                            URL.revokeObjectURL(blobUrl)
+                        }
+                    })
+                    .catch(() => { })
+            }
+        } catch {
+            // Prefetch is best-effort; on failure the normal fetch path still runs.
+        }
+    }
+
     // Ensure a queue item's audio is fetched exactly once. Concurrent callers
     // (pre-buffering + playback) share the same in-flight promise so no batch is
     // ever requested twice, which cuts request volume and avoids 429s.
@@ -1168,6 +1238,15 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         if (item.promise) return item.promise
         item.loading = true
         const text = buildBatchText(item, queueIdx)
+        // Use prefetched audio from the countdown if available (instant start).
+        const prefetched = nextChapterAudioRef.current.get(text)
+        if (prefetched) {
+            nextChapterAudioRef.current.delete(text)
+            item.audio = prefetched.audio
+            item.blobUrl = prefetched.blobUrl
+            item.loading = false
+            return Promise.resolve()
+        }
         item.promise = fetchVerseAudio(text, voice)
             .then(({ audio, blobUrl }) => {
                 item.loading = false
@@ -1213,6 +1292,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             mobilePlayingRef.current = false
             setTtsProgress(1) // 100% complete
             setAutoAdvanceCountdown(3)
+            // Start fetching the next chapter's audio NOW (during the countdown) so it
+            // is ready to play the instant we navigate — no gap between chapters.
+            void prefetchNextChapter()
             return
         }
 
@@ -1563,13 +1645,14 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             // Ensure previous audio is fully stopped before starting new chapter
             handleStopMobile()
 
-            // Longer delay to let the new chapter fully render and audio context reset
+            // Short delay to let the new chapter render; audio is already prefetched
+            // (during the countdown) so playback resumes with virtually no gap.
             const playTimer = setTimeout(() => {
                 // Double-check we still have verses and conditions are met
                 if (verses.length > 0) {
                     handlePlayChapter()
                 }
-            }, 800)
+            }, 300)
 
             return () => clearTimeout(playTimer)
         }
@@ -3425,6 +3508,21 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         )}
                                     </Button>
                                 )}
+                                {pairingId && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full h-8 text-xs gap-1.5 font-sans"
+                                        onClick={() => {
+                                            setExplainJournalTitle(`AI Explanation - ${explainReference}`)
+                                            setExplainJournalNote('')
+                                            setExplainJournalShareMode(true)
+                                            setShowExplainJournalDialog(true)
+                                        }}
+                                    >
+                                        <Share2 className="h-3 w-3" /> Share to Partner &amp; Journal
+                                    </Button>
+                                )}
                                 <Button
                                     variant="outline"
                                     size="sm"
@@ -3432,6 +3530,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     onClick={() => {
                                         setExplainJournalTitle(`AI Explanation - ${explainReference}`)
                                         setExplainJournalNote('')
+                                        setExplainJournalShareMode(false)
                                         setShowExplainJournalDialog(true)
                                     }}
                                 >
@@ -3445,8 +3544,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                     {showExplainJournalDialog && (
                         <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) { setShowExplainJournalDialog(false) } }}>
                             <div className="bg-card rounded-t-xl sm:rounded-lg border border-border shadow-lg w-full sm:max-w-md p-5 space-y-4 max-h-[85vh] overflow-y-auto">
-                                <h3 className="text-base font-semibold font-sans text-foreground">Save Explanation to Journal</h3>
-                                <p className="text-xs text-muted-foreground font-sans">{explainReference}</p>
+                                <h3 className="text-base font-semibold font-sans text-foreground">
+                                    {explainJournalShareMode ? 'Share Explanation with Partner' : 'Save Explanation to Journal'}
+                                </h3>
+                                <p className="text-xs text-muted-foreground font-sans">
+                                    {explainReference}
+                                    {explainJournalShareMode ? ' — saved to your journal and shared with your partner' : ''}
+                                </p>
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium text-foreground" htmlFor="explain-journal-title">Title</label>
                                     <Input
@@ -3487,20 +3591,33 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                             const textToSave = hasSelection
                                                 ? Array.from(selectedExplainLines).sort((a, b) => a - b).map(i => lines[i]?.trim()).filter(Boolean).join('\n\n')
                                                 : explainContent
-                                            const result = await saveExplanationToJournal(
-                                                pairingId,
-                                                explainReference,
-                                                textToSave,
-                                                explainJournalTitle.trim() || undefined,
-                                                explainJournalNote.trim() || undefined
-                                            )
+                                            const result = explainJournalShareMode
+                                                ? await shareExplanationWithPartner(
+                                                    pairingId,
+                                                    explainReference,
+                                                    textToSave,
+                                                    explainJournalTitle.trim() || undefined,
+                                                    explainJournalNote.trim() || undefined
+                                                )
+                                                : await saveExplanationToJournal(
+                                                    pairingId,
+                                                    explainReference,
+                                                    textToSave,
+                                                    explainJournalTitle.trim() || undefined,
+                                                    explainJournalNote.trim() || undefined
+                                                )
                                             if (result.success) {
-                                                toast.success('Saved to your prayer journal!', {
-                                                    action: {
-                                                        label: 'View Journal',
-                                                        onClick: () => router.push('/dashboard/journal'),
-                                                    },
-                                                })
+                                                toast.success(
+                                                    explainJournalShareMode
+                                                        ? 'Saved to your journal and shared with your partner!'
+                                                        : 'Saved to your prayer journal!',
+                                                    {
+                                                        action: {
+                                                            label: 'View Journal',
+                                                            onClick: () => router.push('/dashboard/journal'),
+                                                        },
+                                                    }
+                                                )
                                                 setShowExplainJournalDialog(false)
                                                 setSelectedExplainLines(new Set())
                                             } else {
@@ -3510,8 +3627,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                         }}
                                         disabled={explainJournalSaving}
                                     >
-                                        {explainJournalSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <BookHeart className="h-3.5 w-3.5 mr-1" />}
-                                        {explainJournalSaving ? 'Saving...' : 'Save'}
+                                        {explainJournalSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : explainJournalShareMode ? <Share2 className="h-3.5 w-3.5 mr-1" /> : <BookHeart className="h-3.5 w-3.5 mr-1" />}
+                                        {explainJournalSaving ? (explainJournalShareMode ? 'Sharing...' : 'Saving...') : explainJournalShareMode ? 'Share' : 'Save'}
                                     </Button>
                                 </div>
                             </div>

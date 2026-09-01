@@ -793,3 +793,66 @@ export async function sendExplanationToPartner(
     revalidatePath('/dashboard/messages')
     return { success: true }
 }
+
+// Share an AI explanation: saves a private copy to the user's own journal AND
+// shares it with the partner via shared_items (which powers the partner's
+// "Shared With Me" list on the journal page).
+export async function shareExplanationWithPartner(
+    pairingId: string,
+    reference: string,
+    explanationText: string,
+    customTitle?: string,
+    customNote?: string
+): Promise<{ success: boolean; error?: string }> {
+    // 1) Save a private copy to the sharer's own journal.
+    const saveResult = await saveExplanationToJournal(
+        pairingId,
+        reference,
+        explanationText,
+        customTitle,
+        customNote
+    )
+    if (!saveResult.success) return saveResult
+
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'Not authenticated' }
+
+    const { data: pairing } = await supabase
+        .from('pairings')
+        .select('leader_id, learner_id')
+        .eq('id', pairingId)
+        .single()
+    if (!pairing) return { success: false, error: 'Pairing not found' }
+
+    const partnerId = pairing.leader_id === user.id ? pairing.learner_id : pairing.leader_id
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single()
+    const senderName = profile?.full_name || 'Your partner'
+
+    const cleanExplanation = explanationText
+        .replace(/^#{1,3}\s+/gm, '')
+        .replace(/\*\*/g, '')
+        .trim()
+
+    // 2) Share with the partner via shared_items.
+    const { error } = await supabase.from('shared_items').insert({
+        pairing_id: pairingId,
+        sender_id: user.id,
+        recipient_id: partnerId,
+        item_type: 'verse_note',
+        scripture_ref: reference,
+        verse_text: cleanExplanation,
+        note: customNote?.trim() || `AI Explanation of ${reference}`,
+    })
+    if (error) return { success: false, error: error.message }
+
+    await notifySharedVerse(partnerId!, senderName, pairingId, reference, true)
+
+    revalidatePath('/dashboard/journal')
+    return { success: true }
+}

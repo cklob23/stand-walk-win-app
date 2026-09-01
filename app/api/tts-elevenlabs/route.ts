@@ -21,10 +21,10 @@ const ALLOWED_VOICE_IDS = new Set([
 ])
 
 const DEFAULT_VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb' // George
-// eleven_v3 is ElevenLabs' current, most expressive model. Note: it does NOT
-// support the `speed` voice setting, so playback speed is applied client-side
-// via HTMLAudioElement.playbackRate instead.
-const MODEL_ID = 'eleven_v3'
+// eleven_turbo_v2_5 is ElevenLabs' low-latency model (~300ms vs ~3.5s for
+// eleven_v3) — ideal for continuous Bible reading where playback must start
+// quickly. Playback speed is applied client-side via HTMLAudioElement.playbackRate.
+const MODEL_ID = 'eleven_turbo_v2_5'
 
 function pruneCache() {
     if (audioCache.size <= CACHE_MAX_SIZE) return
