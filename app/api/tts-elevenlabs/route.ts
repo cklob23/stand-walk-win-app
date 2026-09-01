@@ -21,7 +21,10 @@ const ALLOWED_VOICE_IDS = new Set([
 ])
 
 const DEFAULT_VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb' // George
-const MODEL_ID = 'eleven_turbo_v2_5' // fast, natural, supports the speed setting
+// eleven_v3 is ElevenLabs' current, most expressive model. Note: it does NOT
+// support the `speed` voice setting, so playback speed is applied client-side
+// via HTMLAudioElement.playbackRate instead.
+const MODEL_ID = 'eleven_v3'
 
 function pruneCache() {
     if (audioCache.size <= CACHE_MAX_SIZE) return
@@ -38,7 +41,7 @@ function pruneCache() {
 
 export async function POST(request: NextRequest) {
     try {
-        const { text, voice, speed: rawSpeed } = await request.json()
+        const { text, voice } = await request.json()
 
         if (!text || typeof text !== 'string') {
             return NextResponse.json({ error: 'Text is required' }, { status: 400 })
@@ -47,13 +50,12 @@ export async function POST(request: NextRequest) {
         // Validate voice against the allow-list, falling back to the default.
         const voiceId = typeof voice === 'string' && ALLOWED_VOICE_IDS.has(voice) ? voice : DEFAULT_VOICE_ID
 
-        // ElevenLabs supports a speed setting in the 0.7 - 1.2 range.
-        const speed = Math.min(1.2, Math.max(0.7, typeof rawSpeed === 'number' ? rawSpeed : 1.0))
-
         // Limit to a single batch size (generous cap).
         const trimmedText = text.slice(0, 1500)
 
-        const cacheKey = `${voiceId}:${speed}:${trimmedText}`
+        // Speed is applied client-side (eleven_v3 ignores it), so the cache key only
+        // depends on voice + text — identical requests reuse the same audio.
+        const cacheKey = `${voiceId}:${trimmedText}`
         const cached = audioCache.get(cacheKey)
         if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
             return new NextResponse(cached.buffer, {
@@ -70,33 +72,47 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'TTS API key not configured' }, { status: 500 })
         }
 
-        const response = await fetch(
-            `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
-            {
-                method: 'POST',
-                headers: {
-                    'xi-api-key': apiKey,
-                    'Content-Type': 'application/json',
-                    Accept: 'audio/mpeg',
+        const requestInit: RequestInit = {
+            method: 'POST',
+            headers: {
+                'xi-api-key': apiKey,
+                'Content-Type': 'application/json',
+                Accept: 'audio/mpeg',
+            },
+            body: JSON.stringify({
+                text: trimmedText,
+                model_id: MODEL_ID,
+                // eleven_v3 supports a discrete `stability` (0.0 / 0.5 / 1.0) and
+                // `use_speaker_boost`; 0.5 = "Natural".
+                voice_settings: {
+                    stability: 0.5,
+                    use_speaker_boost: true,
                 },
-                body: JSON.stringify({
-                    text: trimmedText,
-                    model_id: MODEL_ID,
-                    voice_settings: {
-                        stability: 0.5,
-                        similarity_boost: 0.75,
-                        style: 0.0,
-                        use_speaker_boost: true,
-                        speed,
-                    },
-                }),
-            }
-        )
+            }),
+        }
 
-        if (!response.ok) {
-            const errorBody = await response.text()
-            console.error('[v0] ElevenLabs TTS API error:', response.status, errorBody)
-            return NextResponse.json({ error: 'TTS synthesis failed' }, { status: response.status })
+        const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`
+
+        // Retry on 429 / 5xx with exponential backoff, honoring Retry-After.
+        const MAX_ATTEMPTS = 3
+        let response: Response | null = null
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            response = await fetch(url, requestInit)
+            if (response.ok) break
+            if ((response.status === 429 || response.status >= 500) && attempt < MAX_ATTEMPTS - 1) {
+                const retryAfter = Number(response.headers.get('retry-after'))
+                const wait = retryAfter > 0 ? retryAfter * 1000 : 400 * Math.pow(2, attempt)
+                await new Promise((r) => setTimeout(r, wait))
+                continue
+            }
+            break
+        }
+
+        if (!response || !response.ok) {
+            const errorBody = response ? await response.text() : 'no response'
+            const status = response?.status ?? 502
+            console.error('[v0] ElevenLabs TTS API error:', status, errorBody)
+            return NextResponse.json({ error: 'TTS synthesis failed' }, { status })
         }
 
         const buffer = await response.arrayBuffer()

@@ -88,6 +88,72 @@ const TEXT_SIZES = [
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
+// ---- TTS request throttling & retry ----
+// ElevenLabs rate-limits concurrent requests, so we cap how many TTS calls run
+// at once and retry with exponential backoff on 429 / 5xx responses. This keeps
+// the audio Bible from getting a 429 during pre-buffering or chapter changes.
+const TTS_MAX_CONCURRENT = 2
+let ttsActiveCount = 0
+const ttsWaiters: Array<() => void> = []
+
+function acquireTtsSlot(): Promise<void> {
+    if (ttsActiveCount < TTS_MAX_CONCURRENT) {
+        ttsActiveCount++
+        return Promise.resolve()
+    }
+    // Wait for a slot; the releaser hands its slot directly to us, so the active
+    // count stays constant across the handoff (never exceeding the max).
+    return new Promise<void>((resolve) => ttsWaiters.push(resolve))
+}
+
+function releaseTtsSlot() {
+    const next = ttsWaiters.shift()
+    if (next) {
+        next()
+    } else {
+        ttsActiveCount = Math.max(0, ttsActiveCount - 1)
+    }
+}
+
+const ttsSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+// Throttled POST to the TTS endpoint with retry/backoff on 429 & 5xx.
+async function throttledTtsFetch(body: object): Promise<Response> {
+    await acquireTtsSlot()
+    try {
+        const MAX_ATTEMPTS = 4
+        let lastError: unknown
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            try {
+                const res = await fetch('/api/tts-elevenlabs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                })
+                if ((res.status === 429 || res.status >= 500) && attempt < MAX_ATTEMPTS - 1) {
+                    const retryAfter = Number(res.headers.get('retry-after'))
+                    const wait = retryAfter > 0
+                        ? retryAfter * 1000
+                        : 500 * Math.pow(2, attempt) + Math.random() * 250
+                    await ttsSleep(wait)
+                    continue
+                }
+                return res
+            } catch (err) {
+                lastError = err
+                if (attempt < MAX_ATTEMPTS - 1) {
+                    await ttsSleep(500 * Math.pow(2, attempt) + Math.random() * 250)
+                    continue
+                }
+            }
+        }
+        if (lastError) throw lastError
+        throw new Error('TTS request failed')
+    } finally {
+        releaseTtsSlot()
+    }
+}
+
 const HIGHLIGHT_COLORS: { color: HighlightColor; bg: string; ring: string; label: string }[] = [
     { color: 'yellow', bg: 'bg-yellow-200/60', ring: 'ring-yellow-400', label: 'Yellow' },
     { color: 'green', bg: 'bg-green-200/60', ring: 'ring-green-400', label: 'Green' },
@@ -292,6 +358,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         audio: HTMLAudioElement | null
         loading: boolean
         blobUrl?: string
+        promise?: Promise<void>    // in-flight fetch, shared so a batch is never fetched twice
     }
     const mobileQueueRef = useRef<MobileQueueItem[]>([])
     const mobilePlayingRef = useRef(false)
@@ -406,6 +473,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     useEffect(() => {
         speechRateRef.current = speechRate
+        // eleven_v3 has no server-side speed control, so update the currently
+        // playing audio's playbackRate immediately when the slider changes.
+        if (mobileAudioRef.current) {
+            mobileAudioRef.current.playbackRate = speechRate
+        }
     }, [speechRate])
 
     // Preference save debounce
@@ -1042,11 +1114,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     // Fetch a single verse audio blob
     const fetchVerseAudio = async (text: string, voice: string): Promise<{ audio: HTMLAudioElement; blobUrl: string }> => {
-        const res = await fetch('/api/tts-elevenlabs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, voice, speed: speechRateRef.current }),
-        })
+        const res = await throttledTtsFetch({ text, voice })
         if (!res.ok) {
             throw new Error(`TTS failed: ${res.status}`)
         }
@@ -1056,6 +1124,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         }
         const blobUrl = URL.createObjectURL(blob)
         const audio = new Audio(blobUrl)
+        // eleven_v3 ignores server-side speed, so control playback speed here.
+        audio.playbackRate = speechRateRef.current
         // Preload the audio data
         await new Promise<void>((resolve, reject) => {
             audio.addEventListener('canplaythrough', () => resolve(), { once: true })
@@ -1080,27 +1150,50 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     // Number of verses to batch into a single TTS request for smoother transitions
     const BATCH_SIZE = 3
 
-    // Pre-buffer upcoming batches in the queue
+    // Build the batched text for a queue item (adds the chapter intro for batch 0)
+    const buildBatchText = (item: MobileQueueItem, queueIdx: number) => {
+        let text = ''
+        item.verseIndices.forEach((vIdx, j) => {
+            const part = buildVerseText(vIdx, queueIdx === 0 && j === 0)
+            text += (j > 0 ? ' ' : '') + part
+        })
+        return text
+    }
+
+    // Ensure a queue item's audio is fetched exactly once. Concurrent callers
+    // (pre-buffering + playback) share the same in-flight promise so no batch is
+    // ever requested twice, which cuts request volume and avoids 429s.
+    const ensureItemAudio = (item: MobileQueueItem, queueIdx: number, voice: string): Promise<void> => {
+        if (item.audio) return Promise.resolve()
+        if (item.promise) return item.promise
+        item.loading = true
+        const text = buildBatchText(item, queueIdx)
+        item.promise = fetchVerseAudio(text, voice)
+            .then(({ audio, blobUrl }) => {
+                item.loading = false
+                if (mobileStoppedRef.current) {
+                    URL.revokeObjectURL(blobUrl)
+                    return
+                }
+                item.audio = audio
+                item.blobUrl = blobUrl
+            })
+            .catch((err) => {
+                item.loading = false
+                item.promise = undefined // allow a later retry of this batch
+                throw err
+            })
+        return item.promise
+    }
+
+    // Pre-buffer upcoming batches in the queue (fire-and-forget)
     const preBufferAhead = (startQueueIdx: number, voice: string) => {
         const queue = mobileQueueRef.current
         const BUFFER_AHEAD = 3
         for (let i = startQueueIdx; i < Math.min(startQueueIdx + BUFFER_AHEAD, queue.length); i++) {
             const item = queue[i]
-            if (item && !item.audio && !item.loading) {
-                item.loading = true
-                // Build batched text for all verses in this batch item
-                let text = ''
-                item.verseIndices.forEach((vIdx, j) => {
-                    const part = buildVerseText(vIdx, i === 0 && j === 0)
-                    text += (j > 0 ? ' ' : '') + part
-                })
-                fetchVerseAudio(text, voice).then(({ audio, blobUrl }) => {
-                    item.audio = audio
-                    item.blobUrl = blobUrl
-                    item.loading = false
-                }).catch(() => {
-                    item.loading = false
-                })
+            if (item && !item.audio && !item.loading && !item.promise) {
+                void ensureItemAudio(item, i, voice).catch(() => { })
             }
         }
     }
@@ -1136,21 +1229,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         // Pre-buffer upcoming batches
         preBufferAhead(queueIdx + 1, voice)
 
-        // Wait for this batch's audio if not ready yet
+        // Wait for this batch's audio if not ready yet (shares any in-flight fetch)
         if (!item.audio) {
             if (queueIdx === 0) setAudioLoading(true)
-            let text = ''
-            item.verseIndices.forEach((vIdx, j) => {
-                const part = buildVerseText(vIdx, queueIdx === 0 && j === 0)
-                text += (j > 0 ? ' ' : '') + part
-            })
             try {
-                item.loading = true
-                const { audio, blobUrl } = await fetchVerseAudio(text, voice)
-                if (mobileStoppedRef.current) { URL.revokeObjectURL(blobUrl); return }
-                item.audio = audio
-                item.blobUrl = blobUrl
-                item.loading = false
+                await ensureItemAudio(item, queueIdx, voice)
+                if (mobileStoppedRef.current) return
             } catch {
                 setIsPlaying(false)
                 setCurrentReadingVerse(null)
@@ -1165,6 +1249,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setAudioLoading(false)
 
         const audio = item.audio!
+        // Re-apply the current speed in case this batch was pre-buffered earlier at
+        // a different reading-speed setting.
+        audio.playbackRate = speechRateRef.current
         mobileAudioRef.current = audio
 
         // Animate verse highlights within a batch using estimated timing
@@ -1295,22 +1382,11 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setTtsProgress(verses.length > 0 ? verseIndex / verses.length : 0)
         clearAutoAdvance()
 
-        // Start pre-buffering the first 3 batches immediately
+        // Start pre-buffering the first few batches immediately (throttled + deduped)
         const voice = selectedCloudVoice
         const INITIAL_BUFFER = 3
         for (let i = 0; i < Math.min(INITIAL_BUFFER, queue.length); i++) {
-            const item = queue[i]
-            item.loading = true
-            let text = ''
-            item.verseIndices.forEach((vIdx, j) => {
-                const part = buildVerseText(vIdx, i === 0 && j === 0)
-                text += (j > 0 ? ' ' : '') + part
-            })
-            fetchVerseAudio(text, voice).then(({ audio, blobUrl }) => {
-                item.audio = audio
-                item.blobUrl = blobUrl
-                item.loading = false
-            }).catch(() => { item.loading = false })
+            void ensureItemAudio(queue[i], i, voice).catch(() => { })
         }
 
         // Start playing the first batch
@@ -1972,15 +2048,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     if (shouldUseCloudTTS) {
                                         setPreviewLoading(true)
                                         try {
-                                            const res = await fetch('/api/tts-elevenlabs', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ text: previewText, voice: selectedCloudVoice, speed: speechRate }),
-                                            })
+                                            const res = await throttledTtsFetch({ text: previewText, voice: selectedCloudVoice })
                                             if (!res.ok) throw new Error('Preview failed')
                                             const blob = await res.blob()
                                             const url = URL.createObjectURL(blob)
                                             const audio = new Audio(url)
+                                            audio.playbackRate = speechRate // eleven_v3 has no server-side speed
                                             audio.onended = () => URL.revokeObjectURL(url)
                                             audio.play()
                                         } catch {

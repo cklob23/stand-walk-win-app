@@ -27,12 +27,18 @@ export default async function BiblePage() {
         ? { leader_id: user.id }
         : { learner_id: user.id }
 
-    const { data: pairing } = await supabase
+    // A leader can have multiple active pairings (one per learner), so we can't use
+    // .single() here — it errors on multiple rows and would drop the pairingId
+    // entirely, hiding the "Send to Partner" actions. Take the first active pairing.
+    const { data: pairings } = await supabase
         .from('pairings')
         .select('id, current_week')
         .match(roleFilter)
         .eq('status', 'active')
-        .single()
+        .order('created_at', { ascending: true })
+        .limit(1)
+
+    const pairing = pairings?.[0] || null
 
     let weekScripture: string | null = null
     let weekNumber: number | null = null
