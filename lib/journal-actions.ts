@@ -950,7 +950,8 @@ export async function replyToSharedItem(
                 .from('prayer_journal')
                 .update({
                     partner_reply: replyText.trim(),
-                    partner_reply_by: user.id,
+                    // Column is `partner_reply_sender_id` (see scripts/add-shared-items-reply.sql)
+                    partner_reply_sender_id: user.id,
                     partner_reply_at: new Date().toISOString(),
                 })
                 .eq('id', entryId)
@@ -1014,7 +1015,7 @@ export async function replyToSharedItem(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Journal Attachments
-// ───────────────────────────────────���─────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface JournalAttachment {
     id: string

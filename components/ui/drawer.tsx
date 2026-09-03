@@ -6,9 +6,14 @@ import { Drawer as DrawerPrimitive } from 'vaul'
 import { cn } from '@/lib/utils'
 
 function Drawer({
+  repositionInputs = false,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) {
-  return <DrawerPrimitive.Root data-slot="drawer" {...props} />
+  // repositionInputs defaults to true in vaul, which shifts the fixed drawer
+  // when the iOS keyboard opens for a textarea/input. On iOS Safari this can
+  // push the whole drawer off-screen leaving only the dark overlay (blank
+  // screen when typing the optional meeting note). Disable it by default.
+  return <DrawerPrimitive.Root data-slot="drawer" repositionInputs={repositionInputs} {...props} />
 }
 
 function DrawerTrigger({

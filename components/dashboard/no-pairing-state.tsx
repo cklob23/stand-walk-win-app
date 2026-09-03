@@ -124,14 +124,16 @@ export function NoPairingState({
   const handleShareViaEmail = () => {
     if (!currentCode) return
     const subject = encodeURIComponent('Join me on Stand Walk Run')
+    const appUrl = 'https://standwalkrun.com'
     const body = encodeURIComponent(
       `I'd like to invite you to join me on a discipleship journey through Stand Walk Run!\n\n` +
       `Use this pairing code to connect with me:\n\n` +
       `${currentCode}\n\n` +
       `Here's how to get started:\n` +
-      `1. Go to the Stand Walk Run app and create an account\n` +
+      `1. Go to ${appUrl} and create an account\n` +
       `2. Select "Learner" as your role\n` +
       `3. Enter the pairing code above to connect with me\n\n` +
+      `Sign up here: ${appUrl}/auth/signup\n\n` +
       `Looking forward to walking this journey together!`
     )
     window.location.href = `mailto:?subject=${subject}&body=${body}`

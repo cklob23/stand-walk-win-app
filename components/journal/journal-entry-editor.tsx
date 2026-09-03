@@ -180,7 +180,10 @@ export function JournalEntryEditor({
                         onChange={(e) => setPrayerItems(e.target.value)}
                         placeholder={"1. \n2. \n3. "}
                         rows={4}
-                        className="resize-none"
+                        // The base Textarea auto-grows (field-sizing-content). Unbounded growth
+                        // with long entries forces a full-page reflow on every keystroke, which
+                        // freezes the page on iOS. Cap the height and scroll inside instead.
+                        className="resize-none max-h-48 overflow-y-auto"
                     />
                 </div>
 
@@ -193,7 +196,7 @@ export function JournalEntryEditor({
                         onChange={(e) => setGodSaying(e.target.value)}
                         placeholder="Write what you're learning today..."
                         rows={4}
-                        className="resize-none"
+                        className="resize-none max-h-72 overflow-y-auto"
                     />
                 </div>
 
