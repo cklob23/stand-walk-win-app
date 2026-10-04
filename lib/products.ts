@@ -30,8 +30,8 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
             'Can graduate to leader',
             'Additional journeys available',
         ],
-        stripeProductId: 'prod_U8s6m2r0hpAeoB',
-        stripePriceId: 'price_1TAaMrGWwU79IQt3bjBmsBo0',
+        stripeProductId: 'prod_VNfZSyp32WKHHE',
+        stripePriceId: 'price_1UMuEFA8qghGruPGp6dRrFUC',
     },
     {
         id: 'standard',
@@ -44,8 +44,8 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
             'Can graduate to leader',
             'Additional journeys available',
         ],
-        stripeProductId: 'prod_U8s6iEVk35cVzx',
-        stripePriceId: 'price_1TAaMrGWwU79IQt39yefN36Q',
+        stripeProductId: 'prod_VNfZM7sPVEcizM',
+        stripePriceId: 'price_1UMuEFA8qghGruPGEvOMH6SL',
     },
     {
         id: 'premium',
@@ -59,8 +59,8 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
             'Additional journeys available',
             'Priority support',
         ],
-        stripeProductId: 'prod_U8s6WPkqXRuO7v',
-        stripePriceId: 'price_1TAaMKGWwU79IQt3B6hAruAP',
+        stripeProductId: 'prod_VNfZ9MySHPP3Fu',
+        stripePriceId: 'price_1UMuEFA8qghGruPGLqoWNFE6',
     },
 ]
 

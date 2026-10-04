@@ -26,15 +26,9 @@ export async function startSubscriptionCheckout(params: CheckoutParams) {
         throw new Error(`Journey with id "${journeyId}" not found`)
     }
 
-    const headersList = await headers()
-    const origin = headersList.get('origin') || 'http://localhost:3000'
-
-    // Calculate total price
-    const tierTotal = tier.priceInCents * licenseCount
-    const journeyTotal = journey.priceInCents > 0 ? journey.priceInCents * licenseCount : 0
-
     const lineItems: Array<{
-        price_data: {
+        price?: string
+        price_data?: {
             currency: string
             product_data: { name: string; description: string }
             unit_amount: number
@@ -43,20 +37,12 @@ export async function startSubscriptionCheckout(params: CheckoutParams) {
         quantity: number
     }> = [
             {
-                price_data: {
-                    currency: 'usd',
-                    product_data: {
-                        name: `${tier.name} Plan`,
-                        description: `${tier.description} - ${licenseCount} license${licenseCount > 1 ? 's' : ''}`,
-                    },
-                    unit_amount: tier.priceInCents,
-                    recurring: { interval: 'month' },
-                },
+                price: tier.stripePriceId,
                 quantity: licenseCount,
             },
         ]
 
-    // Add journey if it has a cost
+    // Add journey if it has a cost. The free included journey is never sent to Stripe.
     if (journey.priceInCents > 0) {
         lineItems.push({
             price_data: {
@@ -117,9 +103,6 @@ export async function startCartCheckout(params: CartCheckoutParams) {
         throw new Error('Cart is empty')
     }
 
-    const headersList = await headers()
-    const origin = headersList.get('origin') || 'http://localhost:3000'
-
     // Build line items for each cart item
     // Group items by tier for subscription line items
     const tierCounts = new Map<string, { tier: typeof SUBSCRIPTION_TIERS[0], count: number, journeyIds: string[] }>()
@@ -139,9 +122,10 @@ export async function startCartCheckout(params: CartCheckoutParams) {
         }
     }
 
-    // Create line items for each tier
+    // Charge the stored live catalog prices. Free included journeys are never sent to Stripe.
     const lineItems: Array<{
-        price_data: {
+        price?: string
+        price_data?: {
             currency: string
             product_data: { name: string; description: string }
             unit_amount: number
@@ -152,15 +136,7 @@ export async function startCartCheckout(params: CartCheckoutParams) {
 
     tierCounts.forEach(({ tier, count }) => {
         lineItems.push({
-            price_data: {
-                currency: 'usd',
-                product_data: {
-                    name: `${tier.name} Plan`,
-                    description: `${tier.description} - ${count} license${count > 1 ? 's' : ''}`,
-                },
-                unit_amount: tier.priceInCents,
-                recurring: { interval: 'month' },
-            },
+            price: tier.stripePriceId,
             quantity: count,
         })
     })
