@@ -119,8 +119,8 @@ export function AdminSidebar({ isMasterAdmin }: AdminSidebarProps) {
                     <p className="text-xs font-medium text-muted-foreground mb-1">Need help?</p>
                     <p className="text-xs text-muted-foreground">
                         Contact support at{' '}
-                        <a href="mailto:standwalkwinapp@gmail.com" className="text-primary hover:underline">
-                            standwalkwinapp@gmail.com
+                        <a href="mailto:support@standwalkrun.com" className="text-primary hover:underline">
+                            support@standwalkrun.com
                         </a>
                     </p>
                 </div>

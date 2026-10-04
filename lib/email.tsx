@@ -23,7 +23,7 @@ interface SendEmailOptions {
 export async function sendEmail({ to, subject, html, from }: SendEmailOptions) {
   try {
     const info = await transporter.sendMail({
-      from: from || process.env.SMTP_FROM || 'Stand Walk Run <standwalkrunapp@gmail.com>',
+      from: from || process.env.SMTP_FROM || 'Stand Walk Run <support@standwalkrun.com>',
       to,
       subject,
       html,
@@ -78,7 +78,7 @@ export async function sendAccessCodesEmail(
     }
   }).join('')
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stand-walk-run.onrender.com'
+  const appUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://standwalkrun.com'
 
   // For summary, use passed values or extract from detailed codes
   const summaryTierName = tierName || (hasDetailedInfo
@@ -172,7 +172,7 @@ export async function sendJourneyPurchaseEmail(
     leadership: 'Leadership Development',
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stand-walk-run.onrender.com'
+  const appUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://standwalkrun.com'
 
   return sendEmail({
     to: email,
@@ -187,7 +187,7 @@ export async function sendJourneyPurchaseEmail(
         
         <p><a href="${appUrl}/dashboard" style="display: inline-block; background: #166534; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Go to Dashboard</a></p>
         
-        <p style="color: #666; font-size: 14px; margin-top: 30px;">If you have any questions, please contact our support team.</p>
+        <p style="color: #666; font-size: 14px; margin-top: 30px;">If you have any questions, please contact our support team at <a href="mailto:support@standwalkrun.com" className="text-primary hover:underline">support@standwalkrun.com</a>.</p>
       </div>
     `,
   })

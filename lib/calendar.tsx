@@ -62,7 +62,7 @@ function getAppUrl(): string {
     if (typeof window !== 'undefined') return window.location.origin
     const vercelUrl = process.env.NEXT_PUBLIC_VERCEL_URL
     if (vercelUrl) return `https://${vercelUrl}`
-    return 'https://stand-walk-run.onrender.com'
+    return 'https://standwalkrun.com'
 }
 
 function buildScheduleLink(): string {
