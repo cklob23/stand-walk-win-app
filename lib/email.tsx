@@ -155,7 +155,7 @@ export async function sendAccessCodesEmail(
           </div>
         ` : ''}
         
-        <p style="color: #666; font-size: 14px;">If you have any questions, please contact our support team.</p>
+        <p style="color: #666; font-size: 14px; margin-top: 30px;">If you have any questions, please contact our support team at <a href="mailto:support@standwalkrun.com" className="text-primary hover:underline">support@standwalkrun.com</a>.</p>
       </div>
     `,
   })
