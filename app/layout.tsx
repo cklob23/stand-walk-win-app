@@ -1,7 +1,6 @@
 import React from "react"
 import type { Metadata, Viewport } from 'next'
 import { Inter, Merriweather } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/sonner'
 import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
@@ -25,7 +24,7 @@ export const metadata: Metadata = {
   generator: 'Developed by Caleb Klobe',
   // Prevent Safari Reader View from activating on content-heavy pages
   other: {
-    'apple-mobile-web-app-capable': 'yes',
+    'mobile-web-app-capable': 'yes',
   },
   icons: {
     icon: [
@@ -63,7 +62,6 @@ export default function RootLayout({
           {children}
           <Toaster closeButton duration={8000} />
         </ThemeProvider>
-        <Analytics />
       </body>
     </html>
   )

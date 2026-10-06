@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState, useTransition, useRef } from 'react'
+import { useState, useTransition, useRef, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { resetPassword, verifyPasswordResetOtp, resendPasswordResetOtp, updatePassword } from '@/lib/auth-actions'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,8 @@ export default function ForgotPasswordPage() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   // OTP state
@@ -29,7 +31,20 @@ export default function ForgotPasswordPage() {
   const [showPassword, setShowPassword] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  function handleSubmit(formData: FormData) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    const email = String(formData.get('email') ?? '').trim()
+
+    if (!email) {
+      setEmailError('Email is required')
+      setError(null)
+      setSuccess(null)
+      return
+    }
+
+    formData.set('email', email)
+    setEmailError(null)
     setError(null)
     setSuccess(null)
     startTransition(async () => {
@@ -37,7 +52,7 @@ export default function ForgotPasswordPage() {
       if (result?.error) {
         setError(result.error)
       } else if (result?.success) {
-        setPendingEmail(result.email || formData.get('email') as string)
+        setPendingEmail(result.email || email)
         setStep('otp')
         setSuccess(result.message || 'Check your email for the code.')
       }
@@ -114,7 +129,18 @@ export default function ForgotPasswordPage() {
     }
   }
 
-  const handleUpdatePassword = async (formData: FormData) => {
+  const handleUpdatePassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    const password = String(formData.get('password') ?? '')
+
+    if (!password) {
+      setPasswordError('Password is required')
+      setError(null)
+      return
+    }
+
+    setPasswordError(null)
     setIsUpdating(true)
     setError(null)
 
@@ -148,7 +174,7 @@ export default function ForgotPasswordPage() {
           <CardContent className="pt-6">
             {/* Step 1: Email Input */}
             {step === 'email' && (
-              <form action={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} noValidate className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <Input
@@ -159,7 +185,17 @@ export default function ForgotPasswordPage() {
                     required
                     autoComplete="email"
                     className="h-11"
+                    aria-invalid={!!emailError}
+                    aria-describedby={emailError ? 'email-error' : undefined}
+                    onChange={() => {
+                      if (emailError) setEmailError(null)
+                    }}
                   />
+                  {emailError && (
+                    <p id="email-error" role="alert" className="text-sm text-destructive">
+                      {emailError}
+                    </p>
+                  )}
                 </div>
 
                 {error && (
@@ -266,7 +302,7 @@ export default function ForgotPasswordPage() {
 
             {/* Step 3: New Password */}
             {step === 'newPassword' && (
-              <form action={handleUpdatePassword} className="space-y-4">
+              <form onSubmit={handleUpdatePassword} noValidate className="space-y-4">
                 <div className="text-center mb-4">
                   <div className="flex justify-center mb-3">
                     <div className="rounded-full bg-primary/10 p-3">
@@ -287,6 +323,11 @@ export default function ForgotPasswordPage() {
                       minLength={6}
                       autoComplete="new-password"
                       className="h-11 pr-10"
+                      aria-invalid={!!passwordError}
+                      aria-describedby={passwordError ? 'password-error' : undefined}
+                      onChange={() => {
+                        if (passwordError) setPasswordError(null)
+                      }}
                     />
                     <Button
                       type="button"
@@ -302,9 +343,15 @@ export default function ForgotPasswordPage() {
                       )}
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Must be at least 6 characters
-                  </p>
+                  {passwordError ? (
+                    <p id="password-error" role="alert" className="text-sm text-destructive">
+                      {passwordError}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Must be at least 6 characters
+                    </p>
+                  )}
                 </div>
 
                 {error && (

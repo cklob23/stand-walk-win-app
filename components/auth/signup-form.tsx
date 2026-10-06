@@ -337,6 +337,7 @@ export function SignupForm({ isOrgAdmin = false }: SignupFormProps) {
             <div className="flex rounded-lg bg-muted p-1">
               <button
                 type="button"
+                aria-pressed={codeType === 'access'}
                 onClick={() => {
                   setCodeType('access')
                   setError(null)
@@ -352,6 +353,7 @@ export function SignupForm({ isOrgAdmin = false }: SignupFormProps) {
               </button>
               <button
                 type="button"
+                aria-pressed={codeType === 'pairing'}
                 onClick={() => {
                   setCodeType('pairing')
                   setError(null)

@@ -260,6 +260,7 @@ export function PricingContent({ userData }: PricingContentProps) {
                                                                 size="icon"
                                                                 className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
                                                                 onClick={() => removeFromCart(item.id)}
+                                                                aria-label={`Remove ${item.tierName} license from cart`}
                                                             >
                                                                 <Trash2 className="h-4 w-4" />
                                                             </Button>
@@ -288,6 +289,7 @@ export function PricingContent({ userData }: PricingContentProps) {
                                                                 size="icon"
                                                                 className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
                                                                 onClick={() => removeJourneyFromCart(item.id)}
+                                                                aria-label={`Remove ${item.journeyName} from cart`}
                                                             >
                                                                 <Trash2 className="h-4 w-4" />
                                                             </Button>
@@ -639,6 +641,7 @@ function PlanSelection({
                                                     className="h-10 w-10"
                                                     onClick={() => setQuantityToAdd(Math.max(1, quantityToAdd - 1))}
                                                     disabled={quantityToAdd <= 1}
+                                                    aria-label="Decrease number of licenses"
                                                 >
                                                     <Minus className="h-4 w-4" />
                                                 </Button>
@@ -648,6 +651,7 @@ function PlanSelection({
                                                     size="icon"
                                                     className="h-10 w-10"
                                                     onClick={() => setQuantityToAdd(quantityToAdd + 1)}
+                                                    aria-label="Increase number of licenses"
                                                 >
                                                     <Plus className="h-4 w-4" />
                                                 </Button>
@@ -697,6 +701,7 @@ function PlanSelection({
                                                     setSelectedTierForAdd(null)
                                                     setQuantityToAdd(1)
                                                 }}
+                                                aria-label="Cancel adding licenses"
                                             >
                                                 <X className="h-4 w-4" />
                                             </Button>
@@ -781,6 +786,7 @@ function JourneyPurchase({
                                                             const item = journeyCart.find(i => i.journeyId === journey.id)
                                                             if (item) removeJourneyFromCart(item.id)
                                                         }}
+                                                        aria-label={`Decrease ${journey.name} quantity`}
                                                     >
                                                         <Minus className="h-4 w-4" />
                                                     </Button>
@@ -790,6 +796,7 @@ function JourneyPurchase({
                                                     size="icon"
                                                     className="h-8 w-8"
                                                     onClick={() => addJourneyToCart(journey.id)}
+                                                    aria-label={`Increase ${journey.name} quantity`}
                                                 >
                                                     <Plus className="h-4 w-4" />
                                                 </Button>
