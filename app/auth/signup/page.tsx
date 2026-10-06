@@ -3,6 +3,11 @@ import Link from 'next/link'
 import { AppLogoStatic } from '@/components/app-logo'
 import { Info } from 'lucide-react'
 
+export const metadata = {
+  title: 'Sign up | Stand Walk Run',
+  description: 'Create an account to start your discipleship path',
+}
+
 interface SignupPageProps {
   searchParams: Promise<{ org_admin?: string }>
 }

@@ -2,6 +2,11 @@ import { LoginForm } from '@/components/auth/login-form'
 import Link from 'next/link'
 import { AppLogoStatic } from '@/components/app-logo'
 
+export const metadata = {
+  title: 'Sign in | Stand Walk Run',
+  description: 'Sign in to continue your discipleship journey',
+}
+
 export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-8">
