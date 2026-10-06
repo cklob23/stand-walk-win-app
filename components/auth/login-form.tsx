@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, type FormEvent } from 'react'
 import { signIn } from '@/lib/auth-actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,11 +11,28 @@ import Link from 'next/link'
 
 export function LoginForm() {
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
   const [isPending, startTransition] = useTransition()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false) // Declare isLoading variable
 
-  function handleSubmit(formData: FormData) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    const email = String(formData.get('email') ?? '').trim()
+    const password = String(formData.get('password') ?? '')
+
+    const nextFieldErrors: { email?: string; password?: string } = {}
+    if (!email) nextFieldErrors.email = 'Email is required'
+    if (!password) nextFieldErrors.password = 'Password is required'
+
+    setFieldErrors(nextFieldErrors)
+    if (nextFieldErrors.email || nextFieldErrors.password) {
+      setError(null)
+      return
+    }
+
+    formData.set('email', email)
     setError(null)
     setIsLoading(true) // Set isLoading to true before starting the transition
     startTransition(async () => {
@@ -30,7 +47,7 @@ export function LoginForm() {
   return (
     <Card className="border-border/50 shadow-sm">
       <CardContent className="pt-6">
-        <form action={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -41,7 +58,17 @@ export function LoginForm() {
               required
               autoComplete="email"
               className="h-11"
+              aria-invalid={!!fieldErrors.email}
+              aria-describedby={fieldErrors.email ? 'email-error' : undefined}
+              onChange={() => {
+                if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }))
+              }}
             />
+            {fieldErrors.email && (
+              <p id="email-error" role="alert" className="text-sm text-destructive">
+                {fieldErrors.email}
+              </p>
+            )}
           </div>
           
           <div className="space-y-2">
@@ -63,6 +90,11 @@ export function LoginForm() {
                 required
                 autoComplete="current-password"
                 className="h-11 pr-10"
+                aria-invalid={!!fieldErrors.password}
+                aria-describedby={fieldErrors.password ? 'password-error' : undefined}
+                onChange={() => {
+                  if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: undefined }))
+                }}
               />
               <Button
                 type="button"
@@ -81,6 +113,11 @@ export function LoginForm() {
                 </span>
               </Button>
             </div>
+            {fieldErrors.password && (
+              <p id="password-error" role="alert" className="text-sm text-destructive">
+                {fieldErrors.password}
+              </p>
+            )}
           </div>
 
           {error && (
