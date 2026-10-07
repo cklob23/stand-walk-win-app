@@ -167,7 +167,7 @@ export default async function AdminDashboardPage() {
                             <Button asChild className="w-full justify-start" variant="outline">
                                 <Link href="/admin/dashboard/organizations">
                                     <Building2 className="mr-2 h-4 w-4" />
-                                    Manage Organizations
+                                    Create and Manage Organizations
                                 </Link>
                             </Button>
                             <Button asChild className="w-full justify-start" variant="outline">
