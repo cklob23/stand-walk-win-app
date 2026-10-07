@@ -12,9 +12,12 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table'
-import { Building2, Users, Ticket, CreditCard, Mail, Calendar, ArrowLeft, ExternalLink, Trash2 } from 'lucide-react'
+import { Building2, Users, Ticket, CreditCard, Mail, ArrowLeft, Trash2 } from 'lucide-react'
 import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
+import { EditOrganizationDialog } from '@/components/admin/edit-organization-dialog'
+import { DeleteOrganizationButton } from '@/components/admin/delete-organization-button'
+import { getOrgFormOptions } from '@/app/actions/admin-org-actions'
 
 // Display name mapping for admin roles
 const ADMIN_ROLE_DISPLAY: Record<string, string> = {
@@ -145,13 +148,17 @@ export default async function ManageOrganizationPage({
         redirect('/admin/dashboard')
     }
 
-    const data = await getOrganizationDetails(id)
+    const [data, formOptionsResult] = await Promise.all([
+        getOrganizationDetails(id),
+        getOrgFormOptions(),
+    ])
 
     if (!data) {
         notFound()
     }
 
     const { org, subscriptions, members, accessCodes, owner } = data
+    const formOptions = formOptionsResult.options || { tiers: [] }
 
     // Calculate totals from all subscriptions
     const totalLicenses = subscriptions.reduce((sum, sub) => sum + (sub.license_count || 0), 0)
@@ -211,9 +218,31 @@ export default async function ManageOrganizationPage({
                     <h1 className="text-2xl font-bold">{org.name}</h1>
                     <p className="text-muted-foreground">Organization ID: {org.slug || org.id}</p>
                 </div>
-                <Badge variant={org.is_active ? 'default' : 'secondary'} className="text-base px-3 py-1">
-                    {org.is_active ? 'Active' : 'Inactive'}
-                </Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={org.is_active ? 'default' : 'secondary'} className="text-base px-3 py-1">
+                        {org.is_active ? 'Active' : 'Inactive'}
+                    </Badge>
+                    <EditOrganizationDialog
+                        organization={{
+                            id: org.id,
+                            name: org.name,
+                            admin_email: org.admin_email,
+                            description: org.description,
+                            max_users: org.max_users,
+                            subscription_tier_id: org.subscription_tier_id,
+                            is_active: org.is_active,
+                        }}
+                        options={formOptions}
+                        triggerLabel="Edit"
+                    />
+                    <DeleteOrganizationButton
+                        organizationId={org.id}
+                        organizationName={org.name}
+                        assignedUserCount={members.length}
+                        claimedCodeCount={usedCodes}
+                        triggerLabel="Delete"
+                    />
+                </div>
             </div>
 
             {/* Stats */}
@@ -306,6 +335,16 @@ export default async function ManageOrganizationPage({
                             <span className="text-muted-foreground">Admin Email</span>
                             <span className="text-sm">{org.admin_email || 'Not set'}</span>
                         </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Max Members</span>
+                            <span className="text-sm">{org.max_users || 'Unlimited'}</span>
+                        </div>
+                        {org.description && (
+                            <div className="flex items-start justify-between gap-4">
+                                <span className="text-muted-foreground">Description</span>
+                                <span className="text-sm text-right">{org.description}</span>
+                            </div>
+                        )}
                         <div className="flex items-center justify-between">
                             <span className="text-muted-foreground">Created</span>
                             <span className="text-sm">{new Date(org.created_at).toLocaleDateString()}</span>

@@ -12,6 +12,7 @@ export interface Organization {
   subscription_tier?: SubscriptionTier
   is_active: boolean
   owner_id: string | null
+  admin_email?: string | null
   created_at: string
   updated_at: string
 }

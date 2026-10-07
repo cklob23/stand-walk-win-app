@@ -12,8 +12,12 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table'
-import { Building2, Users, Ticket, CreditCard } from 'lucide-react'
+import { Building2, Users } from 'lucide-react'
 import Link from 'next/link'
+import { CreateOrganizationDialog } from '@/components/admin/create-organization-dialog'
+import { EditOrganizationDialog } from '@/components/admin/edit-organization-dialog'
+import { DeleteOrganizationButton } from '@/components/admin/delete-organization-button'
+import { getOrgFormOptions } from '@/app/actions/admin-org-actions'
 
 async function getAllOrganizations() {
     const supabase = createAdminClient()
@@ -63,6 +67,11 @@ async function getAllOrganizations() {
                 learnerCount = pureLearnersOnly.length
             }
 
+            const { count: assignedUserCount } = await supabase
+                .from('profiles')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', org.id)
+
             // Actual members = 1 org admin + leaders using codes + their learners (who aren't also leaders)
             const actualMembers = 1 + usedCodes + learnerCount
 
@@ -108,6 +117,7 @@ async function getAllOrganizations() {
             return {
                 ...org,
                 member_count: actualMembers,
+                assigned_user_count: assignedUserCount || 0,
                 max_possible_members: maxPossibleMembers,
                 available_codes: availableCodes,
                 used_codes: usedCodes,
@@ -130,7 +140,11 @@ export default async function MasterOrganizationsPage() {
         redirect('/admin/dashboard')
     }
 
-    const organizations = await getAllOrganizations()
+    const [organizations, formOptionsResult] = await Promise.all([
+        getAllOrganizations(),
+        getOrgFormOptions(),
+    ])
+    const formOptions = formOptionsResult.options || { tiers: [] }
 
     const totalOrgs = organizations.length
     const activeOrgs = organizations.filter(o => o.is_active).length
@@ -138,9 +152,12 @@ export default async function MasterOrganizationsPage() {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-bold">Organizations</h1>
-                <p className="text-muted-foreground">Manage all organizations in the system</p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold">Organizations</h1>
+                    <p className="text-muted-foreground">Create, update, and remove organizations across the platform</p>
+                </div>
+                <CreateOrganizationDialog options={formOptions} />
             </div>
 
             {/* Stats */}
@@ -190,7 +207,7 @@ export default async function MasterOrganizationsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>All Organizations</CardTitle>
-                    <CardDescription>View and manage organization accounts</CardDescription>
+                    <CardDescription>Create, update, and delete organization accounts</CardDescription>
                 </CardHeader>
                 <CardContent className="px-0 sm:px-6">
                     <div className="overflow-x-auto">
@@ -257,11 +274,31 @@ export default async function MasterOrganizationsPage() {
                                             {new Date(org.created_at).toLocaleDateString()}
                                         </TableCell>
                                         <TableCell>
-                                            <Button variant="outline" size="sm" asChild>
-                                                <Link href={`/admin/dashboard/organizations/${org.id}`}>
-                                                    Manage
-                                                </Link>
-                                            </Button>
+                                            <div className="flex items-center">
+                                                <EditOrganizationDialog
+                                                    organization={{
+                                                        id: org.id,
+                                                        name: org.name,
+                                                        admin_email: org.admin_email,
+                                                        description: org.description,
+                                                        max_users: org.max_users,
+                                                        subscription_tier_id: org.subscription_tier_id,
+                                                        is_active: org.is_active,
+                                                    }}
+                                                    options={formOptions}
+                                                />
+                                                <DeleteOrganizationButton
+                                                    organizationId={org.id}
+                                                    organizationName={org.name}
+                                                    assignedUserCount={org.assigned_user_count}
+                                                    claimedCodeCount={org.used_codes}
+                                                />
+                                                <Button variant="outline" size="sm" asChild>
+                                                    <Link href={`/admin/dashboard/organizations/${org.id}`}>
+                                                        Manage
+                                                    </Link>
+                                                </Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}
