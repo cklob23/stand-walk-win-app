@@ -347,6 +347,12 @@ export async function getAdminUser() {
     }
 }
 
+export type AdminUserSession = Awaited<ReturnType<typeof getAdminUser>>
+
+export async function hasAdminPortalAccess(adminData: AdminUserSession): Promise<boolean> {
+    return Boolean(adminData && (adminData.isMasterAdmin || adminData.organization))
+}
+
 // Admin sign out
 export async function adminSignOut() {
     const supabase = await createClient()

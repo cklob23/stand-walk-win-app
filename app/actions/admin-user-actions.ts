@@ -1,8 +1,419 @@
 'use server'
 
-import { createAdminClient, createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { getAdminUser } from '@/lib/admin-auth-actions'
+import { generateUniqueAccessCode } from '@/lib/access-codes'
+import { sendLeaderInviteEmail, type AccessCodeWithPlan } from '@/lib/email'
 import { revalidatePath } from 'next/cache'
+import { randomBytes } from 'crypto'
+
+export type UserFormOptions = {
+    organizations: { id: string; name: string }[]
+    tiers: { id: string; name: string; display_name: string }[]
+    journeys: { id: string; name: string }[]
+}
+
+export type CreateLeaderInput = {
+    fullName: string
+    email: string
+    organizationId?: string | null
+    tierId: string
+    journeyId: string
+    licenseCount?: number
+}
+
+export type UpdateUserInput = {
+    userId: string
+    fullName: string
+    email: string
+    role: 'leader' | 'learner' | null
+    adminRole: 'master_admin' | 'org_admin' | null
+    organizationId?: string | null
+    subscriptionTierId?: string | null
+}
+
+async function requireMasterAdmin() {
+    const adminData = await getAdminUser()
+    if (!adminData?.isMasterAdmin) {
+        return { error: 'Unauthorized - Master admin access required' as const, adminData: null }
+    }
+    return { error: null, adminData }
+}
+
+export async function getUserFormOptions(): Promise<{
+    success?: boolean
+    options?: UserFormOptions
+    error?: string
+}> {
+    const { error } = await requireMasterAdmin()
+    if (error) return { error }
+
+    const supabase = createAdminClient()
+
+    const [{ data: organizations }, { data: tiers }, { data: journeys }] = await Promise.all([
+        supabase.from('organizations').select('id, name').order('name', { ascending: true }),
+        supabase
+            .from('subscription_tiers')
+            .select('id, name, display_name')
+            .eq('is_active', true)
+            .order('sort_order', { ascending: true }),
+        supabase
+            .from('journeys')
+            .select('id, name')
+            .order('name', { ascending: true }),
+    ])
+
+    return {
+        success: true,
+        options: {
+            organizations: organizations || [],
+            tiers: tiers || [],
+            journeys: journeys || [],
+        },
+    }
+}
+
+async function waitForProfile(supabase: ReturnType<typeof createAdminClient>, userId: string) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', userId)
+            .maybeSingle()
+
+        if (data && !error) return true
+        await new Promise(resolve => setTimeout(resolve, 400))
+    }
+    return false
+}
+
+export async function createLeaderAccount(input: CreateLeaderInput) {
+    const { error: authError, adminData } = await requireMasterAdmin()
+    if (authError || !adminData) return { error: authError || 'Unauthorized' }
+
+    const fullName = input.fullName.trim()
+    const email = input.email.trim().toLowerCase()
+    const organizationId = input.organizationId || null
+    const licenseCount = Math.min(Math.max(input.licenseCount || 1, 1), 10)
+
+    if (!fullName || !email) {
+        return { error: 'Name and email are required' }
+    }
+    if (!input.tierId || !input.journeyId) {
+        return { error: 'Plan and journey are required' }
+    }
+
+    const supabase = createAdminClient()
+
+    const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .ilike('email', email)
+        .maybeSingle()
+
+    if (existingProfile) {
+        return { error: 'A user with this email already exists' }
+    }
+
+    const { data: tier } = await supabase
+        .from('subscription_tiers')
+        .select('id, name, display_name')
+        .eq('id', input.tierId)
+        .single()
+
+    const { data: journey } = await supabase
+        .from('journeys')
+        .select('id, name')
+        .eq('id', input.journeyId)
+        .single()
+
+    if (!tier || !journey) {
+        return { error: 'Selected plan or journey was not found' }
+    }
+
+    let orgName: string | null = null
+    if (organizationId) {
+        const { data: org } = await supabase
+            .from('organizations')
+            .select('id, name')
+            .eq('id', organizationId)
+            .single()
+        if (!org) {
+            return { error: 'Selected organization was not found' }
+        }
+        orgName = org.name
+    }
+
+    const { data: authData, error: createError } = await supabase.auth.admin.createUser({
+        email,
+        password: randomBytes(24).toString('base64url'),
+        email_confirm: true,
+        user_metadata: { full_name: fullName },
+    })
+
+    if (createError || !authData.user) {
+        if (createError?.message?.toLowerCase().includes('already')) {
+            return { error: 'A user with this email already exists' }
+        }
+        return { error: createError?.message || 'Failed to create leader account' }
+    }
+
+    const userId = authData.user.id
+    await waitForProfile(supabase, userId)
+
+    const profileUpdate: Record<string, unknown> = {
+        full_name: fullName,
+        email,
+        role: 'leader',
+        can_be_leader: true,
+        subscription_tier_id: input.tierId,
+        organization_id: organizationId,
+        updated_at: new Date().toISOString(),
+    }
+
+    const { error: profileError } = await supabase
+        .from('profiles')
+        .update(profileUpdate)
+        .eq('id', userId)
+
+    if (profileError) {
+        console.error('Error updating new leader profile:', profileError)
+        return { error: `Account was created but profile could not be updated: ${profileError.message}` }
+    }
+
+    if (organizationId) {
+        await supabase
+            .from('organization_members')
+            .upsert({
+                organization_id: organizationId,
+                user_id: userId,
+                role: 'member',
+                added_by: adminData.user.id,
+            }, { onConflict: 'organization_id,user_id' })
+    }
+
+    const { error: journeyError } = await supabase
+        .from('user_journeys')
+        .upsert({
+            user_id: userId,
+            journey_id: input.journeyId,
+            status: 'active',
+        }, { onConflict: 'user_id,journey_id' })
+    if (journeyError) {
+        console.error('Error assigning journey to new leader:', journeyError)
+    }
+
+    const { data: existingPurchase } = await supabase
+        .from('user_journey_purchases')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('journey_id', input.journeyId)
+        .maybeSingle()
+
+    if (!existingPurchase) {
+        await supabase
+            .from('user_journey_purchases')
+            .insert({
+                user_id: userId,
+                journey_id: input.journeyId,
+                granted_by: adminData.user.id,
+                notes: 'Granted by master admin when creating leader',
+            })
+    }
+
+    const createdCodes: AccessCodeWithPlan[] = []
+    let firstCodeId: string | null = null
+
+    for (let i = 0; i < licenseCount; i++) {
+        const code = await generateUniqueAccessCode(supabase)
+        if (!code) {
+            console.error('Failed to generate unique access code')
+            continue
+        }
+
+        const isFirst = i === 0
+        const { data: inserted, error: codeError } = await supabase
+            .from('access_codes')
+            .insert({
+                code,
+                organization_id: organizationId,
+                tier_id: input.tierId,
+                journey_id: input.journeyId,
+                status: isFirst ? 'claimed' : 'available',
+                claimed_by: isFirst ? userId : null,
+                claimed_at: isFirst ? new Date().toISOString() : null,
+            })
+            .select('id, code')
+            .single()
+
+        if (codeError || !inserted) {
+            console.error('Error creating access code:', codeError)
+            continue
+        }
+
+        if (isFirst) {
+            firstCodeId = inserted.id
+        }
+
+        createdCodes.push({
+            code: inserted.code,
+            tierName: tier.display_name || tier.name,
+            journeyName: journey.name,
+        })
+    }
+
+    if (createdCodes.length === 0) {
+        return { error: 'Leader was created but access codes could not be generated' }
+    }
+
+    if (firstCodeId) {
+        await supabase
+            .from('profiles')
+            .update({ access_code_id: firstCodeId })
+            .eq('id', userId)
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://standwalkrun.com'
+    let setupUrl: string | null = null
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+        type: 'recovery',
+        email,
+        options: {
+            redirectTo: `${appUrl}/auth/callback?next=/auth/reset-password`,
+        },
+    })
+
+    if (linkError) {
+        console.error('Error generating password setup link:', linkError)
+    } else {
+        setupUrl = linkData?.properties?.action_link || null
+    }
+
+    const emailResult = await sendLeaderInviteEmail({
+        email,
+        fullName,
+        codes: createdCodes,
+        setupUrl,
+        orgName,
+    })
+
+    revalidatePath('/admin/dashboard/users')
+
+    if (!emailResult.success) {
+        return {
+            success: true,
+            warning: 'Leader was created, but the invite email could not be sent. You can share the access codes manually.',
+            codes: createdCodes.map(code => code.code),
+        }
+    }
+
+    return {
+        success: true,
+        codes: createdCodes.map(code => code.code),
+    }
+}
+
+export async function updateUserRecord(input: UpdateUserInput) {
+    const { error: authError, adminData } = await requireMasterAdmin()
+    if (authError || !adminData) return { error: authError || 'Unauthorized' }
+
+    const fullName = input.fullName.trim()
+    const email = input.email.trim().toLowerCase()
+
+    if (!input.userId) {
+        return { error: 'User is required' }
+    }
+    if (!fullName || !email) {
+        return { error: 'Name and email are required' }
+    }
+    if (input.adminRole === 'org_admin' && !input.organizationId) {
+        return { error: 'Organization is required for an org admin' }
+    }
+    if (adminData.user.id === input.userId && input.adminRole !== 'master_admin') {
+        return { error: 'You cannot remove your own master admin role' }
+    }
+
+    const supabase = createAdminClient()
+
+    const { data: currentProfile, error: currentError } = await supabase
+        .from('profiles')
+        .select('id, email, organization_id, admin_role')
+        .eq('id', input.userId)
+        .single()
+
+    if (currentError || !currentProfile) {
+        return { error: 'User not found' }
+    }
+
+    if (email !== (currentProfile.email || '').toLowerCase()) {
+        const { data: emailOwner } = await supabase
+            .from('profiles')
+            .select('id')
+            .ilike('email', email)
+            .neq('id', input.userId)
+            .maybeSingle()
+
+        if (emailOwner) {
+            return { error: 'Another user already has this email' }
+        }
+
+        const { error: authUpdateError } = await supabase.auth.admin.updateUserById(input.userId, {
+            email,
+            user_metadata: { full_name: fullName },
+        })
+        if (authUpdateError) {
+            return { error: `Failed to update login email: ${authUpdateError.message}` }
+        }
+    } else {
+        await supabase.auth.admin.updateUserById(input.userId, {
+            user_metadata: { full_name: fullName },
+        })
+    }
+
+    const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+            full_name: fullName,
+            email,
+            role: input.role,
+            admin_role: input.adminRole,
+            is_admin: input.adminRole !== null,
+            organization_id: input.organizationId || null,
+            subscription_tier_id: input.subscriptionTierId || null,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', input.userId)
+
+    if (profileError) {
+        console.error('Error updating user profile:', profileError)
+        return { error: `Failed to update user: ${profileError.message}` }
+    }
+
+    const previousOrgId = currentProfile.organization_id || null
+    const nextOrgId = input.organizationId || null
+
+    if (previousOrgId && previousOrgId !== nextOrgId) {
+        await supabase
+            .from('organization_members')
+            .delete()
+            .eq('organization_id', previousOrgId)
+            .eq('user_id', input.userId)
+    }
+
+    if (nextOrgId && nextOrgId !== previousOrgId) {
+        await supabase
+            .from('organization_members')
+            .upsert({
+                organization_id: nextOrgId,
+                user_id: input.userId,
+                role: input.adminRole === 'org_admin' ? 'admin' : 'member',
+                added_by: adminData.user.id,
+            }, { onConflict: 'organization_id,user_id' })
+    }
+
+    revalidatePath('/admin/dashboard/users')
+    return { success: true }
+}
 
 export async function deleteUserAndAssociations(userId: string) {
     // Verify master admin access

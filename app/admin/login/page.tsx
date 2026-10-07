@@ -1,3 +1,5 @@
+import { redirect } from 'next/navigation'
+import { getAdminUser, hasAdminPortalAccess } from '@/lib/admin-auth-actions'
 import { AdminLoginForm } from '@/components/admin/admin-login-form'
 import Link from 'next/link'
 import { AppLogoStatic } from '@/components/app-logo'
@@ -8,7 +10,12 @@ export const metadata = {
     description: 'Login to your organization admin dashboard',
 }
 
-export default function AdminLoginPage() {
+export default async function AdminLoginPage() {
+    const adminData = await getAdminUser()
+    if (await hasAdminPortalAccess(adminData)) {
+        redirect('/admin/dashboard')
+    }
+
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-background to-muted/30 px-4 py-8">
             <div className="w-full max-w-md space-y-6 sm:space-y-8">
