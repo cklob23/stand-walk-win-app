@@ -12,7 +12,7 @@ export const metadata = {
 
 export default async function AdminLoginPage() {
     const adminData = await getAdminUser()
-    if (hasAdminPortalAccess(adminData)) {
+    if (await hasAdminPortalAccess(adminData)) {
         redirect('/admin/dashboard')
     }
 

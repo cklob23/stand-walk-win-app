@@ -349,7 +349,7 @@ export async function getAdminUser() {
 
 export type AdminUserSession = Awaited<ReturnType<typeof getAdminUser>>
 
-export function hasAdminPortalAccess(adminData: AdminUserSession): boolean {
+export async function hasAdminPortalAccess(adminData: AdminUserSession): Promise<boolean> {
     return Boolean(adminData && (adminData.isMasterAdmin || adminData.organization))
 }
 
