@@ -161,6 +161,79 @@ export async function sendAccessCodesEmail(
   })
 }
 
+// Invite a newly created leader with their assigned access code(s)
+export async function sendLeaderInviteEmail({
+  email,
+  fullName,
+  codes,
+  setupUrl,
+  orgName,
+}: {
+  email: string
+  fullName: string
+  codes: AccessCodeWithPlan[]
+  setupUrl?: string | null
+  orgName?: string | null
+}) {
+  const appUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://standwalkrun.com'
+  const greetingName = fullName.trim() || 'there'
+  const codesList = codes.map((codeData, i) => `
+        <div style="background: #f5f5f5; padding: 12px; margin: 8px 0; border-radius: 8px;">
+          <div style="font-family: monospace; font-size: 18px; text-align: center; margin-bottom: 8px;">
+            ${codes.length > 1 ? `Code ${i + 1}: ` : ''}${codeData.code}
+          </div>
+          <div style="font-size: 13px; text-align: center; color: #666;">
+            <span style="background: #166534; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${codeData.tierName}</span>
+            <span style="margin-left: 8px;">${codeData.journeyName}</span>
+          </div>
+        </div>
+      `).join('')
+
+  const setupSection = setupUrl
+    ? `
+          <p>Set your password to finish activating your Leader account:</p>
+          <p><a href="${setupUrl}" style="display: inline-block; background: #0f6353; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 500;">Set your password</a></p>
+          <p style="font-size: 14px; color: #666;">This link expires, so use it soon. If it has expired, go to <a href="${appUrl}/auth/forgot-password">Forgot password</a> and enter this email (${email}).</p>
+        `
+    : `
+          <p>To finish activating your Leader account:</p>
+          <ol>
+            <li>Go to <a href="${appUrl}/auth/forgot-password">Forgot password</a></li>
+            <li>Enter this email (${email}) to set your password</li>
+            <li>Sign in at <a href="${appUrl}/auth/login">User login</a></li>
+          </ol>
+        `
+
+  return sendEmail({
+    to: email,
+    subject: 'You have been added as a Leader - Stand Walk Run',
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #0f6353;">Welcome to Stand Walk Run</h1>
+
+        <p>Hi ${greetingName},</p>
+        <p>A master admin created a Leader account for you. Your assigned access ${codes.length === 1 ? 'code is' : 'codes are'} below, based on the plan and journey chosen for you.</p>
+
+        ${codesList}
+
+        ${orgName ? `
+        <div style="background: #f0fdf4; padding: 16px; border-radius: 8px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Organization:</strong> ${orgName}</p>
+        </div>
+        ` : ''}
+
+        ${setupSection}
+
+        <p>Your first access code is already applied to your account. ${codes.length > 1
+          ? 'Share any extra codes with other leaders so they can sign up at <a href="' + appUrl + '/auth/signup">Sign up</a>.'
+          : 'You can sign in and start inviting learners from your dashboard.'}</p>
+
+        <p style="color: #666; font-size: 14px; margin-top: 30px;">If you have any questions, please contact our support team at <a href="mailto:support@standwalkrun.com">support@standwalkrun.com</a>.</p>
+      </div>
+    `,
+  })
+}
+
 // Send journey purchase confirmation email
 export async function sendJourneyPurchaseEmail(
   email: string,

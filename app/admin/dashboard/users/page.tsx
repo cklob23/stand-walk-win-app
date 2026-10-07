@@ -14,6 +14,9 @@ import {
 } from '@/components/ui/table'
 import { Users, Crown, GraduationCap, Shield, Building2 } from 'lucide-react'
 import { DeleteUserButton } from '@/components/admin/delete-user-button'
+import { CreateLeaderDialog } from '@/components/admin/create-leader-dialog'
+import { EditUserDialog } from '@/components/admin/edit-user-dialog'
+import { getUserFormOptions } from '@/app/actions/admin-user-actions'
 
 async function getAllUsers() {
     const supabase = createAdminClient()
@@ -146,7 +149,11 @@ export default async function MasterUsersPage() {
         redirect('/admin/dashboard')
     }
 
-    const users = await getAllUsers()
+    const [users, formOptionsResult] = await Promise.all([
+        getAllUsers(),
+        getUserFormOptions(),
+    ])
+    const formOptions = formOptionsResult.options || { organizations: [], tiers: [], journeys: [] }
 
     const totalUsers = users.length
     const leaders = users.filter(u => u.role === 'leader').length
@@ -155,9 +162,12 @@ export default async function MasterUsersPage() {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-2xl font-bold">All Users</h1>
-                <p className="text-muted-foreground">Manage all users across the platform</p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold">All Users</h1>
+                    <p className="text-muted-foreground">Create leaders and manage user accounts across the platform</p>
+                </div>
+                <CreateLeaderDialog options={formOptions} />
             </div>
 
             {/* Stats */}
@@ -207,7 +217,7 @@ export default async function MasterUsersPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>User Management</CardTitle>
-                    <CardDescription>View and manage all user accounts</CardDescription>
+                    <CardDescription>Create, update, and remove users from one place</CardDescription>
                 </CardHeader>
                 <CardContent className="px-0 sm:px-6">
                     <div className="overflow-x-auto">
@@ -223,7 +233,7 @@ export default async function MasterUsersPage() {
                                     <TableHead className="whitespace-nowrap">Organization</TableHead>
                                     <TableHead className="whitespace-nowrap">Tier</TableHead>
                                     <TableHead className="whitespace-nowrap">Joined</TableHead>
-                                    <TableHead className="w-16 whitespace-nowrap">Actions</TableHead>
+                                    <TableHead className="w-24 whitespace-nowrap">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -307,12 +317,27 @@ export default async function MasterUsersPage() {
                                             {new Date(user.created_at).toLocaleDateString()}
                                         </TableCell>
                                         <TableCell>
-                                            <DeleteUserButton
-                                                userId={user.id}
-                                                userName={user.full_name || 'Unknown'}
-                                                userEmail={user.email || ''}
-                                                currentAdminId={adminData.user.id}
-                                            />
+                                            <div className="flex items-center">
+                                                <EditUserDialog
+                                                    user={{
+                                                        id: user.id,
+                                                        full_name: user.full_name,
+                                                        email: user.email,
+                                                        role: user.role,
+                                                        admin_role: user.admin_role,
+                                                        organization_id: user.organization_id,
+                                                        subscription_tier_id: user.subscription_tier_id,
+                                                    }}
+                                                    options={formOptions}
+                                                    currentAdminId={adminData.user.id}
+                                                />
+                                                <DeleteUserButton
+                                                    userId={user.id}
+                                                    userName={user.full_name || 'Unknown'}
+                                                    userEmail={user.email || ''}
+                                                    currentAdminId={adminData.user.id}
+                                                />
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}
