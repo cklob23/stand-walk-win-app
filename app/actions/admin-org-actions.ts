@@ -283,8 +283,9 @@ export async function deleteOrganizationRecord(organizationId: string): Promise<
     const claimedCodes = claimedCodeCount || 0
 
     if (assignedUsers > 0 || memberships > 0 || claimedCodes > 0) {
+        const relatedUsers = Math.max(assignedUsers, memberships)
         const reasons = [
-            assignedUsers > 0 ? `${assignedUsers} assigned user${assignedUsers === 1 ? '' : 's'}` : null,
+            relatedUsers > 0 ? `${relatedUsers} assigned user${relatedUsers === 1 ? '' : 's'}` : null,
             claimedCodes > 0 ? `${claimedCodes} claimed access code${claimedCodes === 1 ? '' : 's'}` : null,
         ].filter(Boolean)
         return {
