@@ -26,6 +26,8 @@ interface JournalEntryEditorProps {
         prayer_items: string
         god_speaking: string
         pairing_id: string
+        updated_at: string
+        isUpdate: boolean
     }) => void
 }
 
@@ -178,15 +180,18 @@ export function JournalEntryEditor({
                 prayer_items: prayerItems.trim(),
                 god_speaking: godSaying.trim(),
                 pairing_id: pairingId,
+                updated_at: new Date().toISOString(),
+                isUpdate: isEditing,
             })
         }
 
-        toast.success(isEditing ? 'Journal entry updated!' : 'Journal entry saved!')
         onClose()
-        router.refresh()
         setIsSaving(false)
         // Keep the lock so a remounted editor with the same save id cannot double-submit
         // if the user immediately clicks Save again before refresh completes.
+        // Defer refresh so the parent toast can paint on the persistent Toaster
+        // before this tree remounts.
+        window.setTimeout(() => router.refresh(), 400)
     }
 
     return (

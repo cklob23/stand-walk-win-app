@@ -19,6 +19,7 @@ import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { getJournalSteps } from '@/lib/tour-steps'
 import { useMemo } from 'react'
+import { toast } from 'sonner'
 
 interface JournalPageClientProps {
     isLeader: boolean
@@ -103,7 +104,10 @@ export function JournalPageClient({
         prayer_items: string
         god_speaking: string
         pairing_id: string
+        updated_at: string
+        isUpdate: boolean
     }) => {
+        const now = saved.updated_at || new Date().toISOString()
         const next: JournalEntry = {
             id: saved.id,
             journal_date: saved.journal_date,
@@ -113,19 +117,44 @@ export function JournalPageClient({
             shared_sections: {},
             custom_entries: [],
             pairing_id: saved.pairing_id,
-            created_at: new Date().toISOString(),
+            created_at: now,
+            updated_at: now,
             attachments: [],
         }
         setEntriesState(prev => {
             const idx = prev.findIndex(e => e.id === saved.id || e.journal_date === saved.journal_date)
             if (idx >= 0) {
                 const copy = [...prev]
-                copy[idx] = { ...copy[idx], ...next, attachments: copy[idx].attachments }
+                copy[idx] = {
+                    ...copy[idx],
+                    ...next,
+                    created_at: copy[idx].created_at,
+                    updated_at: now,
+                    attachments: copy[idx].attachments,
+                    shared_with_leader: copy[idx].shared_with_leader,
+                    shared_sections: copy[idx].shared_sections,
+                    custom_entries: copy[idx].custom_entries,
+                }
                 return copy
             }
             return [next, ...prev]
         })
-        setTodayEntryState(prev => prev ? { ...prev, ...next, attachments: prev.attachments } : next)
+        setTodayEntryState(prev => prev
+            ? {
+                ...prev,
+                ...next,
+                created_at: prev.created_at,
+                updated_at: now,
+                attachments: prev.attachments,
+                shared_with_leader: prev.shared_with_leader,
+                shared_sections: prev.shared_sections,
+                custom_entries: prev.custom_entries,
+            }
+            : next
+        )
+        toast.success(saved.isUpdate ? 'Journal entry updated!' : 'Journal entry saved!', {
+            duration: 8000,
+        })
     }
 
     return (
@@ -151,7 +180,7 @@ export function JournalPageClient({
                     </p>
                 </div>
                 <Button data-tour="journal-new" onClick={handleNewEntry} size="sm" className="gap-1.5 shrink-0">
-                    {todayEntryState?.prayer_items?.trim() ? (
+                    {todayEntryState ? (
                         <>
                             <PenLine className="h-4 w-4" />
                             <span className="hidden sm:inline">{"Edit Today's Reflection"}</span>
@@ -230,6 +259,7 @@ export function JournalPageClient({
                     learnerName={isLeader ? learnerName : undefined}
                     onEditDaily={handleEdit}
                     sortOrder={sortOrder}
+                    hasTodayEntry={!!todayEntryState}
                 />
             </div>
             {/* Daily reflection prompt -- popup manages its own open/dismissed state */}

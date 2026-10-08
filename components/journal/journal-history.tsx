@@ -37,6 +37,7 @@ export interface JournalEntry {
     custom_entries: { title: string; content: string; created_at: string }[] | null
     pairing_id: string
     created_at: string
+    updated_at?: string | null
     attachments?: JournalAttachment[]
 }
 
@@ -48,6 +49,7 @@ interface JournalHistoryProps {
     learnerName?: string
     onEditDaily?: (entry: JournalEntry) => void
     sortOrder?: 'asc' | 'desc'
+    hasTodayEntry?: boolean
 }
 
 interface ParsedVerseSection {
@@ -136,7 +138,7 @@ function sortTimeOf(value?: string, fallback?: string): number {
 // mount so the output always reflects the device (avoids showing the server's
 // timezone from SSR). Newer entries store a raw ISO string; legacy entries store
 // a pre-baked friendly string, which we display verbatim.
-function LocalTimestamp({ value }: { value?: string }) {
+function LocalTimestamp({ value, prefix }: { value?: string; prefix?: string }) {
     const [text, setText] = useState('')
 
     useEffect(() => {
@@ -153,9 +155,18 @@ function LocalTimestamp({ value }: { value?: string }) {
     return (
         <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 pt-0.5">
             <Clock className="h-3 w-3 shrink-0" />
-            {text}
+            {prefix ? `${prefix} ${text}` : text}
         </span>
     )
+}
+
+function journalDateKey(value?: string | null): string {
+    if (!value) return ''
+    return value.slice(0, 10)
+}
+
+function entrySortTime(entry: JournalEntry): number {
+    return sortTimeOf(entry.updated_at || undefined, entry.created_at)
 }
 
 export function JournalHistory({
@@ -166,6 +177,7 @@ export function JournalHistory({
     learnerName,
     onEditDaily,
     sortOrder = 'desc',
+    hasTodayEntry = false,
 }: JournalHistoryProps) {
     const router = useRouter()
     const [loadingKey, setLoadingKey] = useState<string | null>(null)
@@ -405,6 +417,12 @@ export function JournalHistory({
         setLoadingKey(null)
     }
 
+    const emptyStateHint = isLeaderView
+        ? `${learnerName || 'Your learner'} hasn't shared any journal entries with you yet.`
+        : hasTodayEntry
+            ? 'Tap "Edit Today\'s Reflection" above to add to today\'s daily prayer journal. You can write one Daily Reflection per day.'
+            : 'Your daily prayer journal entries will appear here. Tap "New Reflection" above to write today\'s Daily Reflection — one per day.'
+
     if (entries.length === 0) {
         return (
             <Card>
@@ -414,9 +432,7 @@ export function JournalHistory({
                         {isLeaderView ? 'No shared entries yet' : 'No journal entries yet'}
                     </h3>
                     <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                        {isLeaderView
-                            ? `${learnerName || 'Your learner'} hasn't shared any journal entries with you yet.`
-                            : 'Your daily prayer journal entries will appear here. Tap "New Reflection" above to write your first one!'}
+                        {emptyStateHint}
                     </p>
                 </CardContent>
             </Card>
@@ -440,34 +456,37 @@ export function JournalHistory({
                         {isLeaderView ? 'No shared entries yet' : 'No journal entries yet'}
                     </h3>
                     <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                        {isLeaderView
-                            ? `${learnerName || 'Your learner'} hasn't shared any journal entries with you yet.`
-                            : 'Your daily prayer journal entries will appear here. Tap "New Reflection" above to write your first one!'}
+                        {emptyStateHint}
                     </p>
                 </CardContent>
             </Card>
         )
     }
 
-    // Group entries by date for proper date headers
+    // Group entries by journal_date (YYYY-MM-DD). Newest/oldest first is
+    // journal_date, then updated_at / created_at within that day.
     const entriesByDate: Record<string, typeof visibleEntries> = {}
     for (const entry of visibleEntries) {
-        const dateKey = entry.journal_date
+        const dateKey = journalDateKey(entry.journal_date)
         if (!entriesByDate[dateKey]) entriesByDate[dateKey] = []
         entriesByDate[dateKey].push(entry)
     }
 
-    // Sort dates by the selected order (default newest first)
-    const sortedDates = Object.keys(entriesByDate).sort((a, b) =>
-        sortOrder === 'asc'
-            ? new Date(a).getTime() - new Date(b).getTime()
-            : new Date(b).getTime() - new Date(a).getTime()
-    )
+    const sortedDates = Object.keys(entriesByDate).sort((a, b) => {
+        const dateCmp = sortOrder === 'asc' ? a.localeCompare(b) : b.localeCompare(a)
+        if (dateCmp !== 0) return dateCmp
+        const latestA = Math.max(...entriesByDate[a].map(entrySortTime), 0)
+        const latestB = Math.max(...entriesByDate[b].map(entrySortTime), 0)
+        return sortOrder === 'asc' ? latestA - latestB : latestB - latestA
+    })
 
     return (
         <div className="space-y-6">
             {sortedDates.map((dateKey) => {
-                const dateEntries = entriesByDate[dateKey]
+                const dateEntries = [...entriesByDate[dateKey]].sort((a, b) => {
+                    const cmp = entrySortTime(a) - entrySortTime(b)
+                    return sortOrder === 'asc' ? cmp : -cmp
+                })
 
                 return (
                     <div key={dateKey} className="space-y-3">
@@ -498,7 +517,7 @@ export function JournalHistory({
                             // which reorders visually without restructuring the JSX below.
                             const orderSlots: { key: string; t: number }[] = []
                             if (hasDailyContent && (!isLeaderView || dailyShared)) {
-                                orderSlots.push({ key: 'daily', t: sortTimeOf(entry.created_at) })
+                                orderSlots.push({ key: 'daily', t: entrySortTime(entry) })
                             }
                             verses.forEach((verse, idx) => {
                                 if (isLeaderView && !isSectionShared(entry, `verse_${idx}`)) return
@@ -521,7 +540,13 @@ export function JournalHistory({
                                         <div style={{ order: orderMap['daily'] ?? 0 }}>
                                             <SectionCard
                                                 label="Daily Reflection"
-                                                timestamp={entry.created_at}
+                                                timestamp={entry.updated_at || entry.created_at}
+                                                timestampPrefix={
+                                                    entry.updated_at &&
+                                                    sortTimeOf(entry.updated_at) - sortTimeOf(entry.created_at) > 1000
+                                                        ? 'Edited'
+                                                        : undefined
+                                                }
                                                 isLeaderView={isLeaderView}
                                                 shared={dailyShared}
                                                 loadingKey={loadingKey}
@@ -1079,6 +1104,7 @@ export function AddCustomEntryButton({
 function SectionCard({
     label,
     timestamp,
+    timestampPrefix,
     children,
     isLeaderView,
     shared,
@@ -1095,6 +1121,7 @@ function SectionCard({
 }: {
     label: string
     timestamp?: string
+    timestampPrefix?: string
     children: React.ReactNode
     isLeaderView: boolean
     shared: boolean
@@ -1118,7 +1145,7 @@ function SectionCard({
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide min-w-0 break-words leading-relaxed flex-1">
                         {label}
                     </p>
-                    <LocalTimestamp value={timestamp} />
+                    <LocalTimestamp value={timestamp} prefix={timestampPrefix} />
                 </div>
 
                 {children}
