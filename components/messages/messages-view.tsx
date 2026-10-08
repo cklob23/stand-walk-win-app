@@ -183,6 +183,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
           pairingId: pairing.id,
           marked: result.marked ?? 0,
           unreadRemaining: result.unreadRemaining,
+          unreadByPairing: result.unreadByPairing,
         },
       }))
       // Do not router.refresh() here. The header listens for the event

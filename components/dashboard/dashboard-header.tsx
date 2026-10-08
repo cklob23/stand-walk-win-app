@@ -29,12 +29,13 @@ import type { Notification, Profile, Pairing } from '@/lib/types'
 import { navigateToPairing } from '@/lib/switch-pairing'
 import { writeSelectedPairingCookie } from '@/lib/selected-pairing-cookie'
 import { markNotificationRead, markAllNotificationsRead } from '@/lib/notification-actions'
+import { tallyUnreadByPairing, type UnreadNotificationRow } from '@/lib/notification-unread'
 
 interface LearnerWithPairing {
   pairing: Pairing
   learner: Profile
 }
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { LocalRelativeTime } from '@/components/ui/local-datetime'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
@@ -173,14 +174,19 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const [notifications, setNotifications] = useState(recentNotifications)
   const [unreadCount, setUnreadCount] = useState(notificationCount)
   const [pairingUnread, setPairingUnread] = useState<Record<string, number>>(learnerNotificationCounts)
+  const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
     setUnreadCount(notificationCount)
   }, [notificationCount])
 
-  useEffect(() => {
-    setPairingUnread(learnerNotificationCounts)
-  }, [learnerNotificationCounts])
+  const applyUnreadSnapshot = useCallback((
+    total: number,
+    byPairing: Record<string, number>,
+  ) => {
+    setUnreadCount(total)
+    setPairingUnread(byPairing)
+  }, [])
 
   const bumpPairingUnread = useCallback((pairingId: string | null | undefined, delta: number) => {
     if (!pairingId || delta === 0) return
@@ -191,24 +197,49 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
     })
   }, [])
 
+  const refetchUnread = useCallback(async () => {
+    const { data } = await supabase
+      .from('notifications')
+      .select('id, pairing_id, type')
+      .eq('user_id', profile.id)
+      .eq('read', false)
+    if (!data) return
+    applyUnreadSnapshot(data.length, tallyUnreadByPairing(data as UnreadNotificationRow[]))
+  }, [applyUnreadSnapshot, profile.id, supabase])
+
   useEffect(() => {
     const onMarked = (event: Event) => {
       const detail = (event as CustomEvent<{
         pairingId?: string
         marked?: number
         unreadRemaining?: number
+        unreadByPairing?: Record<string, number>
       }>).detail
+      if (detail?.unreadByPairing) {
+        applyUnreadSnapshot(detail.unreadRemaining ?? 0, detail.unreadByPairing)
+        return
+      }
       if (typeof detail?.unreadRemaining === 'number') {
         setUnreadCount(detail.unreadRemaining)
       }
-      if (detail?.pairingId && (detail.marked ?? 0) > 0) {
-        bumpPairingUnread(detail.pairingId, -(detail.marked ?? 0))
+      // marked=0 is common (Strict Mode remount / UPDATE RETURNING empty).
+      // Still drop this pairing's pill by refetching the same row set.
+      if (detail?.pairingId) {
+        void refetchUnread()
       }
     }
     window.addEventListener('notifications-read', onMarked)
     return () => window.removeEventListener('notifications-read', onMarked)
-  }, [bumpPairingUnread])
-  const supabase = createClient()
+  }, [applyUnreadSnapshot, refetchUnread])
+
+  // Client refetch after mount/focus so a cached layout payload cannot leave
+  // the pill at 2 after the thread was already marked read.
+  useEffect(() => {
+    void refetchUnread()
+    const onFocus = () => { void refetchUnread() }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refetchUnread, pathname])
   const { sendNotification, requestPermission, permission, isSubscribed, isSupported } = useBrowserNotifications()
   const [enablingNotifications, setEnablingNotifications] = useState(false)
   const [switchingLearnerId, setSwitchingLearnerId] = useState<string | null>(null)
@@ -309,10 +340,10 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   // Polling fallback: check for new notifications every 15s in case realtime misses them
   useEffect(() => {
     const poll = async () => {
-      const [{ count }, { data }, { data: unreadPairings }] = await Promise.all([
+      const [{ data: unreadRows }, { data }] = await Promise.all([
         supabase
           .from('notifications')
-          .select('*', { count: 'exact', head: true })
+          .select('id, pairing_id, type')
           .eq('user_id', profile.id)
           .eq('read', false),
         supabase
@@ -322,26 +353,10 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
           .eq('read', false)
           .order('created_at', { ascending: false })
           .limit(5),
-        supabase
-          .from('notifications')
-          .select('pairing_id')
-          .eq('user_id', profile.id)
-          .eq('read', false)
-          .not('pairing_id', 'is', null),
       ])
 
-      if (typeof count === 'number') {
-        setUnreadCount(count)
-      }
-
-      if (unreadPairings) {
-        const next: Record<string, number> = {}
-        for (const row of unreadPairings) {
-          if (row.pairing_id) {
-            next[row.pairing_id] = (next[row.pairing_id] || 0) + 1
-          }
-        }
-        setPairingUnread(next)
+      if (unreadRows) {
+        applyUnreadSnapshot(unreadRows.length, tallyUnreadByPairing(unreadRows as UnreadNotificationRow[]))
       }
 
       if (data) {

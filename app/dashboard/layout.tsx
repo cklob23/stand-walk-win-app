@@ -12,6 +12,7 @@ import { DynamicFavicon } from '@/components/dynamic-favicon'
 import { DashboardContent } from '@/components/dashboard/dashboard-content'
 import { CovenantRedirectGuard } from '@/components/dashboard/covenant-redirect-guard'
 import type { Profile, Pairing } from '@/lib/types'
+import { tallyUnreadByPairing } from '@/lib/notification-unread'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -68,11 +69,12 @@ export default async function DashboardLayout({
     }
   }
 
-  // Get unread notification count and recent notifications
-  const [{ count }, { data: recentNotifications }] = await Promise.all([
+  // One unread SELECT drives both the bell and the learner pills.
+  // A separate HEAD count was returning 0 while this list still had rows.
+  const [{ data: unreadRows }, { data: recentNotifications }] = await Promise.all([
     supabase
       .from('notifications')
-      .select('*', { count: 'exact', head: true })
+      .select('id, pairing_id, type')
       .eq('user_id', user.id)
       .eq('read', false),
     supabase
@@ -82,6 +84,7 @@ export default async function DashboardLayout({
       .order('created_at', { ascending: false })
       .limit(5),
   ])
+  const count = unreadRows?.length ?? 0
 
   // Fetch learners for leaders
   let allLearners: LearnerWithPairing[] = []
@@ -114,22 +117,8 @@ export default async function DashboardLayout({
       const selectedPairing = pickActivePairing(allPairings, 'leader', [cookiePairingId])
       currentPairingId = selectedPairing?.id || null
 
-      // Fetch unread notification counts per pairing (for non-selected learners)
-      const pairingIds = allPairings.map(p => p.id)
-      const { data: notifCounts } = await supabase
-        .from('notifications')
-        .select('pairing_id')
-        .eq('user_id', user.id)
-        .eq('read', false)
-        .in('pairing_id', pairingIds)
-
-      if (notifCounts) {
-        for (const notif of notifCounts) {
-          if (notif.pairing_id) {
-            learnerNotificationCounts[notif.pairing_id] = (learnerNotificationCounts[notif.pairing_id] || 0) + 1
-          }
-        }
-      }
+      // Same unread rows as the bell — not a second query, not unread messages.
+      learnerNotificationCounts = tallyUnreadByPairing(unreadRows)
 
       // Check if covenant needs to be signed (for leaders)
       // Find active pairing with a learner where the LEADER hasn't signed yet
