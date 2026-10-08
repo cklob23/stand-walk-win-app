@@ -401,15 +401,39 @@ interface CustomEntry {
     created_at: string
 }
 
+const recentCustomAdds = new Map<string, { createdAt: string; at: number }>()
+
+function rememberCustomAdd(keys: string[], createdAt: string) {
+    const rec = { createdAt, at: Date.now() }
+    for (const key of keys) recentCustomAdds.set(key, rec)
+}
+
 export async function addCustomEntry(
     entryId: string,
     title: string,
-    content: string
+    content: string,
+    clientSaveId?: string
 ): Promise<{ success?: boolean; error?: string; createdAt?: string }> {
     try {
+        const titleNorm = title.trim() || 'My Reflection'
+        const contentNorm = content.trim()
+
+        if (clientSaveId) {
+            const prior = recentCustomAdds.get(`id:${clientSaveId}`)
+            if (prior && Date.now() - prior.at < 60_000) {
+                return { success: true, createdAt: prior.createdAt }
+            }
+        }
+
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { error: 'Not authenticated' }
+
+        const contentKey = `custom:${user.id}:${entryId}:${titleNorm}:${contentNorm}`
+        const priorContent = recentCustomAdds.get(contentKey)
+        if (priorContent && Date.now() - priorContent.at < 60_000) {
+            return { success: true, createdAt: priorContent.createdAt }
+        }
 
         const { data: entry } = await supabase
             .from('prayer_journal')
@@ -420,11 +444,25 @@ export async function addCustomEntry(
 
         if (!entry) return { error: 'Entry not found' }
 
-        const createdAt = new Date().toISOString()
         const customs: CustomEntry[] = (entry.custom_entries as CustomEntry[]) || []
+        const twin = customs.find((c) =>
+            (c.title || 'My Reflection') === titleNorm &&
+            (c.content || '') === contentNorm &&
+            Number.isFinite(new Date(c.created_at).getTime()) &&
+            Date.now() - new Date(c.created_at).getTime() < 60_000
+        )
+        if (twin) {
+            rememberCustomAdd(
+                [contentKey, ...(clientSaveId ? [`id:${clientSaveId}`] : [])],
+                twin.created_at
+            )
+            return { success: true, createdAt: twin.created_at }
+        }
+
+        const createdAt = new Date().toISOString()
         customs.push({
-            title: title.trim() || 'My Reflection',
-            content: content.trim(),
+            title: titleNorm,
+            content: contentNorm,
             created_at: createdAt,
         })
 
@@ -438,6 +476,11 @@ export async function addCustomEntry(
             .eq('user_id', user.id)
 
         if (error) return { error: error.message }
+
+        rememberCustomAdd(
+            [contentKey, ...(clientSaveId ? [`id:${clientSaveId}`] : [])],
+            createdAt
+        )
 
         revalidatePath('/dashboard/journal')
         return { success: true, createdAt }
