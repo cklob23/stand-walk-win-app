@@ -10,6 +10,7 @@ import { BookOpen, MessageSquare, PenLine, ChevronDown, ChevronUp, ExternalLink,
 import { AttachmentPreviewModal } from '@/components/messages/attachment-preview-modal'
 import { scriptureToUrl } from '@/lib/bible-utils'
 import { LocalDateTime } from '@/components/ui/local-datetime'
+import { isReflectionEdited, reflectionTimestamp } from '@/lib/journal-display'
 import { replyToSharedItem, toggleJournalReaction, type JournalReaction, type JournalAttachment } from '@/lib/journal-actions'
 import { toast } from 'sonner'
 import Link from 'next/link'
@@ -23,6 +24,7 @@ export interface SharedItem {
     note: string
     sender_name: string
     created_at: string
+    reflection_updated_at?: string | null
     reply_text?: string | null
     replied_at?: string | null
     journal_entry_id?: string | null
@@ -160,7 +162,20 @@ export function SharedWithMe({ items, autoOpen = false, pairingId, currentUserNa
                                         </span>
                                     </div>
                                     <span className="text-[10px] text-muted-foreground">
-                                        <LocalDateTime value={item.created_at} pattern="MMM d, yyyy, h:mm a" />
+                                        <LocalDateTime
+                                            value={
+                                                item.section_key === 'daily'
+                                                    ? reflectionTimestamp(item.created_at, item.reflection_updated_at)
+                                                    : item.created_at
+                                            }
+                                            pattern="MMM d, yyyy, h:mm a"
+                                            prefix={
+                                                item.section_key === 'daily'
+                                                && isReflectionEdited(item.created_at, item.reflection_updated_at)
+                                                    ? 'Edited'
+                                                    : undefined
+                                            }
+                                        />
                                     </span>
                                 </div>
 

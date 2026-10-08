@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,6 +13,7 @@ import { Send, Loader2, MessageSquare, Circle, Phone, Video, Paperclip, X, Corne
 import { toast } from 'sonner'
 import type { Profile, Pairing, Message, MessageReaction } from '@/lib/types'
 import { format, isToday, isYesterday } from 'date-fns'
+import { toLocalDateKey } from '@/lib/local-datetime'
 import { MessageBubble, getFileIcon } from './message-bubble'
 import { notifyNewMessage, notifyMessageReaction } from '@/lib/notifications'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
@@ -53,6 +54,15 @@ function GroupDateLabel({ dateStr }: { dateStr: string }) {
   return <>{text}</>
 }
 
+/** UTC YYYY-MM-DD on SSR (hydration-safe); local calendar day after mount. */
+function messageDayKey(iso: string, useLocal: boolean): string {
+  if (!iso) return ''
+  if (!useLocal) return iso.slice(0, 10)
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
+  return toLocalDateKey(d)
+}
+
 export function MessagesView({ profile, pairing, partner, initialMessages, draftMessage }: MessagesViewProps) {
   const [messages, setMessages] = useState(initialMessages)
   const [newMessage, setNewMessage] = useState(draftMessage || '')
@@ -72,6 +82,11 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { sendNotification } = useBrowserNotifications()
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const [localDayReady, setLocalDayReady] = useState(false)
+
+  useLayoutEffect(() => {
+    setLocalDayReady(true)
+  }, [])
 
   const supabase = createClient()
   const realtimeReady = useRealtimeAuth()
@@ -727,25 +742,28 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
     .join('')
     .toUpperCase() || '?'
 
-  // Group by the UTC calendar day in the ISO string so SSR and the
-  // client build the same tree (local format() was a hydration mismatch).
-  const groupedMessages: { date: string; messages: Message[] }[] = []
-  let currentDate = ''
-
-  messages.forEach((msg) => {
-    const msgDate = (msg.created_at || '').slice(0, 10)
-    if (!msgDate) return
-    if (msgDate !== currentDate) {
-      currentDate = msgDate
-      groupedMessages.push({ date: msgDate, messages: [msg] })
-    } else {
-      groupedMessages[groupedMessages.length - 1].messages.push(msg)
+  // SSR groups by the UTC ISO day so the tree hydrates. After mount,
+  // regroup by the device calendar day so dividers match bubble labels
+  // (Today / Yesterday). useLayoutEffect applies this before paint.
+  const groupedMessages = useMemo(() => {
+    const groups: { date: string; messages: Message[] }[] = []
+    let currentDate = ''
+    for (const msg of messages) {
+      const msgDate = messageDayKey(msg.created_at, localDayReady)
+      if (!msgDate) continue
+      if (msgDate !== currentDate) {
+        currentDate = msgDate
+        groups.push({ date: msgDate, messages: [msg] })
+      } else {
+        groups[groups.length - 1].messages.push(msg)
+      }
     }
-  })
+    return groups
+  }, [messages, localDayReady])
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-4 sm:py-6">
-      <Card data-tour="messages-chat" className="h-[calc(100vh-10rem)] sm:h-[calc(100vh-12rem)] flex flex-col">
+      <Card data-tour="messages-chat" className="h-[calc(100vh-10rem)] sm:h-[calc(100vh-12rem)] flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
         <CardHeader className="border-b shrink-0">
           <div className="flex items-center gap-3">
@@ -808,7 +826,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
         </CardHeader>
 
         {/* Messages */}
-        <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4">
+        <CardContent ref={scrollContainerRef} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4">
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
@@ -820,7 +838,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
               </p>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-6 min-w-0">
               {groupedMessages.map((group) => (
                 <div key={group.date}>
                   {/* Date Separator */}
