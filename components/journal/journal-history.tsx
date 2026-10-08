@@ -405,10 +405,14 @@ export function JournalHistory({
 
     // ── Add new custom entry ──
     const handleAddCustom = async (entryId: string) => {
+        if (loadingKey) return
         if (!newContent.trim()) { toast.error('Please write something.'); return }
         const key = `add-${entryId}`
         setLoadingKey(key)
-        const result = await addCustomEntry(entryId, newTitle.trim(), newContent.trim())
+        const addId = typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        const result = await addCustomEntry(entryId, newTitle.trim(), newContent.trim(), addId)
         if (result.error) toast.error(result.error)
         else { toast.success('Entry added!'); router.refresh() }
         setAddingCustomFor(null)
@@ -878,6 +882,12 @@ export function AddCustomEntryButton({
     const [newContent, setNewContent] = useState('')
     const [saving, setSaving] = useState(false)
     const [pendingFiles, setPendingFiles] = useState<File[]>([])
+    const savingLock = useRef(false)
+    const clientSaveId = useRef(
+        typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    )
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || [])
@@ -925,7 +935,9 @@ export function AddCustomEntryButton({
     }
 
     const handleSave = async () => {
+        if (savingLock.current || saving) return
         if (!newContent.trim()) { toast.error('Please write something.'); return }
+        savingLock.current = true
         setSaving(true)
 
         const localDate = new Date().toLocaleDateString('en-CA')
@@ -940,9 +952,11 @@ export function AddCustomEntryButton({
                 godSaying: '',
                 pairingId,
                 localDate,
+                clientSaveId: clientSaveId.current,
             })
             if (createResult.error) {
                 toast.error(createResult.error)
+                savingLock.current = false
                 setSaving(false)
                 return
             }
@@ -951,13 +965,15 @@ export function AddCustomEntryButton({
 
         if (!targetEntryId) {
             toast.error('Could not create journal entry.')
+            savingLock.current = false
             setSaving(false)
             return
         }
 
-        const result = await addCustomEntry(targetEntryId, newTitle.trim(), newContent.trim())
+        const result = await addCustomEntry(targetEntryId, newTitle.trim(), newContent.trim(), clientSaveId.current)
         if (result.error) {
             toast.error(result.error)
+            savingLock.current = false
             setSaving(false)
             return
         }
@@ -974,6 +990,10 @@ export function AddCustomEntryButton({
         setNewContent('')
         setPendingFiles([])
         setSaving(false)
+        clientSaveId.current = typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        savingLock.current = false
     }
 
     if (adding) {
