@@ -35,8 +35,8 @@ interface LearnerWithPairing {
   learner: Profile
 }
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { LocalRelativeTime } from '@/components/ui/local-datetime'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
 import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
 import { toast } from 'sonner'
@@ -532,7 +532,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                                 {notification.message}
                               </p>
                               <p className="text-xs text-muted-foreground/70 mt-1">
-                                {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+                                <LocalRelativeTime value={notification.created_at} />
                               </p>
                             </div>
                             {!notification.read && (

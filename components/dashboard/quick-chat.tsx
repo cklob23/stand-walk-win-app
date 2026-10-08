@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Send, Loader2, Check, CheckCheck, ImageIcon, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Message } from '@/lib/types'
-import { formatDistanceToNow } from 'date-fns'
+import { LocalRelativeTime } from '@/components/ui/local-datetime'
 import { notifyNewMessage } from '@/lib/notifications'
 import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
 import { getFileIcon } from '@/components/messages/message-bubble'
@@ -393,7 +393,7 @@ export function QuickChat({ pairingId, odUserId, odUserName, odUserAvatar, partn
                   )}
 
                   <p className={`text-xs text-muted-foreground mt-1 flex items-center gap-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                    <span>{formatDistanceToNow(new Date(msg.created_at), { addSuffix: true })}</span>
+                    <LocalRelativeTime value={msg.created_at} />
                     {isOwn && (
                       msg.is_read ? (
                         <CheckCheck className="h-3 w-3 text-primary" />

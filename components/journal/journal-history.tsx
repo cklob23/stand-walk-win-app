@@ -24,7 +24,7 @@ import {
 } from '@/lib/journal-actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import { format, parseISO } from 'date-fns'
+import { formatLocalDateKey } from '@/lib/local-datetime'
 import { AttachmentPreviewModal } from '@/components/messages/attachment-preview-modal'
 
 export interface JournalEntry {
@@ -419,7 +419,10 @@ export function JournalHistory({
             : `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`
         const result = await addCustomEntry(entryId, newTitle.trim(), newContent.trim(), addId)
         if (result.error) toast.error(result.error)
-        else { toast.success('Entry added!'); router.refresh() }
+        else {
+            toast.success('Entry added!', { duration: 8000 })
+            window.setTimeout(() => router.refresh(), 400)
+        }
         setAddingCustomFor(null)
         setNewTitle('')
         setNewContent('')
@@ -503,7 +506,7 @@ export function JournalHistory({
                         <div className="flex items-center gap-2 pt-1">
                             <Calendar className="h-4 w-4 text-primary shrink-0" />
                             <span className="text-sm font-medium text-foreground">
-                                {format(parseISO(dateKey), 'EEEE, MMMM d, yyyy')}
+                                {formatLocalDateKey(dateKey, 'EEEE, MMMM d, yyyy')}
                             </span>
                             {isLeaderView && (
                                 <Badge variant="secondary" className="text-xs gap-1 ml-auto">
@@ -569,7 +572,7 @@ export function JournalHistory({
                                                 onScheduleMeeting={isLeaderView ? async () => {
                                                     setLoadingKey(`meet-${entry.id}`)
                                                     const result = await import('@/lib/journal-actions').then(m =>
-                                                        m.requestJournalMeeting(entry.id, format(parseISO(entry.journal_date), 'MMM d'))
+                                                        m.requestJournalMeeting(entry.id, formatLocalDateKey(entry.journal_date, 'MMM d'))
                                                     )
                                                     if (result.error) toast.error(result.error)
                                                     else { toast.success('Meeting request sent!'); router.push('/dashboard/schedule') }
@@ -634,7 +637,7 @@ export function JournalHistory({
                                                     onScheduleMeeting={isLeaderView ? async () => {
                                                         setLoadingKey(`meet-${entry.id}`)
                                                         const result = await import('@/lib/journal-actions').then(m =>
-                                                            m.requestJournalMeeting(entry.id, format(parseISO(entry.journal_date), 'MMM d'))
+                                                            m.requestJournalMeeting(entry.id, formatLocalDateKey(entry.journal_date, 'MMM d'))
                                                         )
                                                         if (result.error) toast.error(result.error)
                                                         else { toast.success('Meeting request sent!'); router.push('/dashboard/schedule') }
@@ -727,7 +730,7 @@ export function JournalHistory({
                                                     onScheduleMeeting={isLeaderView ? async () => {
                                                         setLoadingKey(`meet-${entry.id}`)
                                                         const result = await import('@/lib/journal-actions').then(m =>
-                                                            m.requestJournalMeeting(entry.id, format(parseISO(entry.journal_date), 'MMM d'))
+                                                            m.requestJournalMeeting(entry.id, formatLocalDateKey(entry.journal_date, 'MMM d'))
                                                         )
                                                         if (result.error) toast.error(result.error)
                                                         else { toast.success('Meeting request sent!'); router.push('/dashboard/schedule') }
@@ -996,17 +999,23 @@ export function AddCustomEntryButton({
             await uploadFiles(targetEntryId, `custom_${result.createdAt}`)
         }
 
-        toast.success('Entry added!')
+        const entryTitle = newTitle.trim() || 'My Reflection'
+        toast.success('Entry added!', {
+            description: entryTitle,
+            duration: 8000,
+        })
         if (targetEntryId && result.createdAt) {
             onAdded?.({
                 entryId: targetEntryId,
                 journalDate: localDate,
-                title: newTitle.trim() || 'My Reflection',
+                title: entryTitle,
                 content: newContent.trim(),
                 createdAt: result.createdAt,
             })
         }
-        router.refresh()
+        // Defer refresh so the toast can paint on the root Toaster
+        // before this tree remounts (same pattern as daily save).
+        window.setTimeout(() => router.refresh(), 400)
         setAdding(false)
         setNewTitle('')
         setNewContent('')

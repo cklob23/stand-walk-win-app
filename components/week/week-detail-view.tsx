@@ -24,7 +24,7 @@ import { toast } from 'sonner'
 import type { Profile, Pairing, WeeklyContent, Assignment, Reflection } from '@/lib/types'
 import { AssignmentCard } from '@/components/dashboard/assignment-card'
 import { groupAssignments, getAllIdsForGroup } from '@/lib/assignment-grouping'
-import { formatDistanceToNow } from 'date-fns'
+import { LocalRelativeTime } from '@/components/ui/local-datetime'
 import { scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
@@ -399,7 +399,7 @@ export function WeekDetailView({
                             {reflection.user?.full_name}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(reflection.created_at), { addSuffix: true })}
+                            <LocalRelativeTime value={reflection.created_at} />
                           </span>
                         </div>
                         <p className="text-sm text-muted-foreground pl-8">

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Notification } from '@/lib/types'
-import { formatDistanceToNow } from 'date-fns'
+import { LocalRelativeTime } from '@/components/ui/local-datetime'
 import { cn } from '@/lib/utils'
 import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
@@ -324,7 +324,7 @@ export function NotificationsView({ userId, userRole, notifications: initialNoti
                             {notification.message}
                           </p>
                           <p className="text-xs text-muted-foreground mt-2">
-                            {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+                            <LocalRelativeTime value={notification.created_at} />
                           </p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">

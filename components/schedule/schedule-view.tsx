@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -58,6 +58,7 @@ import {
 import { toast } from 'sonner'
 import { saveAvailability, bookMeeting, cancelMeeting, completeMeeting, updateMeeting, updateMeetingLink, updateContactInfo, acceptMeeting, declineMeeting, proposeNewTime } from '@/lib/scheduling-actions'
 import type { Profile, Pairing, AvailabilitySlot, ScheduledMeeting } from '@/lib/types'
+import { formatLocalDateKey, parseLocalDateKey, toLocalDateKey } from '@/lib/local-datetime'
 import Link from 'next/link'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -90,21 +91,29 @@ function formatTime(time: string) {
 }
 
 function formatDate(dateStr: string) {
-    const date = new Date(dateStr + 'T12:00:00')
-    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    return formatLocalDateKey(dateStr, 'EEE, MMM d')
 }
 
 // Get dates for the next 2 weeks for a given day_of_week
-function getUpcomingDatesForDay(dayOfWeek: number, weeksAhead: number = 2): string[] {
+function useClientTodayKey(): string | null {
+    const [key, setKey] = useState<string | null>(null)
+    useEffect(() => {
+        setKey(toLocalDateKey(new Date()))
+    }, [])
+    return key
+}
+
+function getUpcomingDatesForDay(dayOfWeek: number, todayKey: string | null, weeksAhead: number = 2): string[] {
+    if (!todayKey) return []
+    const today = parseLocalDateKey(todayKey)
+    if (!today) return []
     const dates: string[] = []
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
 
     for (let i = 0; i < weeksAhead * 7; i++) {
         const d = new Date(today)
         d.setDate(today.getDate() + i)
         if (d.getDay() === dayOfWeek) {
-            dates.push(d.toISOString().split('T')[0])
+            dates.push(toLocalDateKey(d))
         }
     }
     return dates
@@ -655,6 +664,7 @@ function BookingView({
     initialNotes?: string | null
 }) {
     const router = useRouter()
+    const todayKey = useClientTodayKey()
     const [bookingDialog, setBookingDialog] = useState(false)
     const [selectedSlot, setSelectedSlot] = useState<{
         date: string
@@ -773,7 +783,7 @@ function BookingView({
                         const daySlots = slotsByDay[dayIdx]
                         if (!daySlots) return null
 
-                        const upcomingDates = getUpcomingDatesForDay(dayIdx)
+                        const upcomingDates = getUpcomingDatesForDay(dayIdx, todayKey)
                         if (upcomingDates.length === 0) return null
 
                         return (
@@ -1058,6 +1068,7 @@ function UpcomingMeetings({
 }) {
     const router = useRouter()
     const isMobile = useIsMobile()
+    const todayKey = useClientTodayKey()
     const [loadingId, setLoadingId] = useState<string | null>(null)
     const [linkEditId, setLinkEditId] = useState<string | null>(null)
     const [linkValue, setLinkValue] = useState('')
@@ -1203,7 +1214,7 @@ function UpcomingMeetings({
                         const daySlots = slotsByDay[dayIdx]
                         if (!daySlots) return null
 
-                        const upcomingDates = getUpcomingDatesForDay(dayIdx)
+                        const upcomingDates = getUpcomingDatesForDay(dayIdx, todayKey)
                         if (upcomingDates.length === 0) return null
 
                         const hasAnySlots = upcomingDates.some((date) =>
@@ -1537,6 +1548,7 @@ function PendingMeetings({
 }) {
     const router = useRouter()
     const isMobile = useIsMobile()
+    const todayKey = useClientTodayKey()
     const isLeader = profile.role === 'leader'
     const [loadingId, setLoadingId] = useState<string | null>(null)
     const [actionType, setActionType] = useState<'accept' | 'decline' | 'propose' | null>(null)
@@ -1708,7 +1720,7 @@ function PendingMeetings({
                                 const daySlots = slotsByDay[dayIdx]
                                 if (!daySlots) return null
 
-                                const upcomingDates = getUpcomingDatesForDay(dayIdx)
+                                const upcomingDates = getUpcomingDatesForDay(dayIdx, todayKey)
                                 if (upcomingDates.length === 0) return null
 
                                 return (
