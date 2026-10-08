@@ -563,12 +563,12 @@ function AvailabilityEditor({
 
                 <div className="space-y-3">
                     {slots.map((slot, index) => (
-                        <div key={index} className="grid grid-cols-1 gap-2 sm:flex sm:items-center sm:flex-wrap">
+                        <div key={index} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                             <Select
                                 value={slot.day_of_week.toString()}
                                 onValueChange={(v) => updateSlot(index, 'day_of_week', parseInt(v))}
                             >
-                                <SelectTrigger className="w-full min-w-0 sm:w-[130px]">
+                                <SelectTrigger className="w-full sm:w-[130px]">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -580,50 +580,50 @@ function AvailabilityEditor({
                                 </SelectContent>
                             </Select>
 
-                            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 min-w-0 sm:flex sm:contents">
-                                <Select
-                                    value={slot.start_time}
-                                    onValueChange={(v) => updateSlot(index, 'start_time', v)}
-                                >
-                                    <SelectTrigger className="w-full min-w-0 sm:w-[128px]">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {TIME_OPTIONS.map((t) => (
-                                            <SelectItem key={t} value={t}>
-                                                {formatTime(t)}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                            {/* Full-width time selects on 360–390px so "10:00 AM" / "12:30 PM"
+                                stay visible beside the chevron. Side-by-side + min-w-0 clipped. */}
+                            <Select
+                                value={slot.start_time}
+                                onValueChange={(v) => updateSlot(index, 'start_time', v)}
+                            >
+                                <SelectTrigger className="w-full sm:w-[10.5rem] justify-between *:data-[slot=select-value]:line-clamp-none *:data-[slot=select-value]:overflow-visible">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {TIME_OPTIONS.map((t) => (
+                                        <SelectItem key={t} value={t}>
+                                            {formatTime(t)}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
 
-                                <span className="text-muted-foreground text-sm">to</span>
+                            <span className="text-muted-foreground text-sm sm:px-0 px-0.5">to</span>
 
-                                <Select
-                                    value={slot.end_time}
-                                    onValueChange={(v) => updateSlot(index, 'end_time', v)}
-                                >
-                                    <SelectTrigger className="w-full min-w-0 sm:w-[128px]">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {TIME_OPTIONS.map((t) => (
-                                            <SelectItem key={t} value={t}>
-                                                {formatTime(t)}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                            <Select
+                                value={slot.end_time}
+                                onValueChange={(v) => updateSlot(index, 'end_time', v)}
+                            >
+                                <SelectTrigger className="w-full sm:w-[10.5rem] justify-between *:data-[slot=select-value]:line-clamp-none *:data-[slot=select-value]:overflow-visible">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {TIME_OPTIONS.map((t) => (
+                                        <SelectItem key={t} value={t}>
+                                            {formatTime(t)}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
 
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => removeSlot(index)}
-                                    className="text-muted-foreground hover:text-destructive shrink-0"
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </Button>
-                            </div>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeSlot(index)}
+                                className="text-muted-foreground hover:text-destructive shrink-0 self-end sm:self-auto"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
                         </div>
                     ))}
                 </div>
