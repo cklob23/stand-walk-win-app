@@ -20,6 +20,13 @@ interface JournalEntryEditorProps {
     } | null
     existingAttachments?: JournalAttachment[]
     onClose: () => void
+    onSaved?: (entry: {
+        id: string
+        journal_date: string
+        prayer_items: string
+        god_speaking: string
+        pairing_id: string
+    }) => void
 }
 
 export function JournalEntryEditor({
@@ -28,6 +35,7 @@ export function JournalEntryEditor({
     existingEntry,
     existingAttachments = [],
     onClose,
+    onSaved,
 }: JournalEntryEditorProps) {
     const router = useRouter()
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -40,9 +48,16 @@ export function JournalEntryEditor({
     const [prayerItems, setPrayerItems] = useState(existingEntry?.prayer_items || '')
     const [godSaying, setGodSaying] = useState(freeTextGodSpeaking)
     const [isSaving, setIsSaving] = useState(false)
+    const [saveError, setSaveError] = useState<string | null>(null)
     const [attachments, setAttachments] = useState<JournalAttachment[]>(existingAttachments)
     const [pendingFiles, setPendingFiles] = useState<File[]>([])
     const [uploadingFiles, setUploadingFiles] = useState(false)
+    const savingLock = useRef(false)
+    const clientSaveId = useRef(
+        typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `journal-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    )
 
     const isEditing = !!existingEntry
 
@@ -111,15 +126,19 @@ export function JournalEntryEditor({
     }
 
     const handleSave = async () => {
+        if (savingLock.current || isSaving) return
         if (!prayerItems.trim() && !godSaying.trim()) {
             toast.error('Please fill in at least one of the prompts.')
             return
         }
 
+        savingLock.current = true
         setIsSaving(true)
+        setSaveError(null)
 
         let result
         let entryId: string | undefined
+        const localDate = new Date().toLocaleDateString('en-CA') // yyyy-MM-dd
         if (isEditing) {
             result = await updateJournalEntry({
                 entryId: existingEntry.id,
@@ -129,18 +148,20 @@ export function JournalEntryEditor({
             })
             entryId = existingEntry.id
         } else {
-            const localDate = new Date().toLocaleDateString('en-CA') // yyyy-MM-dd
             result = await saveJournalEntry({
                 prayerItems: prayerItems.trim(),
                 godSaying: godSaying.trim(),
                 pairingId,
                 localDate,
+                clientSaveId: clientSaveId.current,
             })
             entryId = result.entryId
         }
 
         if (result.error) {
+            setSaveError(result.error)
             toast.error(result.error)
+            savingLock.current = false
             setIsSaving(false)
             return
         }
@@ -150,10 +171,22 @@ export function JournalEntryEditor({
             await uploadFiles(entryId)
         }
 
+        if (entryId) {
+            onSaved?.({
+                id: entryId,
+                journal_date: localDate,
+                prayer_items: prayerItems.trim(),
+                god_speaking: godSaying.trim(),
+                pairing_id: pairingId,
+            })
+        }
+
         toast.success(isEditing ? 'Journal entry updated!' : 'Journal entry saved!')
         onClose()
         router.refresh()
         setIsSaving(false)
+        // Keep the lock so a remounted editor with the same save id cannot double-submit
+        // if the user immediately clicks Save again before refresh completes.
     }
 
     return (
@@ -298,13 +331,17 @@ export function JournalEntryEditor({
                     )}
                 </div>
 
+                {saveError && (
+                    <p className="text-sm text-destructive" role="alert">{saveError}</p>
+                )}
+
                 <div className="flex items-center gap-2 justify-end">
                     <Button variant="ghost" onClick={onClose} disabled={isSaving || uploadingFiles}>
                         Cancel
                     </Button>
                     <Button onClick={handleSave} disabled={isSaving || uploadingFiles}>
                         {(isSaving || uploadingFiles) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                        {uploadingFiles ? 'Uploading...' : isEditing ? 'Update' : 'Save'}
+                        {uploadingFiles ? 'Uploading...' : isSaving ? 'Saving...' : isEditing ? 'Update' : 'Save'}
                     </Button>
                 </div>
             </CardContent>

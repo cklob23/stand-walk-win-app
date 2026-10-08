@@ -42,7 +42,15 @@ export function groupAssignments(assignments: Assignment[]): GroupedAssignment[]
             groupMap.set(key, { ...a, additionalQuestions: [] })
             orderedKeys.push(key)
         } else {
-            existing.additionalQuestions.push({ id: a.id, description: a.description })
+            const incoming = (a.description || '').trim()
+            const primary = (existing.description || '').trim()
+            const alreadyListed = existing.additionalQuestions.some(
+                q => (q.description || '').trim() === incoming
+            )
+            // Skip exact duplicates (same title + same prompt copied across journeys)
+            if (incoming && incoming !== primary && !alreadyListed) {
+                existing.additionalQuestions.push({ id: a.id, description: a.description })
+            }
         }
     }
 

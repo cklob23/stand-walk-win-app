@@ -30,6 +30,7 @@ import { ScriptureText } from '@/components/bible/scripture-text'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { leaderDashboardSteps } from '@/lib/tour-steps'
+import { LearnerSwitcher } from './learner-switcher'
 
 interface AssignmentReaction {
   id: string
@@ -56,6 +57,8 @@ interface LeaderDashboardProps {
   sharedJournalEntries?: { id: string; entry_date: string; prayer_items: string; god_saying: string }[]
   hasJournalEntryToday: boolean
   expandedAssignmentId?: string | null
+  allLearners?: { pairing: Pairing; learner: Profile }[]
+  maxLearners?: number
 }
 
 export function LeaderDashboard({
@@ -73,6 +76,8 @@ export function LeaderDashboard({
   sharedJournalEntries = [],
   hasJournalEntryToday,
   expandedAssignmentId,
+  allLearners = [],
+  maxLearners = 1,
 }: LeaderDashboardProps) {
   const currentPairingId = pairing.id
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
@@ -118,6 +123,17 @@ export function LeaderDashboard({
           {"Here's"} how your Learner is progressing on their journey.
         </p>
       </div>
+
+      {allLearners.length > 0 && (
+        <div className="mb-6" data-tour="leader-learners">
+          <LearnerSwitcher
+            learners={allLearners}
+            currentPairingId={currentPairingId}
+            maxLearners={maxLearners}
+            subscriptionTier={profile.subscription_tier}
+          />
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content - Left Side */}

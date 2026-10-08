@@ -4,6 +4,7 @@ import { BookHeart } from 'lucide-react'
 import { JournalPageClient } from '@/components/journal/journal-page-client'
 import { getTodayEntry } from '@/lib/journal-actions'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
+import { pickActivePairing } from '@/lib/pairing-resolution'
 
 export const metadata = {
     title: 'Prayer Journal - Stand Walk Run',
@@ -53,18 +54,7 @@ export default async function JournalPage({
             .order('created_at', { ascending: false })
 
         if (allPairings && allPairings.length > 0) {
-            // Filter to active pairings with learners, or use selected pairing
-            const activePairings = allPairings.filter(p => p.status === 'active' && p.learner_id)
-
-            if (selectedPairingId) {
-                // Check if selected pairing is valid (active with learner)
-                pairing = activePairings.find(p => p.id === selectedPairingId)
-            }
-
-            // Default to first active pairing with a learner
-            if (!pairing && activePairings.length > 0) {
-                pairing = activePairings[0]
-            }
+            pairing = pickActivePairing(allPairings, 'leader', [selectedPairingId])
         }
     } else {
         // Learners have one pairing
@@ -170,8 +160,9 @@ export default async function JournalPage({
         }
     }
 
-    // Fetch shared items from partner via the shared_items table
-    const { data: sharedItemsData } = await supabase
+    // Same admin client as partner journal rows so RLS cannot hide items
+    // that the badge count (built from the same array) would still include.
+    const { data: sharedItemsData } = await adminSupabase
         .from('shared_items')
         .select('*')
         .eq('pairing_id', pairing.id)
@@ -220,8 +211,12 @@ export default async function JournalPage({
         const freeText = (godSpeakingParts[0] || '').trim()
         const verseParts = godSpeakingParts.slice(1).map((s: string) => s.trim()).filter(Boolean)
 
-        // 1) Daily reflection section (shared_sections.daily = true)
-        if (sections.daily && (entry.prayer_items?.trim() || freeText)) {
+        // 1) Daily reflection section. Treat shared_with_leader with no
+        // section flags as "daily" so the badge count and the expanded list
+        // stay in sync (legacy rows set the boolean but left shared_sections empty).
+        const anySectionShared = Object.values(sections).some(v => v === true)
+        const dailyShared = sections.daily === true || (!!entry.shared_with_leader && !anySectionShared)
+        if (dailyShared && (entry.prayer_items?.trim() || freeText)) {
             const dailyLines: string[] = []
             if (entry.prayer_items?.trim()) {
                 dailyLines.push(`Q: 3 things I'm praying about today`)

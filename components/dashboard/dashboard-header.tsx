@@ -27,6 +27,7 @@ import { AppLogo } from '@/components/app-logo'
 import { useBranding } from '@/contexts/branding-context'
 import type { Notification, Profile, Pairing } from '@/lib/types'
 import { setSelectedPairingId } from '@/lib/selected-pairing'
+import { markNotificationRead, markAllNotificationsRead } from '@/lib/notification-actions'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -105,7 +106,7 @@ function getNotificationHref(notification: Notification, pairingOverride?: strin
     case 'meeting_completed':
       return pairingParam ? `/dashboard/schedule?pairing=${pairingParam}` : '/dashboard/schedule'
     case 'message':
-      return '/dashboard/messages'
+      return pairingParam ? `/dashboard/messages?pairing=${pairingParam}` : '/dashboard/messages'
     case 'covenant':
       return pairingParam ? `/dashboard/covenant?pairing=${pairingParam}` : '/dashboard/covenant'
     case 'journal_shared':
@@ -146,8 +147,16 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const urlPairingId = searchParams.get('pairing')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  // Use prop if provided, otherwise fall back to URL param
-  const activePairingId = currentPairingId || urlPairingId
+  // Nav and page content must use the same pairing. Prefer a URL pairing only
+  // when it is one of this leader's actual learners; otherwise use the pairing
+  // the layout resolved (cookie → first learner with a partner).
+  const urlIsKnownLearner = !!urlPairingId && allLearners.some(l => l.pairing.id === urlPairingId)
+  const activePairingId =
+    (urlIsKnownLearner ? urlPairingId : null) ||
+    currentPairingId ||
+    allLearners.find(l => l.pairing.learner_id)?.pairing.id ||
+    allLearners[0]?.pairing.id ||
+    null
 
   // Helper to add pairing param to URLs for leaders
   const getNavHref = (href: string) => {
@@ -178,12 +187,14 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const knownNotifIds = useRef(new Set(recentNotifications.map(n => n.id)))
 
   // Helper to handle a new notification (toast + push)
-  const handleNewNotification = useCallback((newNotif: Notification) => {
+  const handleNewNotification = useCallback((newNotif: Notification, opts?: { bumpCount?: boolean }) => {
     setNotifications(prev => {
       if (prev.some(n => n.id === newNotif.id)) return prev
       return [newNotif, ...prev].slice(0, 5)
     })
-    setUnreadCount(prev => prev + 1)
+    if (opts?.bumpCount !== false) {
+      setUnreadCount(prev => prev + 1)
+    }
 
     // Only show toast popup if user has in-app notifications enabled
     if (profile.in_app_notifications !== false) {
@@ -236,9 +247,13 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
         },
         (payload: any) => {
           const updated = payload.new as Notification
-          setNotifications(prev =>
-            prev.map(n => n.id === updated.id ? updated : n)
-          )
+          setNotifications(prev => {
+            const wasUnread = prev.some(n => n.id === updated.id && !n.read)
+            if (updated.read && wasUnread) {
+              setUnreadCount(count => Math.max(0, count - 1))
+            }
+            return prev.map(n => n.id === updated.id ? updated : n)
+          })
         }
       )
       .subscribe()
@@ -252,23 +267,31 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   // Polling fallback: check for new notifications every 15s in case realtime misses them
   useEffect(() => {
     const poll = async () => {
-      const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', profile.id)
-        .eq('read', false)
-        .order('created_at', { ascending: false })
-        .limit(5)
+      const [{ count }, { data }] = await Promise.all([
+        supabase
+          .from('notifications')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('read', false),
+        supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', profile.id)
+          .eq('read', false)
+          .order('created_at', { ascending: false })
+          .limit(5),
+      ])
+
+      if (typeof count === 'number') {
+        setUnreadCount(count)
+      }
 
       if (data) {
-        // Update unread count
-        setUnreadCount(data.length)
-
         // Check for any new notifications we haven't seen
         for (const notif of data) {
           if (!knownNotifIds.current.has(notif.id)) {
             knownNotifIds.current.add(notif.id)
-            handleNewNotification(notif)
+            handleNewNotification(notif, { bumpCount: false })
           }
         }
       }
@@ -281,28 +304,24 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
 
   const handleMarkAsRead = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    const { error } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('id', id)
-
-    if (!error) {
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
-      setUnreadCount(prev => Math.max(0, prev - 1))
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+    setUnreadCount(prev => Math.max(0, prev - 1))
+    const result = await markNotificationRead(id)
+    if (result.error) {
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: false } : n))
+      setUnreadCount(prev => prev + 1)
     }
   }
 
   const handleNotificationClick = async (notification: Notification) => {
     // Mark as read if unread
     if (!notification.read) {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ read: true })
-        .eq('id', notification.id)
-
-      if (!error) {
-        setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n))
-        setUnreadCount(prev => Math.max(0, prev - 1))
+      setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n))
+      setUnreadCount(prev => Math.max(0, prev - 1))
+      const result = await markNotificationRead(notification.id)
+      if (result.error) {
+        setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: false } : n))
+        setUnreadCount(prev => prev + 1)
       }
     }
 
@@ -325,17 +344,17 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   }
 
   const handleMarkAllRead = async () => {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('user_id', profile.id)
-      .eq('read', false)
-
-    if (!error) {
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-      setUnreadCount(0)
-      router.refresh()
+    const previous = notifications
+    const previousCount = unreadCount
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    setUnreadCount(0)
+    const result = await markAllNotificationsRead()
+    if (result.error) {
+      setNotifications(previous)
+      setUnreadCount(previousCount)
+      return
     }
+    router.refresh()
   }
 
   const initials = profile.full_name

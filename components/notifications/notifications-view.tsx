@@ -22,6 +22,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
+import { markNotificationRead, markAllNotificationsRead } from '@/lib/notification-actions'
 
 interface NotificationsViewProps {
   userId: string
@@ -64,7 +65,7 @@ function getNotificationHref(notification: Notification, userRole?: string): str
 
   switch (notification.type) {
     case 'message':
-      return '/dashboard/messages'
+      return pairingParam ? `/dashboard/messages?pairing=${pairingParam}` : '/dashboard/messages'
     case 'covenant':
       return pairingParam ? `/dashboard/covenant?pairing=${pairingParam}` : '/dashboard/covenant'
     case 'journal_shared':
@@ -144,12 +145,8 @@ export function NotificationsView({ userId, userRole, notifications: initialNoti
   }, [userId, realtimeReady])
 
   const handleMarkAsRead = async (id: string) => {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('id', id)
-
-    if (error) {
+    const result = await markNotificationRead(id)
+    if (result.error) {
       toast.error('Failed to mark as read')
       return
     }
@@ -160,13 +157,8 @@ export function NotificationsView({ userId, userRole, notifications: initialNoti
   }
 
   const handleMarkAllAsRead = async () => {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('user_id', userId)
-      .eq('read', false)
-
-    if (error) {
+    const result = await markAllNotificationsRead()
+    if (result.error) {
       toast.error('Failed to mark all as read')
       return
     }
@@ -178,12 +170,8 @@ export function NotificationsView({ userId, userRole, notifications: initialNoti
 
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.read) {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ read: true })
-        .eq('id', notification.id)
-
-      if (!error) {
+      const result = await markNotificationRead(notification.id)
+      if (!result.error) {
         setNotifications(prev =>
           prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
         )

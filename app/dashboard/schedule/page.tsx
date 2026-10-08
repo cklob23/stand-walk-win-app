@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ScheduleView } from '@/components/schedule/schedule-view'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
+import { pickActivePairing, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 
 export default async function SchedulePage({
     searchParams,
@@ -46,14 +47,10 @@ export default async function SchedulePage({
             .order('created_at', { ascending: false })
 
         if (allPairings && allPairings.length > 0) {
-            // Use selected pairing from URL or default to most recent
-            const selectedPairing = selectedPairingId
-                ? allPairings.find(p => p.id === selectedPairingId)
-                : allPairings[0]
-
+            const selectedPairing = pickActivePairing(allPairings, 'leader', [selectedPairingId])
             if (selectedPairing) {
                 pairing = selectedPairing
-                partner = selectedPairing.learner
+                partner = unwrapJoinedProfile(selectedPairing.learner)
             }
         }
     } else {
@@ -71,7 +68,7 @@ export default async function SchedulePage({
 
         if (data) {
             pairing = data
-            partner = data.leader
+            partner = unwrapJoinedProfile(data.leader)
         }
     }
 

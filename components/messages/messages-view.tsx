@@ -56,6 +56,14 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
     return el.scrollHeight - el.scrollTop - el.clientHeight < 150
   }
 
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const el = scrollContainerRef.current
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior })
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
+  }, [])
+
   // Auto-scroll: always when user sent a message, otherwise only if near bottom and new messages arrived
   useEffect(() => {
     const newCount = messages.length
@@ -66,13 +74,13 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
       // User just sent a message -- always scroll to bottom
       if (userSentMessageRef.current) {
         userSentMessageRef.current = false
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        requestAnimationFrame(() => scrollToLatest('smooth'))
       } else if (isNearBottom()) {
         // Incoming message from partner -- only scroll if already near bottom
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        requestAnimationFrame(() => scrollToLatest('smooth'))
       }
     }
-  }, [messages])
+  }, [messages, scrollToLatest])
 
   // Scroll when typing indicator appears (only if near bottom)
   useEffect(() => {
@@ -83,25 +91,16 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
 
   // Scroll to bottom on initial mount and when initialMessages changes
   useEffect(() => {
-    // Immediate scroll attempt
-    messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+    scrollToLatest('instant')
 
-    // Delayed scroll to ensure content is fully rendered (especially on mobile)
-    const timeoutId = setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
-    }, 100)
-
-    // Additional delayed scroll for slower devices/connections
-    const timeoutId2 = setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
-    }, 300)
+    const timeoutId = setTimeout(() => scrollToLatest('instant'), 100)
+    const timeoutId2 = setTimeout(() => scrollToLatest('instant'), 300)
 
     return () => {
       clearTimeout(timeoutId)
       clearTimeout(timeoutId2)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialMessages.length])
+  }, [initialMessages.length, scrollToLatest])
 
   // Channel ref for typing broadcasts
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
@@ -483,6 +482,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
       }
 
       setMessages((prev) => [...prev, optimisticMessage])
+      requestAnimationFrame(() => scrollToLatest('smooth'))
 
       const insertPayload: Record<string, unknown> = {
         pairing_id: pairing.id, sender_id: profile.id, content,

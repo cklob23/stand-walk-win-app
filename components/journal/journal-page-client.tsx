@@ -50,12 +50,25 @@ export function JournalPageClient({
     const [showEditor, setShowEditor] = useState(false)
     const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null)
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+    const [entriesState, setEntriesState] = useState<JournalEntry[]>(entries)
+    const [todayEntryState, setTodayEntryState] = useState<JournalEntry | null>(todayEntry)
+
+    useEffect(() => {
+        setEntriesState(entries)
+    }, [entries])
+
+    useEffect(() => {
+        setTodayEntryState(todayEntry)
+    }, [todayEntry])
 
     // Generate tour steps based on whether today's entry exists
-    const journalTourSteps = useMemo(() => getJournalSteps(!!todayEntry), [todayEntry])
+    const journalTourSteps = useMemo(() => getJournalSteps(!!todayEntryState), [todayEntryState])
 
-    // Ensure the server has the correct local date for "today" queries
+    // Ensure the server has the correct local date for "today" queries.
+    // Don't rewrite the URL while the editor is open — that remount used to
+    // swallow the first Save (no toast, no row) and let a second click insert twice.
     useEffect(() => {
+        if (showEditor) return
         const localDate = new Date().toLocaleDateString('en-CA') // yyyy-MM-dd format
         const urlDate = searchParamsHook.get('localDate')
         if (urlDate !== localDate) {
@@ -63,11 +76,11 @@ export function JournalPageClient({
             params.set('localDate', localDate)
             router.replace(`/dashboard/journal?${params.toString()}`)
         }
-    }, [searchParamsHook, router])
+    }, [searchParamsHook, router, showEditor])
 
     const handleNewEntry = () => {
-        if (todayEntry) {
-            setEditingEntry(todayEntry)
+        if (todayEntryState) {
+            setEditingEntry(todayEntryState)
         } else {
             setEditingEntry(null)
         }
@@ -82,6 +95,37 @@ export function JournalPageClient({
     const handleCloseEditor = () => {
         setShowEditor(false)
         setEditingEntry(null)
+    }
+
+    const handleSaved = (saved: {
+        id: string
+        journal_date: string
+        prayer_items: string
+        god_speaking: string
+        pairing_id: string
+    }) => {
+        const next: JournalEntry = {
+            id: saved.id,
+            journal_date: saved.journal_date,
+            prayer_items: saved.prayer_items,
+            god_speaking: saved.god_speaking,
+            shared_with_leader: false,
+            shared_sections: {},
+            custom_entries: [],
+            pairing_id: saved.pairing_id,
+            created_at: new Date().toISOString(),
+            attachments: [],
+        }
+        setEntriesState(prev => {
+            const idx = prev.findIndex(e => e.id === saved.id || e.journal_date === saved.journal_date)
+            if (idx >= 0) {
+                const copy = [...prev]
+                copy[idx] = { ...copy[idx], ...next, attachments: copy[idx].attachments }
+                return copy
+            }
+            return [next, ...prev]
+        })
+        setTodayEntryState(prev => prev ? { ...prev, ...next, attachments: prev.attachments } : next)
     }
 
     return (
@@ -107,7 +151,7 @@ export function JournalPageClient({
                     </p>
                 </div>
                 <Button data-tour="journal-new" onClick={handleNewEntry} size="sm" className="gap-1.5 shrink-0">
-                    {todayEntry?.prayer_items?.trim() ? (
+                    {todayEntryState?.prayer_items?.trim() ? (
                         <>
                             <PenLine className="h-4 w-4" />
                             <span className="hidden sm:inline">{"Edit Today's Reflection"}</span>
@@ -135,10 +179,11 @@ export function JournalPageClient({
                     } : null}
                     existingAttachments={
                         // Only show attachments with section_key 'daily' for the daily reflection editor
-                        (editingEntry?.attachments || todayEntry?.attachments || [])
+                        (editingEntry?.attachments || todayEntryState?.attachments || [])
                             .filter(att => att.section_key === 'daily')
                     }
                     onClose={handleCloseEditor}
+                    onSaved={handleSaved}
                 />
             )}
 
@@ -172,13 +217,13 @@ export function JournalPageClient({
                 </div>
                 <div className="mb-3">
                     <AddCustomEntryButton
-                        entries={entries}
+                        entries={entriesState}
                         pairingId={pairingId}
                         isLeaderView={isLeader}
                     />
                 </div>
                 <JournalHistory
-                    entries={entries}
+                    entries={entriesState}
                     leaderName={isLeader ? learnerName : leaderName}
                     pairingId={pairingId}
                     isLeaderView={false}
@@ -190,7 +235,7 @@ export function JournalPageClient({
             {/* Daily reflection prompt -- popup manages its own open/dismissed state */}
             <DailyJournalPopup
                 pairingId={pairingId}
-                hasEntryToday={!!todayEntry}
+                hasEntryToday={!!todayEntryState}
                 leaderName={isLeader ? learnerName : leaderName}
             />
 

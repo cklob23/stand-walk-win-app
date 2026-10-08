@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { WeekDetailView } from '@/components/week/week-detail-view'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
+import { pickActivePairing, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 import { groupAssignments } from '@/lib/assignment-grouping'
 import type { Assignment } from '@/lib/types'
 
@@ -58,14 +59,10 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
       .order('created_at', { ascending: false })
 
     if (allPairings && allPairings.length > 0) {
-      // Use selected pairing from URL or default to most recent
-      const selectedPairing = selectedPairingId
-        ? allPairings.find(p => p.id === selectedPairingId)
-        : allPairings[0]
-
+      const selectedPairing = pickActivePairing(allPairings, 'leader', [selectedPairingId])
       if (selectedPairing) {
         pairing = selectedPairing
-        partner = selectedPairing.learner
+        partner = unwrapJoinedProfile(selectedPairing.learner)
       }
     }
   } else {
@@ -83,7 +80,7 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
 
     if (data) {
       pairing = data
-      partner = data.leader
+      partner = unwrapJoinedProfile(data.leader)
     }
   }
 
@@ -99,23 +96,32 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
     redirect('/dashboard')
   }
 
-  // Get weekly content
-  const { data: weekContent } = await supabase
+  // Get weekly content for this week, scoped to the pairing's journey so a
+  // second journey's "Week 1" row cannot leak onto /dashboard/week/2.
+  let weekContentQuery = supabase
     .from('weekly_content')
     .select('*')
     .eq('week_number', weekNum)
-    .single()
+  if (pairing.journey_id) {
+    weekContentQuery = weekContentQuery.eq('journey_id', pairing.journey_id)
+  }
+  const { data: weekContent } = await weekContentQuery.limit(1).maybeSingle()
 
   if (!weekContent) {
     notFound()
   }
 
-  // Get assignments for this week
-  const { data: assignments } = await supabase
+  // Get assignments for this week — same journey scope as the dashboard so
+  // duplicate titles from another journey are not grouped in as extra questions.
+  const assignmentsQuery = supabase
     .from('assignments')
     .select('*')
     .eq('week_number', weekNum)
     .order('order_index', { ascending: true })
+  if (pairing.journey_id) {
+    assignmentsQuery.eq('journey_id', pairing.journey_id)
+  }
+  const { data: assignments } = await assignmentsQuery
 
   // Get assignment progress
   // For leaders viewing learner dashboard, fetch LEARNER's progress (not leader's)
