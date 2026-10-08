@@ -18,7 +18,6 @@ import { notifyNewMessage, notifyMessageReaction } from '@/lib/notifications'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
 import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
 import { markNotificationsReadForContext } from '@/lib/notification-actions'
-import { useRouter } from 'next/navigation'
 
 interface MessagesViewProps {
   profile: Profile
@@ -28,8 +27,33 @@ interface MessagesViewProps {
   draftMessage?: string | null
 }
 
+function GroupDateLabel({ dateStr }: { dateStr: string }) {
+  const [text, setText] = useState(dateStr)
+
+  useEffect(() => {
+    const [year, month, day] = dateStr.split('-').map(Number)
+    if (!year || !month || !day) {
+      setText(dateStr)
+      return
+    }
+    const d = new Date(year, month - 1, day)
+    if (isToday(d)) {
+      setText('Today')
+      return
+    }
+    if (isYesterday(d)) {
+      setText('Yesterday')
+      return
+    }
+    const now = new Date()
+    const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
+    setText(diffDays < 7 ? format(d, 'EEEE') : format(d, 'EEEE, MMMM d'))
+  }, [dateStr])
+
+  return <>{text}</>
+}
+
 export function MessagesView({ profile, pairing, partner, initialMessages, draftMessage }: MessagesViewProps) {
-  const router = useRouter()
   const [messages, setMessages] = useState(initialMessages)
   const [newMessage, setNewMessage] = useState(draftMessage || '')
   const [isLoading, setIsLoading] = useState(false)
@@ -146,9 +170,11 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
           unreadRemaining: result.unreadRemaining,
         },
       }))
-      router.refresh()
+      // Do not router.refresh() here. The header listens for the event
+      // (unreadRemaining). A refresh of this thread after the server
+      // action races learner-switch router.push and can swallow it.
     })
-  }, [pairing.id, router])
+  }, [pairing.id])
 
   // Subscribe to real-time messages, presence, and typing (gated on auth)
   useEffect(() => {
@@ -701,12 +727,14 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
     .join('')
     .toUpperCase() || '?'
 
-  // Group messages by date
+  // Group by the UTC calendar day in the ISO string so SSR and the
+  // client build the same tree (local format() was a hydration mismatch).
   const groupedMessages: { date: string; messages: Message[] }[] = []
   let currentDate = ''
 
   messages.forEach((msg) => {
-    const msgDate = format(new Date(msg.created_at), 'yyyy-MM-dd')
+    const msgDate = (msg.created_at || '').slice(0, 10)
+    if (!msgDate) return
     if (msgDate !== currentDate) {
       currentDate = msgDate
       groupedMessages.push({ date: msgDate, messages: [msg] })
@@ -714,18 +742,6 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
       groupedMessages[groupedMessages.length - 1].messages.push(msg)
     }
   })
-
-  const formatGroupDate = (dateStr: string) => {
-    const [year, month, day] = dateStr.split('-').map(Number)
-    const d = new Date(year, month - 1, day)
-    if (isToday(d)) return 'Today'
-    if (isYesterday(d)) return 'Yesterday'
-    // Within the last week, show day name
-    const now = new Date()
-    const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
-    if (diffDays < 7) return format(d, 'EEEE')
-    return format(d, 'EEEE, MMMM d')
-  }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-4 sm:py-6">
@@ -811,7 +827,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
                   <div className="flex items-center gap-4 my-4">
                     <div className="flex-1 h-px bg-border" />
                     <span className="text-xs text-muted-foreground font-medium">
-                      {formatGroupDate(group.date)}
+                      <GroupDateLabel dateStr={group.date} />
                     </span>
                     <div className="flex-1 h-px bg-border" />
                   </div>

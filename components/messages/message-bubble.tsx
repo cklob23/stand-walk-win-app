@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -48,9 +48,19 @@ export function getFileIcon(filename: string) {
 
 function formatMessageDate(date: string) {
     const d = new Date(date)
+    if (Number.isNaN(d.getTime())) return ''
     if (isToday(d)) return format(d, 'h:mm a')
     if (isYesterday(d)) return `Yesterday ${format(d, 'h:mm a')}`
     return format(d, 'MMM d, h:mm a')
+}
+
+function LocalMessageTime({ date }: { date: string }) {
+    const [text, setText] = useState('')
+    useEffect(() => {
+        setText(formatMessageDate(date))
+    }, [date])
+    if (!text) return null
+    return <span>{text}</span>
 }
 
 export function MessageBubble({
@@ -258,7 +268,7 @@ export function MessageBubble({
                 {/* Timestamp + edit badge + read status -- only shown when showTimestamp is true */}
                 {showTimestamp && (
                     <p className={cn('text-xs text-muted-foreground mt-1 flex items-center gap-1', isOwn ? 'justify-end' : 'justify-start')}>
-                        <span>{formatMessageDate(msg.created_at)}</span>
+                        <LocalMessageTime date={msg.created_at} />
                         {msg.edited_at && (
                             <span className="italic text-muted-foreground/70">(edited)</span>
                         )}

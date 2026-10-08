@@ -16,8 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { ChevronDown, Users, UserPlus, Crown } from 'lucide-react'
 import type { Profile, Pairing, SubscriptionTier } from '@/lib/types'
 import Link from 'next/link'
-import { setSelectedPairingId } from '@/lib/selected-pairing'
-import { pathWithPairing } from '@/lib/pairing-navigation'
+import { navigateToPairing } from '@/lib/switch-pairing'
 
 interface LearnerWithPairing {
     pairing: Pairing
@@ -44,7 +43,12 @@ export function LearnerSwitcher({
     const searchParams = useSearchParams()
     const [isOpen, setIsOpen] = useState(false)
 
-    const currentLearner = learners.find(l => l.pairing.id === currentPairingId)
+    const urlPairingId = searchParams.get('pairing')
+    const activePairingId =
+        (urlPairingId && learners.some(l => l.pairing.id === urlPairingId))
+            ? urlPairingId
+            : currentPairingId
+    const currentLearner = learners.find(l => l.pairing.id === activePairingId)
 
     // Check if leader can add more learners based on their subscription tier
     const currentLearnerCount = learners.length
@@ -55,11 +59,12 @@ export function LearnerSwitcher({
         return null
     }
 
-    const handleSelectLearner = async (pairingId: string) => {
-        // Save selection to cookie for persistence across pages
-        await setSelectedPairingId(pairingId)
-        router.push(pathWithPairing(pathname, pairingId, searchParams))
-        router.refresh()
+    const handleSelectLearner = (pairingId: string) => {
+        if (pairingId === activePairingId) {
+            setIsOpen(false)
+            return
+        }
+        navigateToPairing(router, pathname, pairingId, searchParams)
         setIsOpen(false)
     }
 
@@ -154,7 +159,7 @@ export function LearnerSwitcher({
                         <DropdownMenuItem
                             key={pairing.id}
                             onClick={() => handleSelectLearner(pairing.id)}
-                            className={`flex items-center gap-3 cursor-pointer ${pairing.id === currentPairingId ? 'bg-primary/5' : ''}`}
+                            className={`flex items-center gap-3 cursor-pointer ${pairing.id === activePairingId ? 'bg-primary/5' : ''}`}
                         >
                             <Avatar className="h-8 w-8 shrink-0">
                                 {learner?.avatar_url && (
@@ -180,7 +185,7 @@ export function LearnerSwitcher({
                                     )}
                                 </div>
                             </div>
-                            {pairing.id === currentPairingId && (
+                            {pairing.id === activePairingId && (
                                 <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
                             )}
                         </DropdownMenuItem>

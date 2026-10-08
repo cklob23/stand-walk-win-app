@@ -26,8 +26,8 @@ import { useSplitScreen } from '@/contexts/split-screen-context'
 import { AppLogo } from '@/components/app-logo'
 import { useBranding } from '@/contexts/branding-context'
 import type { Notification, Profile, Pairing } from '@/lib/types'
-import { setSelectedPairingId } from '@/lib/selected-pairing'
-import { pathWithPairing } from '@/lib/pairing-navigation'
+import { navigateToPairing } from '@/lib/switch-pairing'
+import { writeSelectedPairingCookie } from '@/lib/selected-pairing-cookie'
 import { markNotificationRead, markAllNotificationsRead } from '@/lib/notification-actions'
 
 interface LearnerWithPairing {
@@ -163,8 +163,8 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   // Helper to add pairing param to URLs for leaders
   const getNavHref = (href: string) => {
     if (profile.role !== 'leader' || !activePairingId) return href
-    // Don't add pairing param to Bible and Journal pages
-    if (href === '/dashboard/bible' || href === '/dashboard/journal') return href
+    // Bible is pairing-agnostic. Journal is pairing-scoped (shared items).
+    if (href === '/dashboard/bible') return href
     const url = new URL(href, 'http://localhost')
     url.searchParams.set('pairing', activePairingId)
     return `${url.pathname}${url.search}`
@@ -193,12 +193,14 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const [switchingLearnerId, setSwitchingLearnerId] = useState<string | null>(null)
   const realtimeReady = useRealtimeAuth()
 
-  // Reset loading state when currentPairingId changes (data has loaded)
+  // Clear pending state once the URL / active pairing matches the click.
+  // Do not wait on the layout cookie — that lagged behind (or never
+  // changed the URL) when the server action swallowed router.push.
   useEffect(() => {
-    if (switchingLearnerId && currentPairingId === switchingLearnerId) {
+    if (switchingLearnerId && activePairingId === switchingLearnerId) {
       setSwitchingLearnerId(null)
     }
-  }, [currentPairingId, switchingLearnerId])
+  }, [activePairingId, switchingLearnerId])
 
   // Track known notification IDs to detect new ones from polling
   const knownNotifIds = useRef(new Set(recentNotifications.map(n => n.id)))
@@ -343,14 +345,12 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
     setNotifOpen(false)
 
     // For leaders, if this notification is from a different learner, switch to that learner
-    if (profile.role === 'leader' && notification.pairing_id && notification.pairing_id !== currentPairingId) {
-      // Check if we have this learner in our list
+    if (profile.role === 'leader' && notification.pairing_id && notification.pairing_id !== activePairingId) {
       const matchingLearner = allLearners.find(l => l.pairing.id === notification.pairing_id)
       if (matchingLearner) {
         setSwitchingLearnerId(notification.pairing_id)
-        await setSelectedPairingId(notification.pairing_id)
+        writeSelectedPairingCookie(notification.pairing_id)
         router.push(getNotificationHref(notification, notification.pairing_id, profile.role))
-        router.refresh()
         return
       }
     }
@@ -597,7 +597,8 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Your Learners</p>
                         <div className="space-y-1 max-h-48 overflow-y-auto">
                           {allLearners.map(({ pairing, learner }) => {
-                            const isSelected = pairing.id === currentPairingId
+                            const isSelected = pairing.id === activePairingId
+                            const isPending = switchingLearnerId === pairing.id
                             const learnerInitials = learner.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?'
                             const needsCovenant = !pairing.covenant_accepted_leader || !pairing.covenant_accepted_learner
                             const unreadFromLearner = learnerNotificationCounts[pairing.id] || 0
@@ -606,21 +607,19 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                               <button
                                 key={pairing.id}
                                 type="button"
-                                disabled={switchingLearnerId !== null}
-                                onClick={async () => {
-                                  setUserMenuOpen(false)
-                                  if (isSelected) return
+                                disabled={isPending}
+                                onClick={() => {
+                                  if (isSelected || switchingLearnerId === pairing.id) return
                                   setSwitchingLearnerId(pairing.id)
-                                  await setSelectedPairingId(pairing.id)
-                                  router.push(pathWithPairing(pathname, pairing.id, searchParams))
-                                  router.refresh()
+                                  navigateToPairing(router, pathname, pairing.id, searchParams)
+                                  setUserMenuOpen(false)
                                 }}
                                 className={cn(
                                   "w-full flex items-center gap-3 p-2 rounded-md text-left transition-colors border-2",
                                   isSelected
                                     ? "bg-primary/10 text-primary border-primary"
                                     : "hover:bg-muted border-transparent",
-                                  switchingLearnerId !== null && !isSelected && "opacity-50 cursor-not-allowed"
+                                  isPending && "opacity-80"
                                 )}
                               >
                                 <div className="relative">
