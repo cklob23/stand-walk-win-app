@@ -146,6 +146,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const slogan = branding.slogan ?? initialSlogan
   const urlPairingId = searchParams.get('pairing')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
 
   // Nav and page content must use the same pairing. Prefer a URL pairing only
   // when it is one of this leader's actual learners; otherwise use the pairing
@@ -548,7 +549,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
               </Popover>
 
               {/* User Menu */}
-              <DropdownMenu>
+              <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                     <Avatar key={profile.avatar_url || 'no-avatar'} className="h-9 w-9">
@@ -593,6 +594,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                                 type="button"
                                 disabled={switchingLearnerId !== null}
                                 onClick={async () => {
+                                  setUserMenuOpen(false)
                                   if (isSelected) return
                                   setSwitchingLearnerId(pairing.id)
                                   await setSelectedPairingId(pairing.id)

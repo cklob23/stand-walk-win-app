@@ -62,8 +62,8 @@ export async function markNotificationsReadForContext(options: {
     const { data, error } = await query.select('id')
     if (error) return { error: error.message }
 
-    revalidatePath('/dashboard')
-    revalidatePath('/dashboard/messages')
-    revalidatePath('/dashboard/notifications')
+    // No revalidatePath — this action is invoked from a client effect on
+    // /dashboard/messages. Revalidating here (or during RSC render) crashes
+    // that route. The caller refreshes the bell via router.refresh().
     return { success: true, marked: data?.length ?? 0 }
 }

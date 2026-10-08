@@ -17,6 +17,8 @@ import { MessageBubble, getFileIcon } from './message-bubble'
 import { notifyNewMessage, notifyMessageReaction } from '@/lib/notifications'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
 import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
+import { markNotificationsReadForContext } from '@/lib/notification-actions'
+import { useRouter } from 'next/navigation'
 
 interface MessagesViewProps {
   profile: Profile
@@ -27,6 +29,7 @@ interface MessagesViewProps {
 }
 
 export function MessagesView({ profile, pairing, partner, initialMessages, draftMessage }: MessagesViewProps) {
+  const router = useRouter()
   const [messages, setMessages] = useState(initialMessages)
   const [newMessage, setNewMessage] = useState(draftMessage || '')
   const [isLoading, setIsLoading] = useState(false)
@@ -128,6 +131,18 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
     markAsRead()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, pairing.id, profile.id])
+
+  // Clear the bell badge after the thread is on screen — must not run during RSC render
+  useEffect(() => {
+    let cancelled = false
+    markNotificationsReadForContext({ pairingId: pairing.id, types: ['message'] }).then((result) => {
+      if (cancelled || result.error || !result.marked) return
+      router.refresh()
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [pairing.id, router])
 
   // Subscribe to real-time messages, presence, and typing (gated on auth)
   useEffect(() => {
