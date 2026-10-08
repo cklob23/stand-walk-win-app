@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import {
     DropdownMenu,
@@ -17,6 +17,7 @@ import { ChevronDown, Users, UserPlus, Crown } from 'lucide-react'
 import type { Profile, Pairing, SubscriptionTier } from '@/lib/types'
 import Link from 'next/link'
 import { setSelectedPairingId } from '@/lib/selected-pairing'
+import { pathWithPairing } from '@/lib/pairing-navigation'
 
 interface LearnerWithPairing {
     pairing: Pairing
@@ -39,6 +40,8 @@ export function LearnerSwitcher({
     subscriptionTier,
 }: LearnerSwitcherProps) {
     const router = useRouter()
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
     const [isOpen, setIsOpen] = useState(false)
 
     const currentLearner = learners.find(l => l.pairing.id === currentPairingId)
@@ -55,8 +58,7 @@ export function LearnerSwitcher({
     const handleSelectLearner = async (pairingId: string) => {
         // Save selection to cookie for persistence across pages
         await setSelectedPairingId(pairingId)
-        // Navigate to dashboard with the new pairing
-        router.push(`/dashboard?pairing=${pairingId}`)
+        router.push(pathWithPairing(pathname, pairingId, searchParams))
         router.refresh()
         setIsOpen(false)
     }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import {
@@ -53,6 +53,7 @@ export function JournalPageClient({
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
     const [entriesState, setEntriesState] = useState<JournalEntry[]>(entries)
     const [todayEntryState, setTodayEntryState] = useState<JournalEntry | null>(todayEntry)
+    const [clientToday, setClientToday] = useState<string | null>(null)
 
     useEffect(() => {
         setEntriesState(entries)
@@ -62,8 +63,25 @@ export function JournalPageClient({
         setTodayEntryState(todayEntry)
     }, [todayEntry])
 
+    // Device-local "today" before paint so the New/Edit label matches the
+    // entries the server already sent (no UTC-first-render flash).
+    useLayoutEffect(() => {
+        setClientToday(new Date().toLocaleDateString('en-CA'))
+    }, [])
+
+    const todayKey = clientToday || todayEntryState?.journal_date?.slice(0, 10) || todayEntry?.journal_date?.slice(0, 10) || ''
+    const hasTodayEntry = useMemo(() => {
+        if (todayEntryState && (!todayKey || todayEntryState.journal_date?.slice(0, 10) === todayKey)) {
+            return true
+        }
+        if (todayKey) {
+            return entriesState.some(e => e.journal_date?.slice(0, 10) === todayKey)
+        }
+        return !!todayEntryState
+    }, [todayEntryState, entriesState, todayKey])
+
     // Generate tour steps based on whether today's entry exists
-    const journalTourSteps = useMemo(() => getJournalSteps(!!todayEntryState), [todayEntryState])
+    const journalTourSteps = useMemo(() => getJournalSteps(hasTodayEntry), [hasTodayEntry])
 
     // Ensure the server has the correct local date for "today" queries.
     // Don't rewrite the URL while the editor is open — that remount used to
@@ -79,13 +97,69 @@ export function JournalPageClient({
         }
     }, [searchParamsHook, router, showEditor])
 
+    const todayFromList = todayKey
+        ? entriesState.find(e => e.journal_date?.slice(0, 10) === todayKey) || null
+        : todayEntryState
+
     const handleNewEntry = () => {
-        if (todayEntryState) {
-            setEditingEntry(todayEntryState)
+        if (todayFromList || todayEntryState) {
+            setEditingEntry(todayFromList || todayEntryState)
         } else {
             setEditingEntry(null)
         }
         setShowEditor(true)
+    }
+
+    const handleCustomAdded = (added: {
+        entryId: string
+        journalDate: string
+        title: string
+        content: string
+        createdAt: string
+    }) => {
+        const custom = { title: added.title, content: added.content, created_at: added.createdAt }
+        const merge = (prev: JournalEntry | null): JournalEntry => {
+            if (!prev) {
+                return {
+                    id: added.entryId,
+                    journal_date: added.journalDate,
+                    prayer_items: '',
+                    god_speaking: '',
+                    shared_with_leader: false,
+                    shared_sections: {},
+                    custom_entries: [custom],
+                    pairing_id: pairingId,
+                    created_at: added.createdAt,
+                    updated_at: added.createdAt,
+                    attachments: [],
+                }
+            }
+            const existing = (prev.custom_entries || []).some(c => c.created_at === added.createdAt)
+            return {
+                ...prev,
+                custom_entries: existing
+                    ? prev.custom_entries
+                    : [...(prev.custom_entries || []), custom],
+            }
+        }
+        setEntriesState(prev => {
+            const idx = prev.findIndex(e => e.id === added.entryId || e.journal_date === added.journalDate)
+            if (idx >= 0) {
+                const copy = [...prev]
+                copy[idx] = merge(copy[idx])
+                return copy
+            }
+            return [merge(null), ...prev]
+        })
+        setTodayEntryState(prev => {
+            if (prev && (prev.id === added.entryId || prev.journal_date === added.journalDate)) {
+                return merge(prev)
+            }
+            if (!prev && added.journalDate === (clientToday || added.journalDate)) {
+                return merge(null)
+            }
+            return prev
+        })
     }
 
     const handleEdit = (entry: JournalEntry) => {
@@ -119,6 +193,7 @@ export function JournalPageClient({
             pairing_id: saved.pairing_id,
             created_at: now,
             updated_at: now,
+            reflection_updated_at: now,
             attachments: [],
         }
         setEntriesState(prev => {
@@ -180,7 +255,7 @@ export function JournalPageClient({
                     </p>
                 </div>
                 <Button data-tour="journal-new" onClick={handleNewEntry} size="sm" className="gap-1.5 shrink-0">
-                    {todayEntryState ? (
+                    {hasTodayEntry ? (
                         <>
                             <PenLine className="h-4 w-4" />
                             <span className="hidden sm:inline">{"Edit Today's Reflection"}</span>
@@ -249,6 +324,7 @@ export function JournalPageClient({
                         entries={entriesState}
                         pairingId={pairingId}
                         isLeaderView={isLeader}
+                        onAdded={handleCustomAdded}
                     />
                 </div>
                 <JournalHistory
@@ -259,13 +335,13 @@ export function JournalPageClient({
                     learnerName={isLeader ? learnerName : undefined}
                     onEditDaily={handleEdit}
                     sortOrder={sortOrder}
-                    hasTodayEntry={!!todayEntryState}
+                    hasTodayEntry={hasTodayEntry}
                 />
             </div>
             {/* Daily reflection prompt -- popup manages its own open/dismissed state */}
             <DailyJournalPopup
                 pairingId={pairingId}
-                hasEntryToday={!!todayEntryState}
+                hasEntryToday={hasTodayEntry}
                 leaderName={isLeader ? learnerName : leaderName}
             />
 

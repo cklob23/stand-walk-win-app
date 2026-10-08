@@ -3,9 +3,13 @@
  * agree on the same active pairing.
  *
  * Priority: URL ?pairing= (if it belongs to the user and has a partner)
- *        → selected-pairing cookie (same checks)
+ *        → selected-pairing cookie / last selection (same checks)
  *        → first active pairing with a partner
  *        → first pending pairing with a partner
+ *
+ * Never collapse URL and cookie with `url || cookie` before calling this.
+ * A bogus ?pairing= is truthy and would skip the cookie, falling through
+ * to the first pairing instead of the leader's last selected learner.
  *
  * Pairings without a partner (unclaimed invite codes) are never used for
  * nav or page content — those IDs caused blank Messages/Schedule/Covenant
@@ -41,6 +45,14 @@ export function isUsablePairing(pairing: ResolvablePairing, role: 'leader' | 'le
     const status = pairing.status || 'active'
     if (status !== 'active' && status !== 'pending') return false
     return pairingHasPartner(pairing, role)
+}
+
+/** Pass URL then cookie separately so an invalid ?pairing= can fall through. */
+export function preferredPairingIds(
+    urlPairingId?: string | null,
+    cookiePairingId?: string | null,
+): Array<string | null | undefined> {
+    return [urlPairingId, cookiePairingId]
 }
 
 export function pickActivePairing<T extends ResolvablePairing>(

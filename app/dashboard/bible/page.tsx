@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { BibleReader } from '@/components/bible/bible-reader'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
-import { pickActivePairing } from '@/lib/pairing-resolution'
+import { pickActivePairing, preferredPairingIds } from '@/lib/pairing-resolution'
 
 export const metadata = {
     title: 'Bible - Stand Walk Run',
@@ -43,7 +43,7 @@ export default async function BiblePage() {
         .order('created_at', { ascending: false })
 
     const selectedPairingId = await getSelectedPairingId()
-    const pairing = pickActivePairing(pairings, profile.role, [selectedPairingId])
+    const pairing = pickActivePairing(pairings, profile.role, preferredPairingIds(null, selectedPairingId))
 
     let weekScripture: string | null = null
     let weekNumber: number | null = null

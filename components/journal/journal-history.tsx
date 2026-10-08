@@ -38,6 +38,7 @@ export interface JournalEntry {
     pairing_id: string
     created_at: string
     updated_at?: string | null
+    reflection_updated_at?: string | null
     attachments?: JournalAttachment[]
 }
 
@@ -167,6 +168,10 @@ function journalDateKey(value?: string | null): string {
 
 function entrySortTime(entry: JournalEntry): number {
     return sortTimeOf(entry.updated_at || undefined, entry.created_at)
+}
+
+function dailySortTime(entry: JournalEntry): number {
+    return sortTimeOf(entry.reflection_updated_at || undefined, entry.created_at)
 }
 
 export function JournalHistory({
@@ -521,7 +526,7 @@ export function JournalHistory({
                             // which reorders visually without restructuring the JSX below.
                             const orderSlots: { key: string; t: number }[] = []
                             if (hasDailyContent && (!isLeaderView || dailyShared)) {
-                                orderSlots.push({ key: 'daily', t: entrySortTime(entry) })
+                                orderSlots.push({ key: 'daily', t: dailySortTime(entry) })
                             }
                             verses.forEach((verse, idx) => {
                                 if (isLeaderView && !isSectionShared(entry, `verse_${idx}`)) return
@@ -544,10 +549,10 @@ export function JournalHistory({
                                         <div style={{ order: orderMap['daily'] ?? 0 }}>
                                             <SectionCard
                                                 label="Daily Reflection"
-                                                timestamp={entry.updated_at || entry.created_at}
+                                                timestamp={entry.reflection_updated_at || entry.created_at}
                                                 timestampPrefix={
-                                                    entry.updated_at &&
-                                                    sortTimeOf(entry.updated_at) - sortTimeOf(entry.created_at) > 1000
+                                                    entry.reflection_updated_at &&
+                                                    sortTimeOf(entry.reflection_updated_at) - sortTimeOf(entry.created_at) > 1000
                                                         ? 'Edited'
                                                         : undefined
                                                 }
@@ -870,10 +875,18 @@ export function AddCustomEntryButton({
     entries,
     pairingId,
     isLeaderView,
+    onAdded,
 }: {
     entries: JournalEntry[]
     pairingId: string
     isLeaderView: boolean
+    onAdded?: (entry: {
+        entryId: string
+        journalDate: string
+        title: string
+        content: string
+        createdAt: string
+    }) => void
 }) {
     const router = useRouter()
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -984,6 +997,15 @@ export function AddCustomEntryButton({
         }
 
         toast.success('Entry added!')
+        if (targetEntryId && result.createdAt) {
+            onAdded?.({
+                entryId: targetEntryId,
+                journalDate: localDate,
+                title: newTitle.trim() || 'My Reflection',
+                content: newContent.trim(),
+                createdAt: result.createdAt,
+            })
+        }
         router.refresh()
         setAdding(false)
         setNewTitle('')

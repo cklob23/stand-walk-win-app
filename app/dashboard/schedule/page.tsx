@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ScheduleView } from '@/components/schedule/schedule-view'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
-import { pickActivePairing, unwrapJoinedProfile } from '@/lib/pairing-resolution'
+import { pickActivePairing, preferredPairingIds, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 
 export default async function SchedulePage({
     searchParams,
@@ -12,7 +12,6 @@ export default async function SchedulePage({
     const params = await searchParams
     // Use URL param first, then fall back to cookie
     const cookiePairingId = await getSelectedPairingId()
-    const selectedPairingId = params.pairing || cookiePairingId
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -47,7 +46,7 @@ export default async function SchedulePage({
             .order('created_at', { ascending: false })
 
         if (allPairings && allPairings.length > 0) {
-            const selectedPairing = pickActivePairing(allPairings, 'leader', [selectedPairingId])
+            const selectedPairing = pickActivePairing(allPairings, 'leader', preferredPairingIds(params.pairing, cookiePairingId))
             if (selectedPairing) {
                 pairing = selectedPairing
                 partner = unwrapJoinedProfile(selectedPairing.learner)
@@ -123,6 +122,7 @@ export default async function SchedulePage({
 
     return (
         <ScheduleView
+            key={pairing.id}
             profile={profile}
             pairing={pairing}
             partner={partner}

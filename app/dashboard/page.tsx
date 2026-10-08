@@ -5,7 +5,7 @@ import { LearnerDashboard } from '@/components/dashboard/learner-dashboard'
 import { NoPairingState } from '@/components/dashboard/no-pairing-state'
 import { CovenantRequired } from '@/components/dashboard/covenant-required'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
-import { pickActivePairing, unwrapJoinedProfile } from '@/lib/pairing-resolution'
+import { pickActivePairing, preferredPairingIds, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 import type { Message, Profile, Pairing, Journey, Assignment } from '@/lib/types'
 import { groupAssignments } from '@/lib/assignment-grouping'
 
@@ -76,7 +76,7 @@ export default async function DashboardPage({
       // An invalid/stale ?pairing= (or an unclaimed invite) falls back instead
       // of rendering a blank page.
       const cookiePairingId = await getSelectedPairingId()
-      const selectedPairing = pickActivePairing(allPairings, 'leader', [params.pairing, cookiePairingId])
+      const selectedPairing = pickActivePairing(allPairings, 'leader', preferredPairingIds(params.pairing, cookiePairingId))
 
       if (selectedPairing) {
         pairing = selectedPairing
@@ -488,6 +488,7 @@ export default async function DashboardPage({
   if (profile.role === 'leader') {
     return (
       <LeaderDashboard
+        key={pairing.id}
         {...dashboardProps}
         assignmentReactions={assignmentReactions}
         sharedJournalEntries={sharedJournalEntries}
@@ -499,5 +500,13 @@ export default async function DashboardPage({
     )
   }
 
-  return <LearnerDashboard {...dashboardProps} hasJournalEntryToday={hasJournalEntryToday} celebrationWeek={celebrationWeek} celebrationWeekTitle={celebrationWeekTitle} />
+  return (
+    <LearnerDashboard
+      key={pairing.id}
+      {...dashboardProps}
+      hasJournalEntryToday={hasJournalEntryToday}
+      celebrationWeek={celebrationWeek}
+      celebrationWeekTitle={celebrationWeekTitle}
+    />
+  )
 }

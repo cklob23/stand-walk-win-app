@@ -4,7 +4,8 @@ import { BookHeart } from 'lucide-react'
 import { JournalPageClient } from '@/components/journal/journal-page-client'
 import { getTodayEntry } from '@/lib/journal-actions'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
-import { pickActivePairing } from '@/lib/pairing-resolution'
+import { getLocalDateCookie } from '@/lib/local-date'
+import { pickActivePairing, preferredPairingIds } from '@/lib/pairing-resolution'
 
 export const metadata = {
     title: 'Prayer Journal - Stand Walk Run',
@@ -17,8 +18,11 @@ export default async function JournalPage({
     searchParams: Promise<{ section?: string; localDate?: string; pairing?: string }>
 }) {
     const params = await searchParams
-    // localDate is passed from the client via URL param to handle timezone correctly
-    const localDate = params.localDate || new Date().toISOString().split('T')[0]
+    // localDate: URL → device cookie (set on first client paint) → UTC fallback.
+    // Cookie avoids a first-render "New Reflection" flash when today's row
+    // exists locally but the request used the UTC date.
+    const cookieLocalDate = await getLocalDateCookie()
+    const localDate = params.localDate || cookieLocalDate || new Date().toISOString().split('T')[0]
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/auth/login')
@@ -33,7 +37,6 @@ export default async function JournalPage({
 
     // Get selected pairing from URL or cookie
     const cookiePairingId = await getSelectedPairingId()
-    const selectedPairingId = params.pairing || cookiePairingId
 
     // Get pairing(s) based on role
     let pairing = null
@@ -54,7 +57,7 @@ export default async function JournalPage({
             .order('created_at', { ascending: false })
 
         if (allPairings && allPairings.length > 0) {
-            pairing = pickActivePairing(allPairings, 'leader', [selectedPairingId])
+            pairing = pickActivePairing(allPairings, 'leader', preferredPairingIds(params.pairing, cookiePairingId))
         }
     } else {
         // Learners have one pairing
@@ -315,6 +318,7 @@ export default async function JournalPage({
 
     return (
         <JournalPageClient
+            key={pairing.id}
             isLeader={isLeader}
             leaderName={leaderName}
             learnerName={learnerName}
