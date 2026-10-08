@@ -5,6 +5,7 @@ import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { pickActivePairing } from '@/lib/pairing-resolution'
 import { SyncSelectedPairing } from '@/components/dashboard/sync-selected-pairing'
+import { SyncLocalDate } from '@/components/dashboard/sync-local-date'
 import { BrandingProvider, type OrgBranding } from '@/contexts/branding-context'
 import { SplitScreenProvider } from '@/contexts/split-screen-context'
 import { DynamicFavicon } from '@/components/dynamic-favicon'
@@ -169,6 +170,7 @@ export default async function DashboardLayout({
           <DynamicFavicon />
           <div className="min-h-screen bg-background overflow-x-hidden">
             <SyncSelectedPairing pairingId={currentPairingId} />
+            <SyncLocalDate />
             <DashboardHeader
               profile={profile}
               notificationCount={count || 0}

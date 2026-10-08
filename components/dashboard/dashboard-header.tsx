@@ -27,6 +27,7 @@ import { AppLogo } from '@/components/app-logo'
 import { useBranding } from '@/contexts/branding-context'
 import type { Notification, Profile, Pairing } from '@/lib/types'
 import { setSelectedPairingId } from '@/lib/selected-pairing'
+import { pathWithPairing } from '@/lib/pairing-navigation'
 import { markNotificationRead, markAllNotificationsRead } from '@/lib/notification-actions'
 
 interface LearnerWithPairing {
@@ -171,6 +172,21 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifications, setNotifications] = useState(recentNotifications)
   const [unreadCount, setUnreadCount] = useState(notificationCount)
+
+  useEffect(() => {
+    setUnreadCount(notificationCount)
+  }, [notificationCount])
+
+  useEffect(() => {
+    const onMarked = (event: Event) => {
+      const detail = (event as CustomEvent<{ unreadRemaining?: number }>).detail
+      if (typeof detail?.unreadRemaining === 'number') {
+        setUnreadCount(detail.unreadRemaining)
+      }
+    }
+    window.addEventListener('notifications-read', onMarked)
+    return () => window.removeEventListener('notifications-read', onMarked)
+  }, [])
   const supabase = createClient()
   const { sendNotification, requestPermission, permission, isSubscribed, isSupported } = useBrowserNotifications()
   const [enablingNotifications, setEnablingNotifications] = useState(false)
@@ -248,13 +264,11 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
         },
         (payload: any) => {
           const updated = payload.new as Notification
-          setNotifications(prev => {
-            const wasUnread = prev.some(n => n.id === updated.id && !n.read)
-            if (updated.read && wasUnread) {
-              setUnreadCount(count => Math.max(0, count - 1))
-            }
-            return prev.map(n => n.id === updated.id ? updated : n)
-          })
+          const wasUnread = (payload.old as Notification | undefined)?.read === false
+          if (updated.read && wasUnread) {
+            setUnreadCount(count => Math.max(0, count - 1))
+          }
+          setNotifications(prev => prev.map(n => n.id === updated.id ? { ...n, ...updated } : n))
         }
       )
       .subscribe()
@@ -598,7 +612,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                                   if (isSelected) return
                                   setSwitchingLearnerId(pairing.id)
                                   await setSelectedPairingId(pairing.id)
-                                  router.push(`/dashboard?pairing=${pairing.id}`)
+                                  router.push(pathWithPairing(pathname, pairing.id, searchParams))
                                   router.refresh()
                                 }}
                                 className={cn(

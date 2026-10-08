@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { CovenantView } from '@/components/covenant/covenant-view'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
-import { pickActivePairing, unwrapJoinedProfile } from '@/lib/pairing-resolution'
+import { pickActivePairing, preferredPairingIds, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 
 export default async function CovenantPage({
   searchParams,
@@ -12,7 +12,6 @@ export default async function CovenantPage({
   const params = await searchParams
   // Use URL param first, then fall back to cookie
   const cookiePairingId = await getSelectedPairingId()
-  const selectedPairingId = params.pairing || cookiePairingId
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -48,7 +47,7 @@ export default async function CovenantPage({
       .order('created_at', { ascending: false })
 
     if (allPairings && allPairings.length > 0) {
-      const selectedPairing = pickActivePairing(allPairings, 'leader', [selectedPairingId])
+      const selectedPairing = pickActivePairing(allPairings, 'leader', preferredPairingIds(params.pairing, cookiePairingId))
       if (selectedPairing) {
         pairing = selectedPairing
         partner = unwrapJoinedProfile(selectedPairing.learner)
@@ -80,6 +79,7 @@ export default async function CovenantPage({
 
   return (
     <CovenantView
+      key={pairing.id}
       profile={profile}
       pairing={pairing}
       partner={partner}

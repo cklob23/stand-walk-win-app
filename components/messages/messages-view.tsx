@@ -132,16 +132,22 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, pairing.id, profile.id])
 
-  // Clear the bell badge after the thread is on screen — must not run during RSC render
+  // Clear the bell badge after the thread is on screen — must not run during RSC render.
+  // Always notify the header (do not skip when marked=0): a Strict Mode remount
+  // can mark on the first invocation and return 0 on the second, which used
+  // to skip refresh and leave the badge stale until the 15s poll.
   useEffect(() => {
-    let cancelled = false
     markNotificationsReadForContext({ pairingId: pairing.id, types: ['message'] }).then((result) => {
-      if (cancelled || result.error || !result.marked) return
+      if (result.error) return
+      window.dispatchEvent(new CustomEvent('notifications-read', {
+        detail: {
+          pairingId: pairing.id,
+          marked: result.marked ?? 0,
+          unreadRemaining: result.unreadRemaining,
+        },
+      }))
       router.refresh()
     })
-    return () => {
-      cancelled = true
-    }
   }, [pairing.id, router])
 
   // Subscribe to real-time messages, presence, and typing (gated on auth)

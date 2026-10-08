@@ -2,14 +2,13 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { MessagesView } from '@/components/messages/messages-view'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
-import { pickActivePairing, unwrapJoinedProfile } from '@/lib/pairing-resolution'
+import { pickActivePairing, preferredPairingIds, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 import type { Message } from '@/lib/types'
 
 export default async function MessagesPage({ searchParams }: { searchParams: Promise<{ draft?: string; pairing?: string }> }) {
   const { draft, pairing: urlPairingId } = await searchParams
   // Use URL param first, then fall back to cookie
   const cookiePairingId = await getSelectedPairingId()
-  const selectedPairingId = urlPairingId || cookiePairingId
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -44,7 +43,7 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
       .order('created_at', { ascending: false })
 
     if (allPairings && allPairings.length > 0) {
-      const selectedPairing = pickActivePairing(allPairings, 'leader', [selectedPairingId])
+      const selectedPairing = pickActivePairing(allPairings, 'leader', preferredPairingIds(urlPairingId, cookiePairingId))
       if (selectedPairing) {
         pairing = selectedPairing
         partner = unwrapJoinedProfile(selectedPairing.learner)
@@ -108,6 +107,7 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
 
   return (
     <MessagesView
+      key={pairing.id}
       profile={profile}
       pairing={pairing}
       partner={partner}

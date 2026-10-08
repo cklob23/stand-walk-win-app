@@ -53,17 +53,22 @@ export async function saveJournalEntry(data: {
             // Always keep freeText at index 0 (may be empty) so verse entries stay at index 1+
             const newGodSpeaking = [data.godSaying.trim(), ...verseSections].join('\n\n---\n\n')
 
+            const reflectionWrite = !!(data.prayerItems?.trim() || data.godSaying?.trim())
+            const now = new Date().toISOString()
             const { error } = await supabase
                 .from('prayer_journal')
                 .update({
                     prayer_items: data.prayerItems,
                     god_speaking: newGodSpeaking,
-                    updated_at: new Date().toISOString(),
+                    updated_at: now,
+                    ...(reflectionWrite ? { reflection_updated_at: now } : {}),
                 })
                 .eq('id', existing.id)
 
             if (error) return { error: error.message }
         } else {
+            const reflectionWrite = !!(data.prayerItems?.trim() || data.godSaying?.trim())
+            const now = new Date().toISOString()
             const { data: inserted, error } = await supabase
                 .from('prayer_journal')
                 .insert({
@@ -75,6 +80,7 @@ export async function saveJournalEntry(data: {
                     shared_with_leader: data.shareWithLeader ?? false,
                     shared_sections: data.shareWithLeader ? { daily: true } : {},
                     custom_entries: [],
+                    ...(reflectionWrite ? { reflection_updated_at: now } : {}),
                 })
                 .select('id')
                 .single()
@@ -143,12 +149,14 @@ export async function updateJournalEntry(data: {
         const verseSections = sections.slice(1)
         const newGodSpeaking = [data.godSaying.trim(), ...verseSections].filter(Boolean).join('\n\n---\n\n')
 
+        const now = new Date().toISOString()
         const { error } = await supabase
             .from('prayer_journal')
             .update({
                 prayer_items: data.prayerItems,
                 god_speaking: newGodSpeaking,
-                updated_at: new Date().toISOString(),
+                updated_at: now,
+                reflection_updated_at: now,
             })
             .eq('id', data.entryId)
             .eq('user_id', user.id)

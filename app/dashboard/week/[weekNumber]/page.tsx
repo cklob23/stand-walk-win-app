@@ -2,7 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { WeekDetailView } from '@/components/week/week-detail-view'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
-import { pickActivePairing, unwrapJoinedProfile } from '@/lib/pairing-resolution'
+import { pickActivePairing, preferredPairingIds, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 import { groupAssignments } from '@/lib/assignment-grouping'
 import type { Assignment } from '@/lib/types'
 
@@ -18,7 +18,6 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
   const expandedAssignment = assignmentId || assignment
   // Use URL param first, then fall back to cookie
   const cookiePairingId = await getSelectedPairingId()
-  const selectedPairingId = urlPairingId || cookiePairingId
   const weekNum = parseInt(weekNumber, 10)
 
   if (isNaN(weekNum) || weekNum < 1 || weekNum > 6) {
@@ -59,7 +58,7 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
       .order('created_at', { ascending: false })
 
     if (allPairings && allPairings.length > 0) {
-      const selectedPairing = pickActivePairing(allPairings, 'leader', [selectedPairingId])
+      const selectedPairing = pickActivePairing(allPairings, 'leader', preferredPairingIds(urlPairingId, cookiePairingId))
       if (selectedPairing) {
         pairing = selectedPairing
         partner = unwrapJoinedProfile(selectedPairing.learner)
@@ -300,6 +299,7 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
 
   return (
     <WeekDetailView
+      key={pairing.id}
       profile={profile}
       pairing={pairing}
       partner={partner}

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { Profile, WeeklyContent, Pairing, Assignment } from "@/lib/types";
 import { groupAssignments } from "@/lib/assignment-grouping";
+import { pickActivePairing, preferredPairingIds } from "@/lib/pairing-resolution";
 
 interface Partner {
   full_name: string | null;
@@ -42,7 +43,6 @@ export default function ProgressPage() {
   // Use URL param first, then fall back to cookie
   const urlPairingId = searchParams.get('pairing');
   const cookiePairingId = getCookie('selected-pairing-id');
-  const selectedPairingId = urlPairingId || cookiePairingId;
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [pairing, setPairing] = useState<Pairing | null>(null);
@@ -87,15 +87,9 @@ export default function ProgressPage() {
           .order("created_at", { ascending: false });
 
         if (allPairings && allPairings.length > 0) {
-          const usable = allPairings.filter((p: { learner_id?: string | null; learner?: unknown }) =>
-            !!(p.learner_id || p.learner)
-          );
-          const pool = usable.length > 0 ? usable : allPairings;
-          const selected = (selectedPairingId && pool.find((p: { id: string }) => p.id === selectedPairingId))
-            || pool.find((p: { status?: string }) => p.status === 'active')
-            || pool[0];
+          const selected = pickActivePairing(allPairings, 'leader', preferredPairingIds(urlPairingId, cookiePairingId));
           pairingData = selected;
-          partnerData = selected.learner as Partner;
+          partnerData = selected?.learner as Partner;
         }
       } else {
         const { data } = await supabase
@@ -168,7 +162,7 @@ export default function ProgressPage() {
 
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPairingId, cookiePairingId]);
+  }, [urlPairingId, cookiePairingId]);
 
   if (loading) {
     return (

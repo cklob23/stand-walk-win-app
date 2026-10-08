@@ -41,7 +41,7 @@ export async function markAllNotificationsRead(): Promise<{ success?: boolean; e
 export async function markNotificationsReadForContext(options: {
     pairingId?: string | null
     types?: string[]
-}): Promise<{ success?: boolean; marked?: number; error?: string }> {
+}): Promise<{ success?: boolean; marked?: number; unreadRemaining?: number; error?: string }> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Not authenticated' }
@@ -62,8 +62,15 @@ export async function markNotificationsReadForContext(options: {
     const { data, error } = await query.select('id')
     if (error) return { error: error.message }
 
+    const { count } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('read', false)
+
     // No revalidatePath — this action is invoked from a client effect on
     // /dashboard/messages. Revalidating here (or during RSC render) crashes
-    // that route. The caller refreshes the bell via router.refresh().
-    return { success: true, marked: data?.length ?? 0 }
+    // that route. The caller refreshes the bell via router.refresh() and
+    // an immediate client event so the badge does not wait on polling.
+    return { success: true, marked: data?.length ?? 0, unreadRemaining: count ?? 0 }
 }
