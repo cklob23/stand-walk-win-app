@@ -600,7 +600,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                                   await setSelectedPairingId(pairing.id)
                                   router.push(`/dashboard?pairing=${pairing.id}`)
                                   router.refresh()
-                                }}}
+                                }}
                                 className={cn(
                                   "w-full flex items-center gap-3 p-2 rounded-md text-left transition-colors border-2",
                                   isSelected
