@@ -24,7 +24,7 @@ import { Video, Phone, MapPin, Monitor } from 'lucide-react'
 import { WeeklyTimeline } from './weekly-timeline'
 import { AddToCalendarButton } from '@/components/add-to-calendar-button'
 import { QuickChat } from './quick-chat'
-import { format, parseISO } from 'date-fns'
+import { formatLocalDateKey } from '@/lib/local-datetime'
 import { scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
@@ -299,7 +299,7 @@ export function LeaderDashboard({
               {nextMeeting ? (
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-foreground">
-                    {new Date(nextMeeting.meeting_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    {formatLocalDateKey(nextMeeting.meeting_date, 'EEE, MMM d')}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {(() => {
@@ -424,7 +424,7 @@ export function LeaderDashboard({
                 {sharedJournalEntries.slice(0, 3).map((entry) => (
                   <div key={entry.id} className="rounded-lg border p-3 space-y-2">
                     <p className="text-xs font-medium text-muted-foreground">
-                      {format(parseISO(entry.entry_date), 'MMM d, yyyy')}
+                      {formatLocalDateKey(entry.entry_date, 'MMM d, yyyy')}
                     </p>
                     {entry.prayer_items && (
                       <p className="text-sm text-foreground line-clamp-2">{entry.prayer_items}</p>
@@ -434,7 +434,7 @@ export function LeaderDashboard({
                     )}
                     <Button variant="outline" size="sm" className="h-7 text-xs gap-1 bg-transparent" asChild>
                       <Link
-                        href={`/dashboard/schedule?notes=${encodeURIComponent(`Discuss journal entry from ${format(parseISO(entry.entry_date), 'MMM d')}: ${entry.prayer_items?.slice(0, 80) || entry.god_saying?.slice(0, 80) || 'Prayer journal'}`)}`}
+                        href={`/dashboard/schedule?notes=${encodeURIComponent(`Discuss journal entry from ${formatLocalDateKey(entry.entry_date, 'MMM d')}: ${entry.prayer_items?.slice(0, 80) || entry.god_saying?.slice(0, 80) || 'Prayer journal'}`)}`}
                       >
                         <CalendarPlus className="h-3 w-3" />
                         Schedule Meeting

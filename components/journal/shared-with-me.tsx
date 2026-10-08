@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { BookOpen, MessageSquare, PenLine, ChevronDown, ChevronUp, ExternalLink, Reply, Loader2, Send, Smile, FileText, Mic, Eye } from 'lucide-react'
 import { AttachmentPreviewModal } from '@/components/messages/attachment-preview-modal'
-import { format } from 'date-fns'
 import { scriptureToUrl } from '@/lib/bible-utils'
+import { LocalDateTime } from '@/components/ui/local-datetime'
 import { replyToSharedItem, toggleJournalReaction, type JournalReaction, type JournalAttachment } from '@/lib/journal-actions'
 import { toast } from 'sonner'
 import Link from 'next/link'
@@ -160,7 +160,7 @@ export function SharedWithMe({ items, autoOpen = false, pairingId, currentUserNa
                                         </span>
                                     </div>
                                     <span className="text-[10px] text-muted-foreground">
-                                        {format(new Date(item.created_at), 'MMM d, yyyy, h:mm a')}
+                                        <LocalDateTime value={item.created_at} pattern="MMM d, yyyy, h:mm a" />
                                     </span>
                                 </div>
 
@@ -283,7 +283,7 @@ export function SharedWithMe({ items, autoOpen = false, pairingId, currentUserNa
                                         <p className="text-sm text-foreground/85">{item.reply_text}</p>
                                         {item.replied_at && (
                                             <p className="text-[10px] text-muted-foreground mt-1">
-                                                {format(new Date(item.replied_at), 'MMM d, h:mm a')}
+                                                <LocalDateTime value={item.replied_at} pattern="MMM d, h:mm a" />
                                             </p>
                                         )}
                                     </div>

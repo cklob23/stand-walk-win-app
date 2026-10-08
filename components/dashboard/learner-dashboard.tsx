@@ -30,6 +30,7 @@ import { WeeklyTimeline } from './weekly-timeline'
 import { QuickChat } from './quick-chat'
 import { AddToCalendarButton } from '@/components/add-to-calendar-button'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
+import { formatLocalDateKey } from '@/lib/local-datetime'
 import { scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
@@ -474,7 +475,7 @@ export function LearnerDashboard({
               {nextMeeting ? (
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-foreground">
-                    {new Date(nextMeeting.meeting_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    {formatLocalDateKey(nextMeeting.meeting_date, 'EEE, MMM d')}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {(() => {

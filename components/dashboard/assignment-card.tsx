@@ -39,6 +39,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
+import { LocalDateTime } from '@/components/ui/local-datetime'
 import type { Assignment } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { notifyAssignmentCompleted, advanceToNextWeek } from '@/lib/notifications'
@@ -910,7 +911,7 @@ export function AssignmentCard({
                       {learnerName || 'Learner'} completed
                       {learnerProgress.completed_at && (
                         <span className="ml-1 opacity-75">
-                          {new Date(learnerProgress.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          <LocalDateTime value={learnerProgress.completed_at} pattern="MMM d" />
                         </span>
                       )}
                     </Badge>
@@ -1057,7 +1058,7 @@ export function AssignmentCard({
                     <p className="text-sm text-foreground whitespace-pre-wrap">{learnerProgress.leader_reply}</p>
                     {learnerProgress.leader_reply_at && (
                       <p className="text-xs text-muted-foreground">
-                        {new Date(learnerProgress.leader_reply_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        <LocalDateTime value={learnerProgress.leader_reply_at} pattern="MMM d, h:mm a" />
                       </p>
                     )}
                   </div>
@@ -1379,7 +1380,7 @@ export function AssignmentCard({
                     <p className="text-sm text-foreground whitespace-pre-wrap">{progress.leader_reply}</p>
                     {progress.leader_reply_at && (
                       <p className="text-xs text-muted-foreground">
-                        {new Date(progress.leader_reply_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        <LocalDateTime value={progress.leader_reply_at} pattern="MMM d, h:mm a" />
                       </p>
                     )}
                   </div>
