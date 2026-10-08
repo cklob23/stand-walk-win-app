@@ -87,10 +87,13 @@ export default function ProgressPage() {
           .order("created_at", { ascending: false });
 
         if (allPairings && allPairings.length > 0) {
-          // Use selected pairing from URL or default to most recent
-          const selected = selectedPairingId
-            ? allPairings.find((p: { id: string }) => p.id === selectedPairingId) || allPairings[0]
-            : allPairings[0];
+          const usable = allPairings.filter((p: { learner_id?: string | null; learner?: unknown }) =>
+            !!(p.learner_id || p.learner)
+          );
+          const pool = usable.length > 0 ? usable : allPairings;
+          const selected = (selectedPairingId && pool.find((p: { id: string }) => p.id === selectedPairingId))
+            || pool.find((p: { status?: string }) => p.status === 'active')
+            || pool[0];
           pairingData = selected;
           partnerData = selected.learner as Partner;
         }

@@ -26,15 +26,30 @@ interface DailyJournalPopupProps {
 }
 
 const LS_KEY = 'swr-journal-dismissed'
+const SS_KEY = 'swr-journal-dismissed-session'
+
+// In-memory flag so a remount in the same tab (localDate URL rewrite, RSC
+// refresh) cannot show the popup again even if storage is unavailable.
+let dismissedThisSession = false
 
 function getDismissedDate(): string | null {
     if (typeof window === 'undefined') return null
-    return localStorage.getItem(LS_KEY)
+    try {
+        return localStorage.getItem(LS_KEY) || sessionStorage.getItem(SS_KEY)
+    } catch {
+        return null
+    }
 }
 
 function setDismissedToday(): void {
     const today = new Date().toLocaleDateString('en-CA') // local yyyy-MM-dd
-    localStorage.setItem(LS_KEY, today)
+    dismissedThisSession = true
+    try {
+        localStorage.setItem(LS_KEY, today)
+        sessionStorage.setItem(SS_KEY, today)
+    } catch {
+        // private mode / blocked storage — in-memory flag still holds for the tab
+    }
 }
 
 export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: DailyJournalPopupProps) {
@@ -46,6 +61,12 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
     const [shareWithLeader, setShareWithLeader] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [pendingFiles, setPendingFiles] = useState<File[]>([])
+    const savingLock = useRef(false)
+    const clientSaveId = useRef(
+        typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `popup-${Date.now()}`
+    )
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || [])
@@ -96,10 +117,14 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
     useEffect(() => {
         // Only show if learner hasn't already written today and hasn't dismissed today
         if (hasEntryToday) return
+        if (dismissedThisSession) return
 
         const today = new Date().toLocaleDateString('en-CA')
         const dismissed = getDismissedDate()
-        if (dismissed === today) return
+        if (dismissed === today) {
+            dismissedThisSession = true
+            return
+        }
 
         let unsub: (() => void) | null = null
         let delayTimer: ReturnType<typeof setTimeout> | null = null
@@ -139,11 +164,13 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
     }
 
     const handleSave = async () => {
+        if (savingLock.current || isSaving) return
         if (!prayerItems.trim() && !godSaying.trim()) {
             toast.error('Please fill in at least one of the prompts.')
             return
         }
 
+        savingLock.current = true
         setIsSaving(true)
         const localDate = new Date().toLocaleDateString('en-CA') // yyyy-MM-dd
         const result = await saveJournalEntry({
@@ -152,11 +179,13 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
             pairingId,
             localDate,
             shareWithLeader,
+            clientSaveId: clientSaveId.current,
         })
 
         console.log('[v0] saveJournalEntry result:', result)
         if (result.error) {
             toast.error(result.error)
+            savingLock.current = false
         } else {
             // Upload any pending files
             console.log('[v0] Checking for files to upload - entryId:', result.entryId, 'pendingFiles:', pendingFiles.length)

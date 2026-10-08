@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { CovenantView } from '@/components/covenant/covenant-view'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
+import { pickActivePairing, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 
 export default async function CovenantPage({
   searchParams,
@@ -47,16 +48,10 @@ export default async function CovenantPage({
       .order('created_at', { ascending: false })
 
     if (allPairings && allPairings.length > 0) {
-      // Use selected pairing from URL or default to most recent
-      const selectedPairing = selectedPairingId
-        ? allPairings.find(p => p.id === selectedPairingId)
-        : allPairings[0]
-
+      const selectedPairing = pickActivePairing(allPairings, 'leader', [selectedPairingId])
       if (selectedPairing) {
         pairing = selectedPairing
-        // Handle Supabase join which might return array or object
-        const learnerData = selectedPairing.learner
-        partner = Array.isArray(learnerData) ? learnerData[0] : learnerData
+        partner = unwrapJoinedProfile(selectedPairing.learner)
       }
     }
   } else {
@@ -75,9 +70,7 @@ export default async function CovenantPage({
 
     if (data) {
       pairing = data
-      // Handle Supabase join which might return array or object
-      const leaderData = data.leader
-      partner = Array.isArray(leaderData) ? leaderData[0] : leaderData
+      partner = unwrapJoinedProfile(data.leader)
     }
   }
 

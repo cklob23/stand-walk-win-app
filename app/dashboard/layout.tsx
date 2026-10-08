@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
+import { pickActivePairing } from '@/lib/pairing-resolution'
+import { SyncSelectedPairing } from '@/components/dashboard/sync-selected-pairing'
 import { BrandingProvider, type OrgBranding } from '@/contexts/branding-context'
 import { SplitScreenProvider } from '@/contexts/split-screen-context'
 import { DynamicFavicon } from '@/components/dynamic-favicon'
@@ -104,13 +106,12 @@ export default async function DashboardLayout({
           learner: p.learner as Profile
         }))
 
-      // Get selected pairing from cookie
+      // Prefer cookie only if that pairing is usable (has a learner).
+      // Never fall back to an unclaimed invite / partner-less pairing — that
+      // stale ID is what sent Messages/Schedule/Covenant to a blank redirect.
       const cookiePairingId = await getSelectedPairingId()
-      const selectedPairing = cookiePairingId
-        ? allPairings.find(p => p.id === cookiePairingId)
-        : allPairings[0]
-
-      currentPairingId = selectedPairing?.id || allPairings[0]?.id || null
+      const selectedPairing = pickActivePairing(allPairings, 'leader', [cookiePairingId])
+      currentPairingId = selectedPairing?.id || null
 
       // Fetch unread notification counts per pairing (for non-selected learners)
       const pairingIds = allPairings.map(p => p.id)
@@ -167,6 +168,7 @@ export default async function DashboardLayout({
         >
           <DynamicFavicon />
           <div className="min-h-screen bg-background overflow-x-hidden">
+            <SyncSelectedPairing pairingId={currentPairingId} />
             <DashboardHeader
               profile={profile}
               notificationCount={count || 0}

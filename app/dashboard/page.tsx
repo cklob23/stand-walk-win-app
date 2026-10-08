@@ -5,6 +5,7 @@ import { LearnerDashboard } from '@/components/dashboard/learner-dashboard'
 import { NoPairingState } from '@/components/dashboard/no-pairing-state'
 import { CovenantRequired } from '@/components/dashboard/covenant-required'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
+import { pickActivePairing, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 import type { Message, Profile, Pairing, Journey, Assignment } from '@/lib/types'
 import { groupAssignments } from '@/lib/assignment-grouping'
 
@@ -61,35 +62,25 @@ export default async function DashboardPage({
       .order('created_at', { ascending: false })
 
     if (allPairings && allPairings.length > 0) {
-      // Build list of learners with their pairings
+      // Build list of learners with their pairings (active/pending only —
+      // completed journeys live under Journey History)
       allLearners = allPairings
-        .filter(p => p.learner) // Only include pairings with learners
+        .filter(p => p.learner && (p.status === 'active' || p.status === 'pending'))
         .map(p => ({
           pairing: p as Pairing,
-          learner: p.learner as Profile
+          learner: unwrapJoinedProfile(p.learner) as Profile
         }))
+        .filter(l => !!l.learner)
 
-      // Determine which pairing to show based on:
-      // 1. URL param (highest priority)
-      // 2. Cookie (persisted selection)
-      // 3. Default to first active pairing with a learner
-      // 4. Fall back to most recent pairing
+      // URL → cookie → first active pairing that actually has a learner.
+      // An invalid/stale ?pairing= (or an unclaimed invite) falls back instead
+      // of rendering a blank page.
       const cookiePairingId = await getSelectedPairingId()
-      const selectedPairingId = params.pairing || cookiePairingId
-
-      let selectedPairing
-      if (selectedPairingId) {
-        selectedPairing = allPairings.find(p => p.id === selectedPairingId)
-      }
-
-      // If no specific pairing selected, prioritize active pairings with learners
-      if (!selectedPairing) {
-        selectedPairing = allPairings.find(p => p.status === 'active' && p.learner_id) || allPairings[0]
-      }
+      const selectedPairing = pickActivePairing(allPairings, 'leader', [params.pairing, cookiePairingId])
 
       if (selectedPairing) {
         pairing = selectedPairing
-        partner = selectedPairing.learner
+        partner = unwrapJoinedProfile(selectedPairing.learner)
       }
     }
 
@@ -134,11 +125,19 @@ export default async function DashboardPage({
     }
   }
 
-  // Get weekly content
-  const { data: weeklyContent } = await supabase
+  // Get weekly content for this pairing's journey only (avoids a second
+  // journey's Week 1 row appearing on another week's page/timeline).
+  const weeklyContentQuery = supabase
     .from('weekly_content')
     .select('*')
     .order('week_number', { ascending: true })
+  if (pairing?.journey_id) {
+    weeklyContentQuery.eq('journey_id', pairing.journey_id)
+  }
+  const { data: weeklyContentRows } = await weeklyContentQuery
+  const weeklyContent = (weeklyContentRows || []).filter((week, index, rows) =>
+    rows.findIndex(w => w.week_number === week.week_number) === index
+  )
 
   // Get journey details for the pairing
   let journeyName: string | undefined
@@ -475,7 +474,7 @@ export default async function DashboardPage({
     profile,
     pairing,
     partner,
-    weeklyContent: weeklyContent || [],
+    weeklyContent,
     assignments: assignments || [],
     assignmentProgress,
     recentMessages: recentMessages.reverse(),
@@ -494,6 +493,8 @@ export default async function DashboardPage({
         sharedJournalEntries={sharedJournalEntries}
         hasJournalEntryToday={hasJournalEntryToday}
         expandedAssignmentId={params.assignmentId}
+        allLearners={allLearners}
+        maxLearners={(profile.subscription_tier as { max_learners?: number })?.max_learners || 1}
       />
     )
   }

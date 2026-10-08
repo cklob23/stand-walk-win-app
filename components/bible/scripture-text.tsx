@@ -105,16 +105,31 @@ export function ScriptureText({ reference, translation = 'NIV', className = '' }
     const [loading, setLoading] = useState(true)
     const parsed = parseReference(reference)
 
+    const [failed, setFailed] = useState(false)
+
     useEffect(() => {
         if (!parsed) {
             setLoading(false)
+            setFailed(false)
             return
         }
 
+        let cancelled = false
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 8000)
+
         setLoading(true)
-        fetch(`/api/bible?action=verses&translation=${translation}&book=${parsed.bookId}&chapter=${parsed.chapter}`)
-            .then(r => r.json())
+        setFailed(false)
+
+        fetch(`/api/bible?action=verses&translation=${translation}&book=${parsed.bookId}&chapter=${parsed.chapter}`, {
+            signal: controller.signal,
+        })
+            .then(r => {
+                if (!r.ok) throw new Error(`Bible API ${r.status}`)
+                return r.json()
+            })
             .then(data => {
+                if (cancelled) return
                 if (data.verses && data.verses.length > 0) {
                     let filtered = data.verses
                     if (parsed.startVerse) {
@@ -127,10 +142,28 @@ export function ScriptureText({ reference, translation = 'NIV', className = '' }
                         .map((v: { text: string }) => v.text.replace(/\n/g, ' ').trim())
                         .join(' ')
                     setText(verseText || null)
+                    setFailed(!verseText)
+                } else {
+                    setText(null)
+                    setFailed(true)
                 }
                 setLoading(false)
             })
-            .catch(() => setLoading(false))
+            .catch(() => {
+                if (cancelled) return
+                setText(null)
+                setFailed(true)
+                setLoading(false)
+            })
+            .finally(() => {
+                clearTimeout(timeout)
+            })
+
+        return () => {
+            cancelled = true
+            controller.abort()
+            clearTimeout(timeout)
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [reference, translation])
 
@@ -141,7 +174,16 @@ export function ScriptureText({ reference, translation = 'NIV', className = '' }
     }
 
     if (!text) {
-        return <span className={className}>{displayRef}</span>
+        return (
+            <span className={className}>
+                {displayRef}
+                {failed ? (
+                    <span className="not-italic text-xs text-muted-foreground ml-2">
+                        Scripture text couldn{"'"}t be loaded
+                    </span>
+                ) : null}
+            </span>
+        )
     }
 
     return (

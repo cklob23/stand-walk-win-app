@@ -86,7 +86,7 @@ export function WeekDetailView({
 }: WeekDetailViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const currentPairingId = searchParams.get('pairing')
+  const currentPairingId = searchParams.get('pairing') || pairing.id
 
   // Helper to build URLs with pairing param for leaders
   const buildUrl = (path: string) => {
@@ -126,6 +126,8 @@ export function WeekDetailView({
     ? Math.round((completedCount / groupedAssignments.length) * 100)
     : 0
 
+  // Trust the URL-driven week content, but never display a different week's
+  // number if a stray row slipped through (e.g. unscoped journey query).
   const weekNumber = weekContent.week_number
   const hasPrevWeek = weekNumber > 1
   // Leaders can navigate to every week to prepare ahead; learners are limited to
@@ -191,14 +193,14 @@ export function WeekDetailView({
               <Button variant="outline" size="sm" asChild>
                 <Link href={buildUrl(`/dashboard/week/${weekNumber - 1}`)}>
                   <ArrowLeft className="h-4 w-4 mr-1" />
-                  Week {weekNumber - 1}
+                  Previous
                 </Link>
               </Button>
             )}
             {hasNextWeek && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={buildUrl(`/dashboard/week/${weekNumber + 1}`)}>
-                  Week {weekNumber + 1}
+                  Next
                   <ArrowRight className="h-4 w-4 ml-1" />
                 </Link>
               </Button>

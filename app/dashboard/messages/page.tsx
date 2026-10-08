@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { MessagesView } from '@/components/messages/messages-view'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
+import { pickActivePairing, unwrapJoinedProfile } from '@/lib/pairing-resolution'
+import { markNotificationsReadForContext } from '@/lib/notification-actions'
 import type { Message } from '@/lib/types'
 
 export default async function MessagesPage({ searchParams }: { searchParams: Promise<{ draft?: string; pairing?: string }> }) {
@@ -43,14 +45,10 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
       .order('created_at', { ascending: false })
 
     if (allPairings && allPairings.length > 0) {
-      // Use selected pairing from URL or default to most recent
-      const selectedPairing = selectedPairingId
-        ? allPairings.find(p => p.id === selectedPairingId)
-        : allPairings[0]
-
+      const selectedPairing = pickActivePairing(allPairings, 'leader', [selectedPairingId])
       if (selectedPairing) {
         pairing = selectedPairing
-        partner = selectedPairing.learner
+        partner = unwrapJoinedProfile(selectedPairing.learner)
       }
     }
   } else {
@@ -68,7 +66,7 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
 
     if (data) {
       pairing = data
-      partner = data.leader
+      partner = unwrapJoinedProfile(data.leader)
     }
   }
 
@@ -112,6 +110,9 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
     .eq('pairing_id', pairing.id)
     .neq('sender_id', user.id)
     .eq('is_read', false)
+
+  // Opening the thread should clear the matching bell badge
+  await markNotificationsReadForContext({ pairingId: pairing.id, types: ['message'] })
 
   return (
     <MessagesView

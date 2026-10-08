@@ -416,7 +416,7 @@ export function JournalHistory({
                     <p className="text-sm text-muted-foreground max-w-sm mx-auto">
                         {isLeaderView
                             ? `${learnerName || 'Your learner'} hasn't shared any journal entries with you yet.`
-                            : 'Your daily prayer journal entries will appear here. Tap "New Entry" above to write your first one!'}
+                            : 'Your daily prayer journal entries will appear here. Tap "New Reflection" above to write your first one!'}
                     </p>
                 </CardContent>
             </Card>

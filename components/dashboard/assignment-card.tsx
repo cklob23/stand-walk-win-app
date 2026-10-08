@@ -590,9 +590,11 @@ export function AssignmentCard({
                 </Badge>
               </div>
               <h4 className="font-medium text-foreground text-sm truncate">{assignment.title}</h4>
-              <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                {assignment.description}
-              </p>
+              {!isOpen && (
+                <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                  {assignment.description}
+                </p>
+              )}
             </div>
 
             {/* Expand Icon */}

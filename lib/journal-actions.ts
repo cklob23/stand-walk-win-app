@@ -7,14 +7,24 @@ import { createNotification } from '@/lib/notifications'
 // ──────────────────────────────────────────
 // Save / update the daily questions (prayers + free-text god speaking)
 // ──────────────────────────────────────────
+const recentJournalSaves = new Map<string, { entryId: string; at: number }>()
+
 export async function saveJournalEntry(data: {
     prayerItems: string
     godSaying: string
     pairingId: string
     localDate?: string // 'yyyy-MM-dd' in user's local timezone
     shareWithLeader?: boolean
+    clientSaveId?: string
 }) {
     try {
+        if (data.clientSaveId) {
+            const prior = recentJournalSaves.get(data.clientSaveId)
+            if (prior && Date.now() - prior.at < 60_000) {
+                return { success: true, entryId: prior.entryId }
+            }
+        }
+
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return { error: 'Not authenticated' }
@@ -22,12 +32,16 @@ export async function saveJournalEntry(data: {
         // Use client-provided local date, or fall back to UTC (for backward compat)
         const today = data.localDate || new Date().toISOString().split('T')[0]
 
-        const { data: existing } = await supabase
+        // maybeSingle: .single() errors (and used to throw into the catch,
+        // aborting the insert) when the learner has no row for today yet.
+        const { data: existing, error: lookupError } = await supabase
             .from('prayer_journal')
             .select('id, god_speaking')
             .eq('user_id', user.id)
             .eq('journal_date', today)
-            .single()
+            .maybeSingle()
+
+        if (lookupError) return { error: lookupError.message }
 
         let entryId: string
 
@@ -65,11 +79,35 @@ export async function saveJournalEntry(data: {
                 .select('id')
                 .single()
 
-            if (error) return { error: error.message }
-            entryId = inserted.id
+            if (error) {
+                // Unique (user_id, journal_date) race: a parallel save won.
+                // Fetch that row and treat this as success instead of inserting again.
+                if (error.code === '23505') {
+                    const { data: raced } = await supabase
+                        .from('prayer_journal')
+                        .select('id')
+                        .eq('user_id', user.id)
+                        .eq('journal_date', today)
+                        .maybeSingle()
+                    if (raced?.id) {
+                        entryId = raced.id
+                    } else {
+                        return { error: error.message }
+                    }
+                } else {
+                    return { error: error.message }
+                }
+            } else {
+                entryId = inserted.id
+            }
         }
 
-        revalidatePath('/dashboard')
+        if (data.clientSaveId) {
+            recentJournalSaves.set(data.clientSaveId, { entryId, at: Date.now() })
+        }
+
+        // Refresh the journal list; skip /dashboard so the action returns quickly
+        // (full-layout revalidate was hanging the Save button for 10s+).
         revalidatePath('/dashboard/journal')
         return { success: true, entryId }
     } catch {
