@@ -116,7 +116,7 @@ export function MessageBubble({
                 </AvatarFallback>
             </Avatar>
 
-            <div className={cn('flex-1 max-w-[85%] sm:max-w-[75%] text-left', isOwn && 'flex flex-col items-end')}>
+            <div className={cn('flex-1 min-w-0 max-w-[85%] sm:max-w-[75%] text-left', isOwn && 'flex flex-col items-end')}>
                 {/* Reply preview */}
                 {msg.reply_to && (
                     <button
@@ -240,7 +240,7 @@ export function MessageBubble({
                     {(msg.content || (msg.attachment_url && msg.attachment_type === 'link')) && (
                         <div
                             className={cn(
-                                'inline-block rounded-2xl px-4 py-2',
+                                'inline-block max-w-full rounded-2xl px-4 py-2',
                                 isOwn
                                     ? 'bg-primary text-primary-foreground rounded-tr-sm'
                                     : 'bg-muted text-foreground rounded-tl-sm'
@@ -260,7 +260,7 @@ export function MessageBubble({
                                     <span className="truncate">{msg.attachment_url.replace(/^https?:\/\//, '').slice(0, 40)}</span>
                                 </a>
                             )}
-                            {msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}
+                            {msg.content && <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</p>}
                         </div>
                     )}
                 </div>

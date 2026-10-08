@@ -172,21 +172,42 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifications, setNotifications] = useState(recentNotifications)
   const [unreadCount, setUnreadCount] = useState(notificationCount)
+  const [pairingUnread, setPairingUnread] = useState<Record<string, number>>(learnerNotificationCounts)
 
   useEffect(() => {
     setUnreadCount(notificationCount)
   }, [notificationCount])
 
   useEffect(() => {
+    setPairingUnread(learnerNotificationCounts)
+  }, [learnerNotificationCounts])
+
+  const bumpPairingUnread = useCallback((pairingId: string | null | undefined, delta: number) => {
+    if (!pairingId || delta === 0) return
+    setPairingUnread(prev => {
+      const next = Math.max(0, (prev[pairingId] || 0) + delta)
+      if (next === (prev[pairingId] || 0)) return prev
+      return { ...prev, [pairingId]: next }
+    })
+  }, [])
+
+  useEffect(() => {
     const onMarked = (event: Event) => {
-      const detail = (event as CustomEvent<{ unreadRemaining?: number }>).detail
+      const detail = (event as CustomEvent<{
+        pairingId?: string
+        marked?: number
+        unreadRemaining?: number
+      }>).detail
       if (typeof detail?.unreadRemaining === 'number') {
         setUnreadCount(detail.unreadRemaining)
+      }
+      if (detail?.pairingId && (detail.marked ?? 0) > 0) {
+        bumpPairingUnread(detail.pairingId, -(detail.marked ?? 0))
       }
     }
     window.addEventListener('notifications-read', onMarked)
     return () => window.removeEventListener('notifications-read', onMarked)
-  }, [])
+  }, [bumpPairingUnread])
   const supabase = createClient()
   const { sendNotification, requestPermission, permission, isSubscribed, isSupported } = useBrowserNotifications()
   const [enablingNotifications, setEnablingNotifications] = useState(false)
@@ -213,6 +234,9 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
     })
     if (opts?.bumpCount !== false) {
       setUnreadCount(prev => prev + 1)
+      if (!newNotif.read) {
+        bumpPairingUnread(newNotif.pairing_id, 1)
+      }
     }
 
     // Only show toast popup if user has in-app notifications enabled
@@ -234,7 +258,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
       },
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router])
+  }, [router, bumpPairingUnread])
 
   // Real-time subscription (gated on auth being ready)
   useEffect(() => {
@@ -269,6 +293,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
           const wasUnread = (payload.old as Notification | undefined)?.read === false
           if (updated.read && wasUnread) {
             setUnreadCount(count => Math.max(0, count - 1))
+            bumpPairingUnread(updated.pairing_id, -1)
           }
           setNotifications(prev => prev.map(n => n.id === updated.id ? { ...n, ...updated } : n))
         }
@@ -284,7 +309,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   // Polling fallback: check for new notifications every 15s in case realtime misses them
   useEffect(() => {
     const poll = async () => {
-      const [{ count }, { data }] = await Promise.all([
+      const [{ count }, { data }, { data: unreadPairings }] = await Promise.all([
         supabase
           .from('notifications')
           .select('*', { count: 'exact', head: true })
@@ -297,10 +322,26 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
           .eq('read', false)
           .order('created_at', { ascending: false })
           .limit(5),
+        supabase
+          .from('notifications')
+          .select('pairing_id')
+          .eq('user_id', profile.id)
+          .eq('read', false)
+          .not('pairing_id', 'is', null),
       ])
 
       if (typeof count === 'number') {
         setUnreadCount(count)
+      }
+
+      if (unreadPairings) {
+        const next: Record<string, number> = {}
+        for (const row of unreadPairings) {
+          if (row.pairing_id) {
+            next[row.pairing_id] = (next[row.pairing_id] || 0) + 1
+          }
+        }
+        setPairingUnread(next)
       }
 
       if (data) {
@@ -321,12 +362,15 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
 
   const handleMarkAsRead = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
+    const target = notifications.find(n => n.id === id)
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
     setUnreadCount(prev => Math.max(0, prev - 1))
+    bumpPairingUnread(target?.pairing_id, -1)
     const result = await markNotificationRead(id)
     if (result.error) {
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: false } : n))
       setUnreadCount(prev => prev + 1)
+      bumpPairingUnread(target?.pairing_id, 1)
     }
   }
 
@@ -335,10 +379,12 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
     if (!notification.read) {
       setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n))
       setUnreadCount(prev => Math.max(0, prev - 1))
+      bumpPairingUnread(notification.pairing_id, -1)
       const result = await markNotificationRead(notification.id)
       if (result.error) {
         setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: false } : n))
         setUnreadCount(prev => prev + 1)
+        bumpPairingUnread(notification.pairing_id, 1)
       }
     }
 
@@ -361,12 +407,15 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const handleMarkAllRead = async () => {
     const previous = notifications
     const previousCount = unreadCount
+    const previousPairing = pairingUnread
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
     setUnreadCount(0)
+    setPairingUnread({})
     const result = await markAllNotificationsRead()
     if (result.error) {
       setNotifications(previous)
       setUnreadCount(previousCount)
+      setPairingUnread(previousPairing)
       return
     }
     router.refresh()
@@ -601,7 +650,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                             const isPending = switchingLearnerId === pairing.id
                             const learnerInitials = learner.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?'
                             const needsCovenant = !pairing.covenant_accepted_leader || !pairing.covenant_accepted_learner
-                            const unreadFromLearner = learnerNotificationCounts[pairing.id] || 0
+                            const unreadFromLearner = pairingUnread[pairing.id] || 0
 
                             return (
                               <button

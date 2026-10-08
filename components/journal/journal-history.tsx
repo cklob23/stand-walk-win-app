@@ -25,6 +25,7 @@ import {
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { formatLocalDateKey } from '@/lib/local-datetime'
+import { isReflectionEdited } from '@/lib/journal-display'
 import { AttachmentPreviewModal } from '@/components/messages/attachment-preview-modal'
 
 export interface JournalEntry {
@@ -554,8 +555,7 @@ export function JournalHistory({
                                                 label="Daily Reflection"
                                                 timestamp={entry.reflection_updated_at || entry.created_at}
                                                 timestampPrefix={
-                                                    entry.reflection_updated_at &&
-                                                    sortTimeOf(entry.reflection_updated_at) - sortTimeOf(entry.created_at) > 1000
+                                                    isReflectionEdited(entry.created_at, entry.reflection_updated_at)
                                                         ? 'Edited'
                                                         : undefined
                                                 }
