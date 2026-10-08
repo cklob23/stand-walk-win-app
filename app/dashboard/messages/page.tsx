@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import { MessagesView } from '@/components/messages/messages-view'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { pickActivePairing, unwrapJoinedProfile } from '@/lib/pairing-resolution'
-import { markNotificationsReadForContext } from '@/lib/notification-actions'
 import type { Message } from '@/lib/types'
 
 export default async function MessagesPage({ searchParams }: { searchParams: Promise<{ draft?: string; pairing?: string }> }) {
@@ -103,16 +102,9 @@ export default async function MessagesPage({ searchParams }: { searchParams: Pro
     }
   }
 
-  // Mark unread messages as read
-  await supabase
-    .from('messages')
-    .update({ is_read: true })
-    .eq('pairing_id', pairing.id)
-    .neq('sender_id', user.id)
-    .eq('is_read', false)
-
-  // Opening the thread should clear the matching bell badge
-  await markNotificationsReadForContext({ pairingId: pairing.id, types: ['message'] })
+  // Do not mutate or revalidatePath here — Next.js throws if a route
+  // revalidates during render. MessagesView marks messages + message
+  // notifications as read after mount, then refreshes the bell count.
 
   return (
     <MessagesView
