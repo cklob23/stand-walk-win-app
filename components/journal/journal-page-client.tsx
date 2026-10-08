@@ -91,7 +91,9 @@ export function JournalPageClient({
         const localDate = new Date().toLocaleDateString('en-CA') // yyyy-MM-dd format
         const urlDate = searchParamsHook.get('localDate')
         if (urlDate !== localDate) {
-            const params = new URLSearchParams(searchParamsHook.toString())
+            // Read the live URL so we do not clobber a just-pushed ?pairing=
+            // with a stale useSearchParams snapshot.
+            const params = new URLSearchParams(window.location.search)
             params.set('localDate', localDate)
             router.replace(`/dashboard/journal?${params.toString()}`)
         }
