@@ -17,6 +17,7 @@ import { ChevronDown, Users, UserPlus, Crown } from 'lucide-react'
 import type { Profile, Pairing, SubscriptionTier } from '@/lib/types'
 import Link from 'next/link'
 import { navigateToPairing } from '@/lib/switch-pairing'
+import { useUnreadToLeader } from '@/components/dashboard/unread-to-leader-provider'
 
 interface LearnerWithPairing {
     pairing: Pairing
@@ -42,6 +43,7 @@ export function LearnerSwitcher({
     const pathname = usePathname()
     const searchParams = useSearchParams()
     const [isOpen, setIsOpen] = useState(false)
+    const { unreadByPairing } = useUnreadToLeader()
 
     const urlPairingId = searchParams.get('pairing')
     const activePairingId =
@@ -49,6 +51,9 @@ export function LearnerSwitcher({
             ? urlPairingId
             : currentPairingId
     const currentLearner = learners.find(l => l.pairing.id === activePairingId)
+    const currentUnread = currentLearner
+        ? unreadByPairing[currentLearner.pairing.id] || 0
+        : 0
 
     // Check if leader can add more learners based on their subscription tier
     const currentLearnerCount = learners.length
@@ -82,14 +87,21 @@ export function LearnerSwitcher({
         return (
             <div className={className}>
                 <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
-                    <Avatar className="h-8 w-8">
-                        {currentLearner?.learner?.avatar_url && (
-                            <AvatarImage src={currentLearner.learner.avatar_url} alt={currentLearner.learner.full_name || 'Learner'} />
+                    <div className="relative">
+                        <Avatar className="h-8 w-8">
+                            {currentLearner?.learner?.avatar_url && (
+                                <AvatarImage src={currentLearner.learner.avatar_url} alt={currentLearner.learner.full_name || 'Learner'} />
+                            )}
+                            <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                                {getInitials(currentLearner?.learner?.full_name)}
+                            </AvatarFallback>
+                        </Avatar>
+                        {currentUnread > 0 && (
+                            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+                                {currentUnread > 9 ? '9+' : currentUnread}
+                            </span>
                         )}
-                        <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                            {getInitials(currentLearner?.learner?.full_name)}
-                        </AvatarFallback>
-                    </Avatar>
+                    </div>
                     <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">
                             {currentLearner?.learner?.full_name || 'Learner'}
@@ -124,14 +136,21 @@ export function LearnerSwitcher({
                 <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="w-full justify-between gap-2 h-auto py-2 px-3 bg-background">
                         <div className="flex items-center gap-3 min-w-0">
-                            <Avatar className="h-8 w-8 shrink-0">
-                                {currentLearner?.learner?.avatar_url && (
-                                    <AvatarImage src={currentLearner.learner.avatar_url} alt={currentLearner.learner.full_name || 'Learner'} />
+                            <div className="relative shrink-0">
+                                <Avatar className="h-8 w-8">
+                                    {currentLearner?.learner?.avatar_url && (
+                                        <AvatarImage src={currentLearner.learner.avatar_url} alt={currentLearner.learner.full_name || 'Learner'} />
+                                    )}
+                                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                                        {getInitials(currentLearner?.learner?.full_name)}
+                                    </AvatarFallback>
+                                </Avatar>
+                                {currentUnread > 0 && (
+                                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+                                        {currentUnread > 9 ? '9+' : currentUnread}
+                                    </span>
                                 )}
-                                <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                                    {getInitials(currentLearner?.learner?.full_name)}
-                                </AvatarFallback>
-                            </Avatar>
+                            </div>
                             <div className="flex-1 min-w-0 text-left">
                                 <p className="text-sm font-medium truncate">
                                     {currentLearner?.learner?.full_name || 'Select Learner'}
@@ -141,12 +160,7 @@ export function LearnerSwitcher({
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                            <Badge variant="secondary" className="text-xs">
-                                {learners.length}
-                            </Badge>
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        </div>
+                        <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-[280px]">
@@ -161,14 +175,21 @@ export function LearnerSwitcher({
                             onClick={() => handleSelectLearner(pairing.id)}
                             className={`flex items-center gap-3 cursor-pointer ${pairing.id === activePairingId ? 'bg-primary/5' : ''}`}
                         >
-                            <Avatar className="h-8 w-8 shrink-0">
-                                {learner?.avatar_url && (
-                                    <AvatarImage src={learner.avatar_url} alt={learner.full_name || 'Learner'} />
+                            <div className="relative shrink-0">
+                                <Avatar className="h-8 w-8">
+                                    {learner?.avatar_url && (
+                                        <AvatarImage src={learner.avatar_url} alt={learner.full_name || 'Learner'} />
+                                    )}
+                                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                                        {getInitials(learner?.full_name)}
+                                    </AvatarFallback>
+                                </Avatar>
+                                {(unreadByPairing[pairing.id] || 0) > 0 && (
+                                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+                                        {(unreadByPairing[pairing.id] || 0) > 9 ? '9+' : unreadByPairing[pairing.id]}
+                                    </span>
                                 )}
-                                <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                                    {getInitials(learner?.full_name)}
-                                </AvatarFallback>
-                            </Avatar>
+                            </div>
                             <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium truncate">
                                     {learner?.full_name || 'Learner'}
