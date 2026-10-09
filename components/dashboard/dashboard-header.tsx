@@ -30,6 +30,7 @@ import { navigateToPairing } from '@/lib/switch-pairing'
 import { writeSelectedPairingCookie } from '@/lib/selected-pairing-cookie'
 import { markNotificationRead, markAllNotificationsRead } from '@/lib/notification-actions'
 import { tallyUnreadByPairing, type UnreadNotificationRow } from '@/lib/notification-unread'
+import { useUnreadToLeader } from '@/components/dashboard/unread-to-leader-provider'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -174,6 +175,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
   const [notifications, setNotifications] = useState(recentNotifications)
   const [unreadCount, setUnreadCount] = useState(notificationCount)
   const [pairingUnread, setPairingUnread] = useState<Record<string, number>>(learnerNotificationCounts)
+  const { unreadByPairing, bumpPairingUnread: bumpUnreadToLeader } = useUnreadToLeader()
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
@@ -267,6 +269,9 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
       setUnreadCount(prev => prev + 1)
       if (!newNotif.read) {
         bumpPairingUnread(newNotif.pairing_id, 1)
+        if (newNotif.type === 'message') {
+          bumpUnreadToLeader(newNotif.pairing_id, 1)
+        }
       }
     }
 
@@ -289,7 +294,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
       },
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, bumpPairingUnread])
+  }, [router, bumpPairingUnread, bumpUnreadToLeader])
 
   // Real-time subscription (gated on auth being ready)
   useEffect(() => {
@@ -665,7 +670,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                             const isPending = switchingLearnerId === pairing.id
                             const learnerInitials = learner.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?'
                             const needsCovenant = !pairing.covenant_accepted_leader || !pairing.covenant_accepted_learner
-                            const unreadFromLearner = pairingUnread[pairing.id] || 0
+                            const unreadFromLearner = unreadByPairing[pairing.id] || 0
 
                             return (
                               <button
@@ -696,7 +701,7 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
                                       {learnerInitials}
                                     </AvatarFallback>
                                   </Avatar>
-                                  {!isSelected && unreadFromLearner > 0 && (
+                                  {unreadFromLearner > 0 && (
                                     <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
                                       {unreadFromLearner > 9 ? '9+' : unreadFromLearner}
                                     </span>

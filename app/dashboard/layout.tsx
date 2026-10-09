@@ -13,6 +13,8 @@ import { DashboardContent } from '@/components/dashboard/dashboard-content'
 import { CovenantRedirectGuard } from '@/components/dashboard/covenant-redirect-guard'
 import type { Profile, Pairing } from '@/lib/types'
 import { tallyUnreadByPairing } from '@/lib/notification-unread'
+import { fetchUnreadToLeader } from '@/lib/unread-to-leader'
+import { UnreadToLeaderProvider } from '@/components/dashboard/unread-to-leader-provider'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -90,6 +92,8 @@ export default async function DashboardLayout({
   let allLearners: LearnerWithPairing[] = []
   let currentPairingId: string | null = null
   let learnerNotificationCounts: Record<string, number> = {}
+  let unreadToLeader: Record<string, number> = {}
+  let pairingIds: string[] = []
 
   if (profile.role === 'leader') {
     const { data: allPairings } = await supabase
@@ -119,6 +123,12 @@ export default async function DashboardLayout({
 
       // Same unread rows as the bell — not a second query, not unread messages.
       learnerNotificationCounts = tallyUnreadByPairing(unreadRows)
+
+      // The dashboard LearnerSwitcher badge was learners.length (always 2
+      // when two pairings exist). The pill must be unread messages TO the
+      // leader on that pairing — the same rows opening the thread marks.
+      pairingIds = allPairings.map(p => p.id)
+      unreadToLeader = await fetchUnreadToLeader(supabase, user.id, pairingIds)
 
       // Check if covenant needs to be signed (for leaders)
       // Find active pairing with a learner where the LEADER hasn't signed yet
@@ -160,19 +170,25 @@ export default async function DashboardLayout({
           <div className="min-h-screen bg-background overflow-x-hidden">
             <SyncSelectedPairing pairingId={currentPairingId} />
             <SyncLocalDate />
-            <DashboardHeader
-              profile={profile}
-              notificationCount={count || 0}
-              recentNotifications={recentNotifications || []}
-              allLearners={allLearners}
-              currentPairingId={currentPairingId}
-              learnerNotificationCounts={learnerNotificationCounts}
-              maxLearners={(profile.subscription_tier as { max_learners?: number })?.max_learners || 1}
-              slogan={orgBranding?.slogan || null}
-            />
-            <main className="w-full overflow-x-hidden">
-              <DashboardContent>{children}</DashboardContent>
-            </main>
+            <UnreadToLeaderProvider
+              leaderId={profile.role === 'leader' ? user.id : null}
+              pairingIds={pairingIds}
+              initial={unreadToLeader}
+            >
+              <DashboardHeader
+                profile={profile}
+                notificationCount={count || 0}
+                recentNotifications={recentNotifications || []}
+                allLearners={allLearners}
+                currentPairingId={currentPairingId}
+                learnerNotificationCounts={learnerNotificationCounts}
+                maxLearners={(profile.subscription_tier as { max_learners?: number })?.max_learners || 1}
+                slogan={orgBranding?.slogan || null}
+              />
+              <main className="w-full overflow-x-hidden">
+                <DashboardContent>{children}</DashboardContent>
+              </main>
+            </UnreadToLeaderProvider>
           </div>
         </CovenantRedirectGuard>
       </SplitScreenProvider>
