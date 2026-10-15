@@ -130,6 +130,19 @@ export const BOOK_ID_TO_NAME: Record<string, string> = {
     '66': 'Revelation',
 }
 
+/** Default translation for the reader, dashboards, and Bible API. */
+export const DEFAULT_BIBLE_TRANSLATION = 'ESV'
+
+/**
+ * NIV is blocked by Biblica; Bolls may return an owner-complaint body instead
+ * of verses. Map NIV (and missing values) to ESV.
+ */
+export function resolveBibleTranslation(code?: string | null): string {
+    const normalized = (code || '').trim().toUpperCase()
+    if (!normalized || normalized === 'NIV') return DEFAULT_BIBLE_TRANSLATION
+    return normalized
+}
+
 /**
  * Extract book-only references from text (no chapter/verse required).
  * Matches patterns like "the Gospel of John", "the book of Romans",

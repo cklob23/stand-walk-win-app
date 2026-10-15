@@ -5,6 +5,7 @@ import { BibleReader } from '@/components/bible/bible-reader'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { pickActivePairing, preferredPairingIds } from '@/lib/pairing-resolution'
+import { resolveBibleTranslation } from '@/lib/bible-utils'
 
 export const metadata = {
     title: 'Bible - Stand Walk Run',
@@ -71,7 +72,7 @@ export default async function BiblePage() {
                     weekScripture={weekScripture}
                     weekNumber={weekNumber}
                     pairingId={pairing?.id || null}
-                    savedTranslation={profile.bible_translation_preference || null}
+                    savedTranslation={resolveBibleTranslation(profile.bible_translation_preference)}
                     savedTextSize={profile.bible_text_size || null}
                     savedBook={profile.bible_last_book || null}
                     savedChapter={profile.bible_last_chapter || null}

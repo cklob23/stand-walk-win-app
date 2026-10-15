@@ -25,7 +25,7 @@ import type { Profile, Pairing, WeeklyContent, Assignment, Reflection } from '@/
 import { AssignmentCard } from '@/components/dashboard/assignment-card'
 import { groupAssignments, getAllIdsForGroup } from '@/lib/assignment-grouping'
 import { LocalRelativeTime } from '@/components/ui/local-datetime'
-import { scriptureToUrl } from '@/lib/bible-utils'
+import { DEFAULT_BIBLE_TRANSLATION, resolveBibleTranslation, scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { weekDetailSteps } from '@/lib/tour-steps'
@@ -74,7 +74,7 @@ export function WeekDetailView({
   assignmentReactions = [],
   reflections,
   hasWeeklyMeeting = false,
-  bibleTranslation = 'ESV',
+  bibleTranslation = DEFAULT_BIBLE_TRANSLATION,
   bibleTextSize = 'base',
   expandedAssignmentId,
   journeyName,
@@ -225,7 +225,7 @@ export function WeekDetailView({
                 <p className={`font-serif italic text-foreground break-words leading-relaxed ${scriptureTextClass}`}>
                   <ScriptureText
                     reference={weekContent.scripture_reference!}
-                    translation={bibleTranslation}
+                    translation={resolveBibleTranslation(bibleTranslation)}
                   />
                 </p>
                 {scriptureToUrl(weekContent.scripture_reference!) && (

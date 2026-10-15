@@ -5,6 +5,7 @@ import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { pickActivePairing, preferredPairingIds, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 import { groupAssignments } from '@/lib/assignment-grouping'
 import type { Assignment } from '@/lib/types'
+import { resolveBibleTranslation } from '@/lib/bible-utils'
 
 interface WeekPageProps {
   params: Promise<{ weekNumber: string }>
@@ -310,7 +311,7 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
       assignmentReactions={assignmentReactions}
       reflections={reflections || []}
       hasWeeklyMeeting={hasWeeklyMeeting}
-      bibleTranslation={profile.bible_translation_preference || 'ESV'}
+      bibleTranslation={resolveBibleTranslation(profile.bible_translation_preference)}
       bibleTextSize={profile.bible_text_size || 'base'}
       expandedAssignmentId={expandedAssignment}
       journeyName={journeyName}

@@ -43,7 +43,7 @@ import { bibleSteps, bibleReadingSteps } from '@/lib/tour-steps'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
-import { BOOK_ID_TO_NAME, BOOK_MAP } from '@/lib/bible-utils'
+import { BOOK_ID_TO_NAME, BOOK_MAP, DEFAULT_BIBLE_TRANSLATION, resolveBibleTranslation } from '@/lib/bible-utils'
 
 interface BibleBook {
     id: string
@@ -67,7 +67,6 @@ interface TranslationInfo {
 }
 
 const ENGLISH_TRANSLATIONS: TranslationInfo[] = [
-    { identifier: 'NIV', name: 'New International Version' },
     { identifier: 'ESV', name: 'English Standard Version' },
     { identifier: 'NLT', name: 'New Living Translation' },
     { identifier: 'KJV', name: 'King James Version' },
@@ -236,7 +235,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     // State
     const [translation, setTranslation] = useState(
-        searchParams.get('v') || savedTranslation || 'ESV'
+        resolveBibleTranslation(searchParams.get('v') || savedTranslation)
     )
     const [textSize, setTextSize] = useState(savedTextSize || 'base')
     const [selectedBook, setSelectedBook] = useState<string | null>(initialBook)
@@ -1602,7 +1601,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         const params = new URLSearchParams()
         if (book) params.set('book', book)
         if (chapter) params.set('chapter', String(chapter))
-        if (v !== 'NIV') params.set('v', v)
+        if (v !== DEFAULT_BIBLE_TRANSLATION) params.set('v', v)
         const query = params.toString()
         router.replace(`/dashboard/bible${query ? `?${query}` : ''}`, { scroll: false })
     }, [router])
@@ -1714,7 +1713,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setSelectedBook(highlight.book_id)
         setSelectedChapter(highlight.chapter)
         setView('reading')
-        updateURL(highlight.book_id, highlight.chapter, highlight.translation || translation)
+        updateURL(highlight.book_id, highlight.chapter, resolveBibleTranslation(highlight.translation || translation))
         // Set the verse selection to trigger the action popover
         // If startVerse/endVerse provided, select the entire range
         const start = startVerse ?? highlight.verse
@@ -1737,9 +1736,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }
 
     const handleTranslationChange = (v: string) => {
-        setTranslation(v)
-        updateURL(selectedBook, selectedChapter, v)
-        savePrefs(v, textSize, skipVerseNumbers, useCloudVoices ? selectedCloudVoice : selectedVoiceURI, speechRate)
+        const resolved = resolveBibleTranslation(v)
+        setTranslation(resolved)
+        updateURL(selectedBook, selectedChapter, resolved)
+        savePrefs(resolved, textSize, skipVerseNumbers, useCloudVoices ? selectedCloudVoice : selectedVoiceURI, speechRate)
         handleStopAudio()
     }
 
@@ -2311,9 +2311,16 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             <CardTitle className="text-base">
                                 {selectedBookName} {selectedChapter}
                             </CardTitle>
-                            <Badge variant="secondary" className="text-xs">
-                                {ENGLISH_TRANSLATIONS.find(t => t.identifier === translation)?.identifier.toUpperCase()}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className="text-xs">
+                                    {ENGLISH_TRANSLATIONS.find(t => t.identifier === translation)?.identifier.toUpperCase()}
+                                </Badge>
+                                {versesData?.fallbackTranslation && (
+                                    <span className="text-xs text-muted-foreground">
+                                        Shown in {versesData.fallbackTranslation}
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
                         {/* Toolbar */}
@@ -3310,7 +3317,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                                     {bookName} {group.chapter}:{verseRange}
                                                 </span>
                                                 <Badge variant="outline" className="text-xs">
-                                                    {group.translation || 'NIV'}
+                                                    {resolveBibleTranslation(group.translation)}
                                                 </Badge>
                                             </div>
                                             {combinedNotes && (
