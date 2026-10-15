@@ -111,12 +111,7 @@ export function ScriptureText({ reference, translation = DEFAULT_BIBLE_TRANSLATI
     const [fallbackTranslation, setFallbackTranslation] = useState<string | null>(null)
 
     useEffect(() => {
-        if (!parsed) {
-            setLoading(false)
-            setFailed(false)
-            setFallbackTranslation(null)
-            return
-        }
+        if (!parsed) return
 
         let cancelled = false
         const controller = new AbortController()
@@ -176,6 +171,10 @@ export function ScriptureText({ reference, translation = DEFAULT_BIBLE_TRANSLATI
     }, [reference, resolvedTranslation])
 
     const displayRef = parsed?.cleanRef || reference
+
+    if (!parsed) {
+        return <span className={className}>{displayRef}</span>
+    }
 
     if (loading) {
         return <span className={`animate-pulse text-muted-foreground ${className}`}>Loading scripture...</span>
