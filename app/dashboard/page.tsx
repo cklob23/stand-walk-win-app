@@ -8,6 +8,7 @@ import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { pickActivePairing, preferredPairingIds, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 import type { Message, Profile, Pairing, Journey, Assignment } from '@/lib/types'
 import { groupAssignments } from '@/lib/assignment-grouping'
+import { ensureCompletedMeetingProgress } from '@/lib/meeting-progress'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -211,41 +212,26 @@ export default async function DashboardPage({
     completedMeetingsCount = meetingCount ?? 0
   }
 
-  // Auto-complete meeting assignments when meetings are completed
-  // This MUST happen before the week completion check so meetings count toward completion
+  // Auto-complete meeting assignments when meetings are completed.
+  // This MUST happen before the week completion check so meetings count toward completion.
+  // Uses the admin client (via helper) so a signed-in leader can persist the
+  // learner's meeting row — RLS otherwise rejects that write silently.
   if (pairing && assignments && completedMeetingsCount > 0) {
-    // Auto-complete meeting assignments for all weeks where enough meetings exist
-    const meetingAssignments = (assignments || []).filter(
-      (a: { assignment_type: string; week_number: number }) =>
-        a.assignment_type === 'meeting' && a.week_number <= completedMeetingsCount
-    )
+    const { wrote } = await ensureCompletedMeetingProgress({
+      callerUserId: user.id,
+      pairing: {
+        id: pairing.id,
+        leader_id: pairing.leader_id,
+        learner_id: pairing.learner_id,
+      },
+      assignments,
+      existingProgress: assignmentProgress,
+      completedMeetingsCount,
+    })
 
-    let needsRefresh = false
-    for (const meetingAssignment of meetingAssignments) {
-      const existingProgress = assignmentProgress.find(
-        p => p.assignment_id === meetingAssignment.id && p.status === 'completed'
-      )
-
-      if (!existingProgress && pairing.learner_id) {
-        await supabase
-          .from('assignment_progress')
-          .upsert({
-            pairing_id: pairing.id,
-            assignment_id: meetingAssignment.id,
-            user_id: pairing.learner_id,
-            status: 'completed',
-            notes: 'Meeting completed',
-            completed_at: new Date().toISOString(),
-          }, {
-            onConflict: 'pairing_id,assignment_id,user_id',
-            ignoreDuplicates: false
-          })
-        needsRefresh = true
-      }
-    }
-
-    // Refetch assignment progress if we inserted any records
-    if (needsRefresh) {
+    // Refetch assignment progress if we inserted any records so week
+    // advancement below sees the stored meeting row in this same request.
+    if (wrote) {
       const progressUserId = profile.role === 'leader' ? pairing.learner_id : user.id
       const { data: refreshedProgress } = await supabase
         .from('assignment_progress')

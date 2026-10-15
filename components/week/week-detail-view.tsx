@@ -109,19 +109,10 @@ export function WeekDetailView({
   const isLeader = profile.role === 'leader'
   const progressSource = isLeader && learnerProgress.length > 0 ? learnerProgress : assignmentProgress
 
-  // A grouped assignment counts as completed if its primary row's progress is completed.
-  const completedFromProgress = groupedAssignments.filter(g =>
+  // Count only stored progress rows so this view matches the leader dashboard.
+  const completedCount = groupedAssignments.filter(g =>
     progressSource.some(p => p.assignment_id === g.id && p.status === 'completed')
   ).length
-
-  // Also count meeting assignment if hasWeeklyMeeting is true but not in progress records
-  const meetingAssignment = groupedAssignments.find(a => a.assignment_type === 'meeting')
-  const meetingInProgress = meetingAssignment
-    ? progressSource.some(p => p.assignment_id === meetingAssignment.id && p.status === 'completed')
-    : false
-  const meetingAutoCompleted = hasWeeklyMeeting && meetingAssignment && !meetingInProgress ? 1 : 0
-
-  const completedCount = completedFromProgress + meetingAutoCompleted
   const progressPercentage = groupedAssignments.length > 0
     ? Math.round((completedCount / groupedAssignments.length) * 100)
     : 0
