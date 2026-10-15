@@ -79,7 +79,7 @@ export const bibleSteps: TourStep[] = [
     {
         title: 'Settings & Bible Version',
         description:
-            'Tap "Settings" to adjust text size, reading voice, and audio options. Use the version dropdown to switch between ESV, KJV, NIV, NLT and other translations.',
+            'Tap "Settings" to adjust text size, reading voice, and audio options. Use the version dropdown to switch between ESV, KJV, NLT and other translations.',
         targetSelector: '[data-tour="bible-settings"]',
     },
 ]

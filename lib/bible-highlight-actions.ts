@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { notifySharedVerse, createNotification } from '@/lib/notifications'
+import { resolveBibleTranslation } from '@/lib/bible-utils'
 
 export interface BibleHighlight {
     id: string
@@ -67,6 +68,7 @@ export async function toggleHighlight(
     if (!user) throw new Error('Not authenticated')
 
     if (!VALID_COLORS.includes(color)) throw new Error('Invalid color')
+    const resolvedTranslation = resolveBibleTranslation(translation)
 
     // Check if highlight already exists with same color
     const { data: existing } = await supabase
@@ -90,7 +92,7 @@ export async function toggleHighlight(
             // Different color = update
             const { data: updated } = await supabase
                 .from('bible_highlights')
-                .update({ color, translation })
+                .update({ color, translation: resolvedTranslation })
                 .eq('id', existing.id)
                 .select()
                 .single()
@@ -107,7 +109,7 @@ export async function toggleHighlight(
             chapter,
             verse: verseNumber,
             color,
-            translation,
+            translation: resolvedTranslation,
         })
         .select()
         .single()
@@ -643,7 +645,7 @@ export async function saveBiblePreference(
     await supabase
         .from('profiles')
         .update({
-            bible_translation_preference: translationPref,
+            bible_translation_preference: resolveBibleTranslation(translationPref),
             bible_text_size: textSize,
             bible_skip_verse_numbers: skipVerseNumbers ?? false,
             bible_voice_uri: voiceURI ?? null,
@@ -667,7 +669,7 @@ export async function saveBibleReadingPlace(
         .update({
             bible_last_book: bookId,
             bible_last_chapter: chapter,
-            bible_translation_preference: translation,
+            bible_translation_preference: resolveBibleTranslation(translation),
         })
         .eq('id', user.id)
 }

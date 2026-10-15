@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { BibleReader } from '@/components/bible/bible-reader'
 import { Loader2 } from 'lucide-react'
+import { resolveBibleTranslation } from '@/lib/bible-utils'
 
 export default function BiblePanel() {
     const [isLoading, setIsLoading] = useState(true)
@@ -61,7 +62,7 @@ export default function BiblePanel() {
     return (
         <BibleReader
             pairingId={pairing?.id}
-            savedTranslation={preferences?.translation}
+            savedTranslation={resolveBibleTranslation(preferences?.translation)}
             savedTextSize={preferences?.text_size}
             savedBook={preferences?.book}
             savedChapter={preferences?.chapter}

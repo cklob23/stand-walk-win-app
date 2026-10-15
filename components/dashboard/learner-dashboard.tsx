@@ -31,7 +31,7 @@ import { QuickChat } from './quick-chat'
 import { AddToCalendarButton } from '@/components/add-to-calendar-button'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
 import { formatLocalDateKey } from '@/lib/local-datetime'
-import { scriptureToUrl } from '@/lib/bible-utils'
+import { resolveBibleTranslation, scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { learnerDashboardSteps } from '@/lib/tour-steps'
@@ -206,7 +206,7 @@ export function LearnerDashboard({
                     <p className="text-xs sm:text-sm text-muted-foreground font-serif italic line-clamp-4">
                       <ScriptureText
                         reference={currentWeekContent.scripture_reference}
-                        translation={profile.bible_translation_preference || 'ESV'}
+                        translation={resolveBibleTranslation(profile.bible_translation_preference)}
                       />
                     </p>
                   </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { DEFAULT_BIBLE_TRANSLATION, resolveBibleTranslation } from '@/lib/bible-utils'
 
 interface ScriptureTextProps {
     reference: string
@@ -100,17 +101,20 @@ function parseReference(ref: string): { bookId: string; chapter: number; startVe
  * Fetches and displays the actual text of a Bible verse/passage
  * in the user's preferred translation.
  */
-export function ScriptureText({ reference, translation = 'NIV', className = '' }: ScriptureTextProps) {
+export function ScriptureText({ reference, translation = DEFAULT_BIBLE_TRANSLATION, className = '' }: ScriptureTextProps) {
+    const resolvedTranslation = resolveBibleTranslation(translation)
     const [text, setText] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
     const parsed = parseReference(reference)
 
     const [failed, setFailed] = useState(false)
+    const [fallbackTranslation, setFallbackTranslation] = useState<string | null>(null)
 
     useEffect(() => {
         if (!parsed) {
             setLoading(false)
             setFailed(false)
+            setFallbackTranslation(null)
             return
         }
 
@@ -120,8 +124,9 @@ export function ScriptureText({ reference, translation = 'NIV', className = '' }
 
         setLoading(true)
         setFailed(false)
+        setFallbackTranslation(null)
 
-        fetch(`/api/bible?action=verses&translation=${translation}&book=${parsed.bookId}&chapter=${parsed.chapter}`, {
+        fetch(`/api/bible?action=verses&translation=${resolvedTranslation}&book=${parsed.bookId}&chapter=${parsed.chapter}`, {
             signal: controller.signal,
         })
             .then(r => {
@@ -143,9 +148,11 @@ export function ScriptureText({ reference, translation = 'NIV', className = '' }
                         .join(' ')
                     setText(verseText || null)
                     setFailed(!verseText)
+                    setFallbackTranslation(typeof data.fallbackTranslation === 'string' ? data.fallbackTranslation : null)
                 } else {
                     setText(null)
                     setFailed(true)
+                    setFallbackTranslation(null)
                 }
                 setLoading(false)
             })
@@ -153,6 +160,7 @@ export function ScriptureText({ reference, translation = 'NIV', className = '' }
                 if (cancelled) return
                 setText(null)
                 setFailed(true)
+                setFallbackTranslation(null)
                 setLoading(false)
             })
             .finally(() => {
@@ -165,7 +173,7 @@ export function ScriptureText({ reference, translation = 'NIV', className = '' }
             clearTimeout(timeout)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [reference, translation])
+    }, [reference, resolvedTranslation])
 
     const displayRef = parsed?.cleanRef || reference
 
@@ -189,6 +197,11 @@ export function ScriptureText({ reference, translation = 'NIV', className = '' }
     return (
         <span className={className}>
             {displayRef} - {'\u201C'}{text}{'\u201D'}
+            {fallbackTranslation ? (
+                <span className="not-italic text-xs text-muted-foreground ml-2">
+                    Shown in {fallbackTranslation}
+                </span>
+            ) : null}
         </span>
     )
 }

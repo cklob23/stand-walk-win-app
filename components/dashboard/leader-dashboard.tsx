@@ -25,7 +25,7 @@ import { WeeklyTimeline } from './weekly-timeline'
 import { AddToCalendarButton } from '@/components/add-to-calendar-button'
 import { QuickChat } from './quick-chat'
 import { formatLocalDateKey } from '@/lib/local-datetime'
-import { scriptureToUrl } from '@/lib/bible-utils'
+import { resolveBibleTranslation, scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
@@ -175,7 +175,7 @@ export function LeaderDashboard({
                     <p className="text-sm text-muted-foreground font-serif italic break-words">
                       <ScriptureText
                         reference={currentWeekContent.scripture_reference}
-                        translation={profile.bible_translation_preference || 'ESV'}
+                        translation={resolveBibleTranslation(profile.bible_translation_preference)}
                       />
                     </p>
                   </div>
