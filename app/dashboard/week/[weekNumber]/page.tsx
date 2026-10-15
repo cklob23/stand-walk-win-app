@@ -6,6 +6,7 @@ import { pickActivePairing, preferredPairingIds, unwrapJoinedProfile } from '@/l
 import { groupAssignments } from '@/lib/assignment-grouping'
 import type { Assignment } from '@/lib/types'
 import { resolveBibleTranslation } from '@/lib/bible-utils'
+import { ensureCompletedMeetingProgress } from '@/lib/meeting-progress'
 
 interface WeekPageProps {
   params: Promise<{ weekNumber: string }>
@@ -133,8 +134,9 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
     .eq('pairing_id', pairing.id)
     .eq('user_id', progressUserId)
 
-  // Auto-complete meeting assignment when meeting is completed
-  // This MUST happen before other progress calculations
+  // Auto-complete meeting assignment when meeting is completed.
+  // Shared helper writes via the admin client so a signed-in leader can
+  // persist the learner's row (RLS otherwise rejects that write silently).
   if (assignments && pairing.learner_id) {
     const { count: meetingCount } = await supabase
       .from('scheduled_meetings')
@@ -144,39 +146,26 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
 
     const completedMeetingsCount = meetingCount ?? 0
 
-    // Check if this week's meeting should be auto-completed
-    if (completedMeetingsCount >= weekNum) {
-      const meetingAssignment = assignments.find((a: { assignment_type: string }) => a.assignment_type === 'meeting')
-      if (meetingAssignment) {
-        const existingProgress = assignmentProgress?.find(
-          p => p.assignment_id === meetingAssignment.id && p.status === 'completed'
-        )
+    const { wrote } = await ensureCompletedMeetingProgress({
+      callerUserId: user.id,
+      pairing: {
+        id: pairing.id,
+        leader_id: pairing.leader_id,
+        learner_id: pairing.learner_id,
+      },
+      assignments,
+      existingProgress: assignmentProgress || [],
+      completedMeetingsCount,
+    })
 
-        if (!existingProgress) {
-          await supabase
-            .from('assignment_progress')
-            .upsert({
-              pairing_id: pairing.id,
-              assignment_id: meetingAssignment.id,
-              user_id: pairing.learner_id,
-              status: 'completed',
-              notes: 'Meeting completed',
-              completed_at: new Date().toISOString(),
-            }, {
-              onConflict: 'pairing_id,assignment_id,user_id',
-              ignoreDuplicates: false
-            })
+    if (wrote) {
+      const { data: refreshedProgress } = await supabase
+        .from('assignment_progress')
+        .select('*')
+        .eq('pairing_id', pairing.id)
+        .eq('user_id', progressUserId)
 
-          // Refetch assignment progress
-          const { data: refreshedProgress } = await supabase
-            .from('assignment_progress')
-            .select('*')
-            .eq('pairing_id', pairing.id)
-            .eq('user_id', progressUserId)
-
-          assignmentProgress = refreshedProgress
-        }
-      }
+      assignmentProgress = refreshedProgress
     }
   }
 
