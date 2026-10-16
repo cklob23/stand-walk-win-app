@@ -573,8 +573,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             flashVerses.forEach(vNum => {
                 const el = document.getElementById(`verse-${vNum}`)
                 if (el) {
-                    el.style.backgroundColor = 'oklch(0.82 0.14 85)'
-                    el.style.boxShadow = '0 0 0 3px oklch(0.82 0.14 85 / 0.5)'
+                    const isDark = document.documentElement.classList.contains('dark')
+                    el.style.backgroundColor = isDark
+                        ? 'color-mix(in srgb, var(--primary) 45%, transparent)'
+                        : 'oklch(0.82 0.14 85)'
+                    el.style.boxShadow = isDark
+                        ? '0 0 0 3px color-mix(in srgb, var(--primary) 50%, transparent)'
+                        : '0 0 0 3px oklch(0.82 0.14 85 / 0.5)'
                     el.style.borderRadius = '4px'
                     el.style.transition = 'background-color 1.5s ease-out, box-shadow 1.5s ease-out'
                     // Start fade after holding
