@@ -17,6 +17,7 @@ export type ListenStatus =
     | 'playing'
     | 'paused'
     | 'countdown'
+    | 'needs-gesture'
     | 'error'
 
 export type ListenState = {
@@ -60,6 +61,7 @@ export type ListenAction =
     | { type: 'RESUME' }
     | { type: 'CHAPTER_COMPLETE'; countdownSeconds: number; sessionId: number }
     | { type: 'COUNTDOWN_TICK'; sessionId: number }
+    | { type: 'NEEDS_GESTURE'; sessionId: number }
     | { type: 'ERROR'; message: string; sessionId: number }
     | { type: 'STOP' }
 
@@ -187,6 +189,9 @@ export function listenHighlightVerse(state: ListenState): number | null {
     ) {
         return null
     }
+    if (state.status === 'needs-gesture') {
+        return state.verses[0]?.verse ?? null
+    }
     return state.verses[state.currentIndex]?.verse ?? null
 }
 
@@ -206,6 +211,10 @@ export function isListenPlaying(state: ListenState): boolean {
 
 export function isListenPaused(state: ListenState): boolean {
     return state.status === 'paused'
+}
+
+export function isListenNeedsGesture(state: ListenState): boolean {
+    return state.status === 'needs-gesture'
 }
 
 function clampIndex(index: number, length: number): number {
@@ -320,6 +329,18 @@ export function listenReducer(state: ListenState, action: ListenAction): ListenS
             return { ...state, countdown: next }
         }
 
+        case 'NEEDS_GESTURE': {
+            if (ignoreStaleSession(state, action.sessionId)) return state
+            if (state.status === 'idle') return state
+            return {
+                ...state,
+                status: 'needs-gesture',
+                currentIndex: 0,
+                countdown: null,
+                error: null,
+            }
+        }
+
         case 'ERROR': {
             if (ignoreStaleSession(state, action.sessionId)) return state
             return { ...state, status: 'error', error: action.message }
@@ -350,5 +371,24 @@ export function buildListenUtterance(args: {
 export function isAbortError(err: unknown): boolean {
     if (!err || typeof err !== 'object') return false
     const name = 'name' in err ? String((err as { name?: unknown }).name) : ''
-    return name === 'AbortError'
+    const message = 'message' in err ? String((err as { message?: unknown }).message) : ''
+    if (name === 'AbortError') return true
+    if (/aborted|AbortError/i.test(message)) return true
+    if ('code' in err && Number((err as { code?: unknown }).code) === 20) return true
+    return false
+}
+
+export function isNotAllowedError(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false
+    const name = 'name' in err ? String((err as { name?: unknown }).name) : ''
+    const message = 'message' in err ? String((err as { message?: unknown }).message) : ''
+    if (name === 'NotAllowedError') return true
+    if (/NotAllowedError|not allowed by the user agent/i.test(message)) return true
+    return false
+}
+
+export function classifyPlaybackError(err: unknown): 'abort' | 'not-allowed' | 'other' {
+    if (isAbortError(err)) return 'abort'
+    if (isNotAllowedError(err)) return 'not-allowed'
+    return 'other'
 }

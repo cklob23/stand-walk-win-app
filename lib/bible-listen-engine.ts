@@ -5,6 +5,7 @@ import {
     INITIAL_LISTEN_STATE,
     buildListenUtterance,
     canBeginAutoAdvancePlayback,
+    classifyPlaybackError,
     isAbortError,
     listenReducer,
     versesBelongToLocation,
@@ -91,6 +92,16 @@ export class ListenEngine {
      */
     notifyUserScroll(_visibleVerse?: number): void {
         return
+    }
+
+    /**
+     * User tap after iOS blocks autoplay. Starts at verse 1 of the current
+     * chapter without aborting the session.
+     */
+    continueWithGesture(): void {
+        if (this.disposed) return
+        if (this.state.status !== 'needs-gesture') return
+        void this.playIndex(0, this.state.sessionId)
     }
 
     play(args: PlayChapterArgs): void {
@@ -244,7 +255,7 @@ export class ListenEngine {
             throw new DOMException('Aborted', 'AbortError')
         }
 
-        const pending = this.deps.fetchAudio(text, signal).then((url) => {
+        const pending = this.fetchAudioWithRetry(text, signal, sessionId).then((url) => {
             if (sessionId !== this.state.sessionId) {
                 this.deps.revokeUrl?.(url)
                 throw new DOMException('Aborted', 'AbortError')
@@ -257,6 +268,21 @@ export class ListenEngine {
             return await pending
         } finally {
             this.inflight.delete(text)
+        }
+    }
+
+    private async fetchAudioWithRetry(
+        text: string,
+        signal: AbortSignal,
+        sessionId: number
+    ): Promise<string> {
+        try {
+            return await this.deps.fetchAudio(text, signal)
+        } catch (err) {
+            if (sessionId !== this.state.sessionId || isAbortError(err) || signal.aborted) {
+                throw err
+            }
+            return await this.deps.fetchAudio(text, signal)
         }
     }
 
@@ -309,8 +335,15 @@ export class ListenEngine {
                 if (sessionId !== this.state.sessionId) return
                 void this.playIndex(index + 1, sessionId)
             },
-            onError: () => {
+            onError: (err) => {
                 if (sessionId !== this.state.sessionId) return
+                const kind = classifyPlaybackError(err)
+                if (kind === 'abort') return
+                if (kind === 'not-allowed') {
+                    this.player?.pause()
+                    this.dispatch({ type: 'NEEDS_GESTURE', sessionId })
+                    return
+                }
                 this.stopPlayer()
                 this.dispatch({
                     type: 'ERROR',
@@ -371,43 +404,120 @@ export class ListenEngine {
     }
 }
 
-export function createBrowserListenPlayer(
-    url: string,
-    handlers: { onEnded: () => void; onError: (err?: unknown) => void },
-    playbackRate: number
-): ListenPlayerHandle {
-    const audio = new Audio(url)
-    audio.playbackRate = playbackRate
-    let settled = false
-    const onEnded = () => {
-        if (settled) return
-        settled = true
-        handlers.onEnded()
+/**
+ * One HTMLAudioElement for the whole Listen session. iOS Safari only allows
+ * play() after a user gesture on that same element; creating `new Audio()`
+ * after the auto-advance countdown is rejected with NotAllowedError.
+ *
+ * Do not clear src + load() between verses or chapters: that relocks autoplay.
+ * Pause, swap src, play.
+ */
+export function createPersistentListenPlayer(): {
+    play: (
+        url: string,
+        handlers: { onEnded: () => void; onError: (err?: unknown) => void },
+        playbackRate: number
+    ) => ListenPlayerHandle
+    dispose: () => void
+} {
+    let audio: HTMLAudioElement | null = null
+    let endedHandler: (() => void) | null = null
+    let errorHandler: (() => void) | null = null
+    let playGeneration = 0
+
+    const ensureAudio = (): HTMLAudioElement => {
+        if (!audio) {
+            audio = new Audio()
+            audio.preload = 'auto'
+            audio.setAttribute('playsinline', 'true')
+            // iOS: keep the element in the inline playback slot.
+            ;(audio as HTMLAudioElement & { playsInline?: boolean }).playsInline = true
+        }
+        return audio
     }
-    const onError = (err?: unknown) => {
-        if (settled) return
-        settled = true
-        handlers.onError(err)
+
+    const detach = () => {
+        if (!audio) return
+        if (endedHandler) audio.removeEventListener('ended', endedHandler)
+        if (errorHandler) audio.removeEventListener('error', errorHandler)
+        endedHandler = null
+        errorHandler = null
     }
-    audio.addEventListener('ended', onEnded)
-    audio.addEventListener('error', () => onError())
-    void audio.play().catch((err) => onError(err))
+
     return {
-        stop: () => {
-            settled = true
-            audio.removeEventListener('ended', onEnded)
-            audio.pause()
-            audio.removeAttribute('src')
-            audio.load()
+        play(url, handlers, playbackRate) {
+            const el = ensureAudio()
+            const gen = ++playGeneration
+            detach()
+            let settled = false
+
+            const onEnded = () => {
+                if (settled || gen !== playGeneration) return
+                settled = true
+                handlers.onEnded()
+            }
+            const onError = (err?: unknown) => {
+                if (settled || gen !== playGeneration) return
+                if (classifyPlaybackError(err) === 'abort') return
+                settled = true
+                handlers.onError(err)
+            }
+
+            endedHandler = onEnded
+            errorHandler = () => {
+                const mediaError = el.error
+                // MEDIA_ERR_ABORTED. Our own pause/src swap, not a user-facing failure.
+                if (mediaError && mediaError.code === 1) return
+                onError(mediaError ?? new Error('Audio element error'))
+            }
+            el.addEventListener('ended', endedHandler)
+            el.addEventListener('error', errorHandler)
+            el.playbackRate = playbackRate
+            if (el.src !== url) {
+                el.src = url
+            } else {
+                try {
+                    el.currentTime = 0
+                } catch {
+                    // Ignore if metadata is not ready yet.
+                }
+            }
+            void el.play().catch((err) => onError(err))
+
+            return {
+                stop: () => {
+                    settled = true
+                    detach()
+                    try {
+                        el.pause()
+                    } catch {
+                        // Ignore.
+                    }
+                },
+                pause: () => {
+                    el.pause()
+                },
+                resume: () => {
+                    void el.play().catch((err) => onError(err))
+                },
+                setRate: (rate: number) => {
+                    el.playbackRate = rate
+                },
+            }
         },
-        pause: () => {
-            audio.pause()
-        },
-        resume: () => {
-            void audio.play().catch((err) => onError(err))
-        },
-        setRate: (rate: number) => {
-            audio.playbackRate = rate
+        dispose: () => {
+            playGeneration += 1
+            detach()
+            if (audio) {
+                try {
+                    audio.pause()
+                } catch {
+                    // Ignore.
+                }
+                audio.removeAttribute('src')
+                audio = null
+            }
         },
     }
 }
+

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
     INITIAL_LISTEN_STATE,
     canBeginAutoAdvancePlayback,
+    classifyPlaybackError,
     listenHighlightVerse,
     listenReducer,
     resolveListenStartIndex,
@@ -222,5 +223,46 @@ describe('listenReducer chapter turn', () => {
             }),
             true
         )
+    })
+
+    it('resets to verse 1 when a gesture is required after autoplay is blocked', () => {
+        let state = listenReducer(INITIAL_LISTEN_STATE, {
+            type: 'USER_PLAY',
+            location: { book: '60', chapter: 5 },
+            verses: peter5,
+            startIndex: 13,
+            sessionId: 1,
+            hasNextChapter: true,
+        })
+        state = listenReducer(state, { type: 'PLAYING', index: 13, sessionId: 1 })
+        state = listenReducer(state, { type: 'NEEDS_GESTURE', sessionId: 1 })
+        assert.equal(state.status, 'needs-gesture')
+        assert.equal(state.currentIndex, 0)
+        assert.equal(listenHighlightVerse(state), 1)
+        assert.equal(state.error, null)
+    })
+})
+
+describe('classifyPlaybackError', () => {
+    it('treats AbortError as abort, never as a user-facing failure', () => {
+        assert.equal(classifyPlaybackError(new DOMException('Aborted', 'AbortError')), 'abort')
+        assert.equal(classifyPlaybackError({ name: 'AbortError', message: 'signal is aborted' }), 'abort')
+    })
+
+    it('detects iOS autoplay NotAllowedError', () => {
+        assert.equal(
+            classifyPlaybackError(
+                new DOMException(
+                    'The request is not allowed by the user agent or the platform in the current context, possibly because the user denied permission.',
+                    'NotAllowedError'
+                )
+            ),
+            'not-allowed'
+        )
+        assert.equal(classifyPlaybackError({ name: 'NotAllowedError', message: 'play() failed' }), 'not-allowed')
+    })
+
+    it('leaves other media errors as other', () => {
+        assert.equal(classifyPlaybackError(new Error('The element has no supported sources.')), 'other')
     })
 })

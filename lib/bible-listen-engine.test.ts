@@ -34,6 +34,7 @@ function createHarness(options?: {
     chapters?: Record<number, { lastVerse: number; hasNext: boolean }>
     book?: string
     bookName?: string
+    failFetchOnceFor?: (text: string) => boolean
 }) {
     const book = options?.book ?? '60'
     const bookName = options?.bookName ?? '1 Peter'
@@ -50,10 +51,18 @@ function createHarness(options?: {
     const errors: string[] = []
     const revoked: string[] = []
     let navigatedTo: ListenLocation | null = null
+    const fetchAttempts: string[] = []
+    const failedOnce = new Set<string>()
+    const playBlocker: { error: unknown | null } = { error: null }
 
     const engine = new ListenEngine({
-        fetchAudio: (text, signal) =>
-            new Promise((resolve, reject) => {
+        fetchAudio: (text, signal) => {
+            fetchAttempts.push(text)
+            if (options?.failFetchOnceFor?.(text) && !failedOnce.has(text)) {
+                failedOnce.add(text)
+                return Promise.reject(new Error('TTS failed: 502'))
+            }
+            return new Promise((resolve, reject) => {
                 const entry: PendingFetch = { text, resolve, reject, signal }
                 fetches.push(entry)
                 signal.addEventListener(
@@ -61,9 +70,14 @@ function createHarness(options?: {
                     () => reject(new DOMException('Aborted', 'AbortError')),
                     { once: true }
                 )
-            }),
+            })
+        },
         playAudio: (url, handlers) => {
             playing = { url, onEnded: handlers.onEnded, onError: handlers.onError }
+            if (playBlocker.error) {
+                const err = playBlocker.error
+                queueMicrotask(() => handlers.onError(err))
+            }
             return {
                 stop: () => {
                     if (playing?.url === url) playing = null
@@ -167,6 +181,8 @@ function createHarness(options?: {
         revoked,
         getPlaying: () => playing,
         getNavigatedTo: () => navigatedTo,
+        playBlocker,
+        fetchAttempts,
         flush,
         openFetches,
         resolveVerse,
@@ -306,24 +322,75 @@ describe('ListenEngine multi-chapter auto-advance', () => {
         assert.equal(listenHighlightVerse(h.engine.getState()), 1)
     })
 
+    it('asks for a tap instead of failing when play is blocked by autoplay policy', async () => {
+        const h = createHarness()
+        h.startChapter(4)
+        await h.playThroughChapter(4)
+        await h.tickCountdown(3)
+        h.playBlocker.error = new DOMException(
+            'The request is not allowed by the user agent or the platform in the current context, possibly because the user denied permission.',
+            'NotAllowedError'
+        )
+        h.deliverVerses(5)
+        await h.resolveVerse(5, 1)
+
+        assert.equal(h.engine.getState().status, 'needs-gesture')
+        assert.equal(h.engine.getState().currentIndex, 0)
+        assert.equal(listenHighlightVerse(h.engine.getState()), 1)
+        assert.equal(h.errors.length, 0)
+
+        h.playBlocker.error = null
+        h.engine.continueWithGesture()
+        await h.flush()
+        assert.equal(h.engine.getState().status, 'playing')
+        assert.equal(h.engine.getState().currentIndex, 0)
+        assert.equal(listenHighlightVerse(h.engine.getState()), 1)
+        assert.equal(h.getPlaying()?.url, 'blob:5:1')
+    })
+
+    it('does not treat AbortError from our own cancellation as a playback failure', async () => {
+        const h = createHarness()
+        h.startChapter(5, 0)
+        await h.resolveVerse(5, 1)
+        assert.equal(h.engine.getState().status, 'playing')
+
+        h.getPlaying()!.onError(new DOMException('Aborted', 'AbortError'))
+        await h.flush()
+
+        assert.equal(h.engine.getState().status, 'playing')
+        assert.equal(h.engine.getState().currentIndex, 0)
+        assert.equal(h.errors.length, 0)
+    })
+
     it('does not skip ahead when play fails, so a late gesture cannot land on the last verse', async () => {
         const h = createHarness()
         h.startChapter(5, 0)
         await h.resolveVerse(5, 1)
         assert.equal(h.engine.getState().currentIndex, 0)
 
-        h.getPlaying()!.onError(new Error('NotAllowedError'))
+        h.getPlaying()!.onError(new Error('The element has no supported sources.'))
         await h.flush()
 
         assert.equal(h.engine.getState().status, 'error')
         assert.equal(h.engine.getState().currentIndex, 0)
-        assert.equal(listenHighlightVerse(h.engine.getState()), null)
         assert.equal(h.errors.length, 1)
-        assert.equal(h.getPlaying(), null)
         assert.equal(
             h.openFetches().filter((f) => f.text.includes('Verse 14.')).length,
             0
         )
+    })
+
+    it('retries a transient audio fetch once', async () => {
+        const h = createHarness({
+            failFetchOnceFor: (text) => text.includes('chapter 5. Verse 1.'),
+        })
+        h.startChapter(5)
+        await h.flush()
+        assert.ok(h.fetchAttempts.filter((t) => t.includes('chapter 5. Verse 1.')).length >= 2)
+        await h.resolveVerse(5, 1)
+        assert.equal(h.engine.getState().status, 'playing')
+        assert.equal(h.engine.getState().currentIndex, 0)
+        assert.equal(h.errors.length, 0)
     })
 
     it('ignores a stale onended handler after the chapter turn', async () => {
