@@ -179,7 +179,7 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${hasSigned ? 'bg-success text-success-foreground' : 'bg-muted'
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${hasSigned ? 'bg-primary text-primary-foreground' : 'bg-muted'
                 }`}>
                 {hasSigned ? (
                   <CheckCircle2 className="h-5 w-5" />
@@ -195,7 +195,7 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
               </div>
             </div>
             <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${partnerHasSigned ? 'bg-success text-success-foreground' : 'bg-muted'
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${partnerHasSigned ? 'bg-primary text-primary-foreground' : 'bg-muted'
                 }`}>
                 {partnerHasSigned ? (
                   <CheckCircle2 className="h-5 w-5" />
@@ -239,7 +239,7 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
               >
                 <div className="shrink-0 pt-0.5">
                   {hasSigned ? (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-success text-success-foreground">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
                       <CheckCircle2 className="h-4 w-4" />
                     </div>
                   ) : (
@@ -297,7 +297,7 @@ export function CovenantView({ profile, pairing, partner }: CovenantViewProps) {
 
       {hasSigned && partnerHasSigned && (
         <div className="mt-6 text-center">
-          <Badge variant="default" className="bg-success text-success-foreground px-4 py-2">
+          <Badge variant="default" className="bg-primary text-primary-foreground px-4 py-2">
             <CheckCircle2 className="mr-2 h-4 w-4" />
             Covenant Complete
           </Badge>

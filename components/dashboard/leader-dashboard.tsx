@@ -456,7 +456,7 @@ export function LeaderDashboard({
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Your Signature</span>
                   {pairing.covenant_accepted_leader ? (
-                    <Badge variant="default" className="bg-success text-success-foreground">
+                    <Badge variant="default" className="bg-primary text-primary-foreground">
                       <CheckCircle2 className="mr-1 h-3 w-3" />
                       Signed
                     </Badge>
@@ -467,7 +467,7 @@ export function LeaderDashboard({
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Learner Signature</span>
                   {pairing.covenant_accepted_learner ? (
-                    <Badge variant="default" className="bg-success text-success-foreground">
+                    <Badge variant="default" className="bg-primary text-primary-foreground">
                       <CheckCircle2 className="mr-1 h-3 w-3" />
                       Signed
                     </Badge>

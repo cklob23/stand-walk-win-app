@@ -297,7 +297,7 @@ export function LearnerDashboard({
                             {assignment.title}
                           </p>
                           {isCompleted && (
-                            <Badge variant="secondary" className="shrink-0 text-xs bg-success/10 text-success border-0">
+                            <Badge variant="secondary" className="shrink-0 text-xs bg-primary/15 text-primary border-0">
                               Done
                             </Badge>
                           )}
@@ -421,7 +421,7 @@ export function LearnerDashboard({
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Your Signature</span>
                   {pairing.covenant_accepted_learner ? (
-                    <Badge variant="default" className="bg-success text-success-foreground">
+                    <Badge variant="default" className="bg-primary text-primary-foreground">
                       <CheckCircle2 className="mr-1 h-3 w-3" />
                       Signed
                     </Badge>
@@ -432,7 +432,7 @@ export function LearnerDashboard({
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Leader Signature</span>
                   {pairing.covenant_accepted_leader ? (
-                    <Badge variant="default" className="bg-success text-success-foreground">
+                    <Badge variant="default" className="bg-primary text-primary-foreground">
                       <CheckCircle2 className="mr-1 h-3 w-3" />
                       Signed
                     </Badge>

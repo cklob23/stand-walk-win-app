@@ -220,7 +220,7 @@ export function CompletedJourneysContent({
                                             </CardDescription>
                                         </div>
                                     </div>
-                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                    <Badge variant="outline" className="bg-primary/15 text-primary border-primary/20">
                                         <CheckCircle className="h-3 w-3 mr-1" />
                                         Completed
                                     </Badge>
@@ -367,7 +367,7 @@ export function CompletedJourneysContent({
                                                                                 {/* Show accepted Christ badge if present */}
                                                                                 {acceptedChrist !== null && (
                                                                                     <div className={`mb-2 p-2 rounded-md flex items-center gap-2 ${acceptedChrist
-                                                                                            ? 'bg-green-50 text-green-700 border border-green-200'
+                                                                                            ? 'bg-primary/15 text-primary border border-primary/20'
                                                                                             : 'bg-amber-50 text-amber-700 border border-amber-200'
                                                                                         }`}>
                                                                                         {acceptedChrist ? (
