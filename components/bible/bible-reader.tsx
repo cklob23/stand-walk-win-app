@@ -44,6 +44,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
 import { BOOK_ID_TO_NAME, BOOK_MAP, DEFAULT_BIBLE_TRANSLATION, resolveBibleTranslation } from '@/lib/bible-utils'
+import { resolveListenStartIndex } from '@/lib/bible-listen'
 
 interface BibleBook {
     id: string
@@ -377,6 +378,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     // playback exactly once per chapter transition.
     const autoPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const autoPlayHandledRef = useRef(false)
+    // Verse numbers restart every chapter. These refs keep Listen from applying a
+    // leftover start (e.g. verse 13) to the next page after a chapter turn.
+    const forceStartAtFirstVerseRef = useRef(false)
+    const listenOffsetScopeRef = useRef<{ book: string | null; chapter: number | null }>({
+        book: initialBook,
+        chapter: initialChapter,
+    })
 
     const [skipVerseNumbers, setSkipVerseNumbers] = useState(savedSkipVerseNumbers)
     const skipVerseNumbersRef = useRef(savedSkipVerseNumbers)
@@ -539,6 +547,14 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             }
             mobileQueueRef.current = []
         }
+    }, [selectedBook, selectedChapter])
+
+    // Drop chapter-relative Listen offsets when the page changes. Verse 13 in
+    // John 1 is not "verse 13" of John 2, even though both chapters have one.
+    useEffect(() => {
+        listenOffsetScopeRef.current = { book: selectedBook, chapter: selectedChapter }
+        setAudioStartVerse(null)
+        setPausedAtVerse(null)
     }, [selectedBook, selectedChapter])
 
     // Scroll to and flash-highlight verses from URL params
@@ -1001,8 +1017,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const handlePlayDesktop = (initialStartVerse?: number) => {
         if (!speechSupportedRef.current || verses.length === 0) return
         let startFromVerse = initialStartVerse
+        const forceFirstVerse = forceStartAtFirstVerseRef.current
+        forceStartAtFirstVerseRef.current = false
 
-        if (isPaused && !startFromVerse) {
+        if (!forceFirstVerse && isPaused && !startFromVerse) {
             if (pausedAtVerse !== null) {
                 // Resuming from a paused-at-verse: restart speech from that verse
                 // Clear old utterance callbacks before cancelling to avoid stale resets
@@ -1038,14 +1056,16 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         const session = ++ttsSessionRef.current
 
         const bookName = books.find(b => b.id === selectedBook)?.name || ''
-        let verseIndex = 0
-        if (startFromVerse) {
-            const idx = verses.findIndex(v => v.verse === startFromVerse)
-            if (idx >= 0) verseIndex = idx
-        } else if (audioStartVerse) {
-            const idx = verses.findIndex(v => v.verse === audioStartVerse)
-            if (idx >= 0) verseIndex = idx
-        }
+        const verseIndex = resolveListenStartIndex({
+            verses,
+            explicitStartVerse: startFromVerse ?? null,
+            pausedAtVerse,
+            audioStartVerse,
+            forceFirstVerse,
+            offsetScope: listenOffsetScopeRef.current,
+            currentBook: selectedBook,
+            currentChapter: selectedChapter,
+        })
 
         // Set playing state BEFORE creating utterances
         setIsPlaying(true)
@@ -1422,9 +1442,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const handlePlayMobile = (initialStartVerse?: number) => {
         if (verses.length === 0) return
         let startFromVerse = initialStartVerse
+        const forceFirstVerse = forceStartAtFirstVerseRef.current
+        forceStartAtFirstVerseRef.current = false
 
-        // Resume from pause
-        if (isPaused && !startFromVerse && mobileAudioRef.current) {
+        // Resume from pause on the same page. A page turn must not resume the
+        // previous chapter's audio or reuse its verse number as a start index.
+        if (!forceFirstVerse && isPaused && !startFromVerse && mobileAudioRef.current) {
             mobileAudioRef.current.play()
             setIsPaused(false)
             setIsPlaying(true)
@@ -1436,21 +1459,23 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         }
 
         // If paused and requesting new play, restart from paused position
-        if (isPaused && !startFromVerse && pausedAtVerse !== null) {
+        if (!forceFirstVerse && isPaused && !startFromVerse && pausedAtVerse !== null) {
             startFromVerse = pausedAtVerse
         }
 
         // Stop any existing playback
         handleStopMobile()
 
-        let verseIndex = 0
-        if (startFromVerse) {
-            const idx = verses.findIndex(v => v.verse === startFromVerse)
-            if (idx >= 0) verseIndex = idx
-        } else if (audioStartVerse) {
-            const idx = verses.findIndex(v => v.verse === audioStartVerse)
-            if (idx >= 0) verseIndex = idx
-        }
+        const verseIndex = resolveListenStartIndex({
+            verses,
+            explicitStartVerse: startFromVerse ?? null,
+            pausedAtVerse,
+            audioStartVerse,
+            forceFirstVerse,
+            offsetScope: listenOffsetScopeRef.current,
+            currentBook: selectedBook,
+            currentChapter: selectedChapter,
+        })
 
         // Build the batched queue (group verses in batches of BATCH_SIZE)
         mobileStoppedRef.current = false
@@ -1635,6 +1660,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 updateURL(selectedBook, next, translation)
                 // Reset the stopped flag so new chapter can play
                 mobileStoppedRef.current = false
+                // New chapter: always start at verse 1, not a leftover offset.
+                forceStartAtFirstVerseRef.current = true
                 setAutoPlayNextChapter(true)
             }, 200)
             return
@@ -1668,7 +1695,13 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 autoPlayTimerRef.current = null
                 // Double-check we still have verses and conditions are met
                 if (verses.length > 0) {
-                    handlePlayChapter()
+                    forceStartAtFirstVerseRef.current = true
+                    const firstVerse = verses[0]?.verse
+                    if (firstVerse != null) {
+                        document.getElementById(`verse-${firstVerse}`)
+                            ?.scrollIntoView({ behavior: 'auto', block: 'start' })
+                    }
+                    handlePlayChapter(firstVerse)
                 }
                 // Allow the next chapter transition to schedule again.
                 autoPlayHandledRef.current = false
@@ -2075,7 +2108,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                                     </p>
                                     <Select
                                         value={audioStartVerse ? String(audioStartVerse) : 'start'}
-                                        onValueChange={(val) => setAudioStartVerse(val === 'start' ? null : Number(val))}
+                                        onValueChange={(val) => {
+                                            listenOffsetScopeRef.current = { book: selectedBook, chapter: selectedChapter }
+                                            setAudioStartVerse(val === 'start' ? null : Number(val))
+                                        }}
                                     >
                                         <SelectTrigger className="w-[200px] h-9 text-sm bg-card">
                                             <SelectValue />

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node --experimental-strip-types --test lib/bible-listen.test.ts"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.65.0",
