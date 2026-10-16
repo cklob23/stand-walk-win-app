@@ -51,7 +51,7 @@ import {
     listenProgress,
     resolveListenStartIndex,
 } from '@/lib/bible-listen'
-import { ListenEngine, createBrowserListenPlayer } from '@/lib/bible-listen-engine'
+import { ListenEngine, createPersistentListenPlayer } from '@/lib/bible-listen-engine'
 
 interface BibleBook {
     id: string
@@ -326,6 +326,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [pausedAtVerse, setPausedAtVerse] = useState<number | null>(null)
     const [ttsProgress, setTtsProgress] = useState(0) // 0 to 1 progress through chapter
     const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null) // seconds left
+    const [listenNeedsGesture, setListenNeedsGesture] = useState(false)
 
     // AI Explain feature
     const [showExplainDialog, setShowExplainDialog] = useState(false)
@@ -1212,6 +1213,10 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const playCloudChapter = (initialStartVerse?: number) => {
         const engine = listenEngineRef.current
         if (!engine || !selectedBook || !selectedChapter) return
+        if (engine.getState().status === 'needs-gesture' && initialStartVerse == null) {
+            engine.continueWithGesture()
+            return
+        }
         if (engine.getState().status === 'paused' && initialStartVerse == null) {
             engine.resume()
             return
@@ -1279,6 +1284,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }
 
     useEffect(() => {
+        const persistentPlayer = createPersistentListenPlayer()
         const engine = new ListenEngine({
             fetchAudio: async (text, signal) => {
                 const res = await throttledTtsFetch({ text, voice: selectedCloudVoiceRef.current }, signal)
@@ -1287,18 +1293,19 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                 if (blob.size === 0) throw new Error('TTS returned empty audio')
                 return URL.createObjectURL(blob)
             },
-            playAudio: (url, handlers) => createBrowserListenPlayer(url, handlers, speechRateRef.current),
+            playAudio: (url, handlers) => persistentPlayer.play(url, handlers, speechRateRef.current),
             revokeUrl: (url) => URL.revokeObjectURL(url),
             onStateChange: (s) => {
                 setIsPlaying(s.status === 'playing')
                 setIsPaused(s.status === 'paused')
                 setAudioLoading(isListenAudioLoading(s))
+                setListenNeedsGesture(s.status === 'needs-gesture')
                 setCurrentReadingVerse(listenHighlightVerse(s))
                 setAutoAdvanceCountdown(s.status === 'countdown' ? s.countdown : null)
                 setTtsProgress(listenProgress(s))
                 if (s.status === 'paused') {
                     setPausedAtVerse(listenHighlightVerse(s))
-                } else if (s.status === 'idle' || s.status === 'awaiting-verses' || s.status === 'error') {
+                } else if (s.status === 'idle' || s.status === 'awaiting-verses' || s.status === 'error' || s.status === 'needs-gesture') {
                     setPausedAtVerse(null)
                 }
             },
@@ -1324,6 +1331,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         listenEngineRef.current = engine
         return () => {
             engine.dispose()
+            persistentPlayer.dispose()
             if (listenEngineRef.current === engine) listenEngineRef.current = null
         }
     }, [])
@@ -2040,7 +2048,27 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             {/* Audio controls */}
                             {!highlightMode && (
                                 <div className="flex items-center gap-1 ml-auto">
-                                    {audioLoading ? (
+                                    {listenNeedsGesture ? (
+                                        <>
+                                            <Button
+                                                variant="default"
+                                                size="sm"
+                                                className="h-8 gap-1.5 text-xs"
+                                                onClick={() => listenEngineRef.current?.continueWithGesture()}
+                                            >
+                                                <Play className="h-3.5 w-3.5" />
+                                                Tap to continue
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 text-xs"
+                                                onClick={handleStopAudio}
+                                            >
+                                                <VolumeX className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </>
+                                    ) : audioLoading ? (
                                         <>
                                             <Button
                                                 variant="outline"
@@ -2216,6 +2244,19 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             </p>
                         ) : (
                             <div className="space-y-2">
+                                {listenNeedsGesture && (
+                                    <div className="flex items-center gap-2 text-xs font-sans bg-primary/15 rounded-md px-3 py-2 border border-primary/20">
+                                        <Play className="h-3.5 w-3.5 shrink-0" />
+                                        <span className="flex-1">Audio needs a tap after the chapter turn. Continue from verse 1.</span>
+                                        <Button
+                                            size="sm"
+                                            className="h-7 text-xs shrink-0"
+                                            onClick={() => listenEngineRef.current?.continueWithGesture()}
+                                        >
+                                            Tap to continue
+                                        </Button>
+                                    </div>
+                                )}
                                 {audioLoading && (
                                     <div className="flex items-center gap-2 text-xs text-muted-foreground font-sans bg-muted/50 rounded-md px-3 py-1.5">
                                         <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
