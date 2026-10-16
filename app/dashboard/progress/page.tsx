@@ -373,7 +373,7 @@ export default function ProgressPage() {
                         {isPastWeek && week.progress === 100 && (
                           <Badge
                             variant="secondary"
-                            className="bg-green-100 text-green-800"
+                            className="bg-primary/15 text-primary"
                           >
                             Complete
                           </Badge>

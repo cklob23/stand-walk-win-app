@@ -1507,7 +1507,7 @@ function PastMeetings({
                                 <Badge
                                     variant="secondary"
                                     className={`text-xs ${meeting.status === 'completed'
-                                            ? 'bg-success/10 text-success'
+                                            ? 'bg-primary/15 text-primary'
                                             : 'bg-muted text-muted-foreground'
                                         }`}
                                 >

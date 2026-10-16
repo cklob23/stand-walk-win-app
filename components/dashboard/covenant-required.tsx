@@ -87,7 +87,7 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
           {/* Your Status */}
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
             <div className="flex items-center gap-3">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${hasSigned ? 'bg-success text-success-foreground' : 'bg-warning/20 text-warning'
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${hasSigned ? 'bg-primary text-primary-foreground' : 'bg-warning/20 text-warning'
                 }`}>
                 {hasSigned ? (
                   <CheckCircle2 className="h-5 w-5" />
@@ -103,7 +103,7 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
               </div>
             </div>
             {hasSigned ? (
-              <Badge variant="default" className="bg-success text-success-foreground">
+              <Badge variant="default" className="bg-primary text-primary-foreground">
                 Signed
               </Badge>
             ) : (
@@ -114,7 +114,7 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
           {/* Partner Status */}
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
             <div className="flex items-center gap-3">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${partnerHasSigned ? 'bg-success text-success-foreground' : 'bg-muted'
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${partnerHasSigned ? 'bg-primary text-primary-foreground' : 'bg-muted'
                 }`}>
                 {partnerHasSigned ? (
                   <CheckCircle2 className="h-5 w-5" />
@@ -135,7 +135,7 @@ export function CovenantRequired({ profile, pairing, partner }: CovenantRequired
               </div>
             </div>
             {partnerHasSigned ? (
-              <Badge variant="default" className="bg-success text-success-foreground">
+              <Badge variant="default" className="bg-primary text-primary-foreground">
                 Signed
               </Badge>
             ) : (

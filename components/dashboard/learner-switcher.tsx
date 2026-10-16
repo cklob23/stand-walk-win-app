@@ -202,7 +202,7 @@ export function LearnerSwitcher({
                                         <Badge variant="secondary" className="text-[10px] h-4">Pending</Badge>
                                     )}
                                     {pairing.status === 'completed' && (
-                                        <Badge variant="default" className="text-[10px] h-4 bg-success">Complete</Badge>
+                                        <Badge variant="default" className="text-[10px] h-4 bg-primary text-primary-foreground">Complete</Badge>
                                     )}
                                 </div>
                             </div>

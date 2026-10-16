@@ -565,7 +565,7 @@ export function AssignmentCard({
             <div className={cn(
               "flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full",
               isCompleted
-                ? "bg-success text-success-foreground"
+                ? "bg-primary text-primary-foreground"
                 : status === 'in_progress'
                   ? "bg-warning/20 text-warning"
                   : "bg-muted text-muted-foreground"
@@ -906,7 +906,7 @@ export function AssignmentCard({
                 {/* Learner status */}
                 <div className="flex items-center gap-2">
                   {learnerProgress.status === 'completed' ? (
-                    <Badge variant="secondary" className="bg-success/10 text-success border-success/20">
+                    <Badge variant="secondary" className="bg-primary/15 text-primary border-primary/20">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       {learnerName || 'Learner'} completed
                       {learnerProgress.completed_at && (
@@ -930,7 +930,7 @@ export function AssignmentCard({
                     {isSalvationStory && learnerProgress.notes.includes('[ACCEPTED_CHRIST:') && (
                       <div className="mb-2">
                         {learnerProgress.notes.includes('[ACCEPTED_CHRIST:yes]') ? (
-                          <Badge variant="secondary" className="bg-success/10 text-success border-success/20 text-xs gap-1">
+                          <Badge variant="secondary" className="bg-primary/15 text-primary border-primary/20 text-xs gap-1">
                             <HandHeart className="h-3 w-3" />
                             Has accepted Christ
                           </Badge>
