@@ -44,7 +44,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
 import { BOOK_ID_TO_NAME, BOOK_MAP, DEFAULT_BIBLE_TRANSLATION, resolveBibleTranslation } from '@/lib/bible-utils'
-import { resolveListenStartIndex } from '@/lib/bible-listen'
+import {
+    isAbortError,
+    isListenAudioLoading,
+    listenHighlightVerse,
+    listenProgress,
+    resolveListenStartIndex,
+} from '@/lib/bible-listen'
+import { ListenEngine, createBrowserListenPlayer } from '@/lib/bible-listen-engine'
 
 interface BibleBook {
     id: string
@@ -88,6 +95,9 @@ const TEXT_SIZES = [
 ]
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
+const EMPTY_BOOKS: BibleBook[] = []
+const EMPTY_CHAPTERS: BibleChapter[] = []
+const EMPTY_VERSES: BibleVerse[] = []
 
 // ---- TTS request throttling & retry ----
 // ElevenLabs rate-limits concurrent requests, so we cap how many TTS calls run
@@ -97,14 +107,31 @@ const TTS_MAX_CONCURRENT = 2
 let ttsActiveCount = 0
 const ttsWaiters: Array<() => void> = []
 
-function acquireTtsSlot(): Promise<void> {
+function ttsAbortError(): DOMException {
+    return new DOMException('Aborted', 'AbortError')
+}
+
+function acquireTtsSlot(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return Promise.reject(ttsAbortError())
     if (ttsActiveCount < TTS_MAX_CONCURRENT) {
         ttsActiveCount++
         return Promise.resolve()
     }
     // Wait for a slot; the releaser hands its slot directly to us, so the active
     // count stays constant across the handoff (never exceeding the max).
-    return new Promise<void>((resolve) => ttsWaiters.push(resolve))
+    return new Promise<void>((resolve, reject) => {
+        const waiter = () => {
+            signal?.removeEventListener('abort', onAbort)
+            resolve()
+        }
+        const onAbort = () => {
+            const idx = ttsWaiters.indexOf(waiter)
+            if (idx >= 0) ttsWaiters.splice(idx, 1)
+            reject(ttsAbortError())
+        }
+        ttsWaiters.push(waiter)
+        if (signal) signal.addEventListener('abort', onAbort, { once: true })
+    })
 }
 
 function releaseTtsSlot() {
@@ -119,17 +146,20 @@ function releaseTtsSlot() {
 const ttsSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 // Throttled POST to the TTS endpoint with retry/backoff on 429 & 5xx.
-async function throttledTtsFetch(body: object): Promise<Response> {
-    await acquireTtsSlot()
+async function throttledTtsFetch(body: object, signal?: AbortSignal): Promise<Response> {
+    await acquireTtsSlot(signal)
     try {
+        if (signal?.aborted) throw ttsAbortError()
         const MAX_ATTEMPTS = 4
         let lastError: unknown
         for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            if (signal?.aborted) throw ttsAbortError()
             try {
                 const res = await fetch('/api/tts-elevenlabs', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body),
+                    signal,
                 })
                 if ((res.status === 429 || res.status >= 500) && attempt < MAX_ATTEMPTS - 1) {
                     const retryAfter = Number(res.headers.get('retry-after'))
@@ -141,6 +171,7 @@ async function throttledTtsFetch(body: object): Promise<Response> {
                 }
                 return res
             } catch (err) {
+                if (isAbortError(err)) throw err
                 lastError = err
                 if (attempt < MAX_ATTEMPTS - 1) {
                     await ttsSleep(500 * Math.pow(2, attempt) + Math.random() * 250)
@@ -295,7 +326,6 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const [pausedAtVerse, setPausedAtVerse] = useState<number | null>(null)
     const [ttsProgress, setTtsProgress] = useState(0) // 0 to 1 progress through chapter
     const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null) // seconds left
-    const [autoPlayNextChapter, setAutoPlayNextChapter] = useState(false)
 
     // AI Explain feature
     const [showExplainDialog, setShowExplainDialog] = useState(false)
@@ -351,35 +381,23 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         ? elevenLabsPref
         : (savedVoiceURI && CLOUD_TTS_VOICES_IDS.has(savedVoiceURI) ? savedVoiceURI : DEFAULT_CLOUD_VOICE_ID)
 
-    // Cloud TTS verse-by-verse with pre-buffering
+    // Cloud TTS is owned by ListenEngine (single source of truth keyed by book+chapter).
     const [selectedCloudVoice, setSelectedCloudVoice] = useState<string>(initialCloudVoice)
     const [audioLoading, setAudioLoading] = useState(false)
-    const mobileAudioRef = useRef<HTMLAudioElement | null>(null)
-    type MobileQueueItem = {
-        verseIndices: number[]     // verse indices covered by this batch
-        verseNums: number[]        // verse numbers for highlights
-        audio: HTMLAudioElement | null
-        loading: boolean
-        blobUrl?: string
-        promise?: Promise<void>    // in-flight fetch, shared so a batch is never fetched twice
-    }
-    const mobileQueueRef = useRef<MobileQueueItem[]>([])
-    const mobilePlayingRef = useRef(false)
-    const mobileCurrentIdxRef = useRef(0)
-    const mobileStoppedRef = useRef(false)
-    // Next-chapter audio prefetched during the auto-advance countdown, keyed by the
-    // exact batch text so the new chapter can start reading instantly. prefetchedChapterRef
-    // tracks which chapter is currently prefetched to avoid duplicate work.
-    const nextChapterAudioRef = useRef<Map<string, { audio: HTMLAudioElement; blobUrl: string }>>(new Map())
-    const prefetchedChapterRef = useRef<number | null>(null)
-    // Auto-play-after-advance guards. The timer lives in a ref (not returned as an
-    // effect cleanup) so the effect re-running when we reset autoPlayNextChapter
-    // does NOT cancel the pending playback. The handled flag ensures we schedule
-    // playback exactly once per chapter transition.
-    const autoPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const autoPlayHandledRef = useRef(false)
-    // Verse numbers restart every chapter. These refs keep Listen from applying a
-    // leftover start (e.g. verse 13) to the next page after a chapter turn.
+    const selectedCloudVoiceRef = useRef(initialCloudVoice)
+    selectedCloudVoiceRef.current = selectedCloudVoice
+    const listenEngineRef = useRef<ListenEngine | null>(null)
+    const listenNavRef = useRef({
+        selectedBook: initialBook,
+        selectedChapter: initialChapter,
+        chaptersLength: 0,
+        translation,
+        updateURL: ((_book: string | null, _chapter: number | null, _v: string) => {
+            /* filled in after updateURL is created */
+        }) as (book: string | null, chapter: number | null, v: string) => void,
+    })
+    // Verse numbers restart every chapter. Desktop speechSynthesis still uses this
+    // flag; cloud playback always starts at 0 after a chapter turn via the engine.
     const forceStartAtFirstVerseRef = useRef(false)
     const listenOffsetScopeRef = useRef<{ book: string | null; chapter: number | null }>({
         book: initialBook,
@@ -409,9 +427,9 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         fetcher
     )
 
-    const books: BibleBook[] = booksData?.books || []
-    const chapters: BibleChapter[] = chaptersData?.chapters || []
-    const verses: BibleVerse[] = versesData?.verses || []
+    const books: BibleBook[] = booksData?.books || EMPTY_BOOKS
+    const chapters: BibleChapter[] = chaptersData?.chapters || EMPTY_CHAPTERS
+    const verses: BibleVerse[] = versesData?.verses || EMPTY_VERSES
 
     // Load browser voices for non-cloud-voice devices only
     useEffect(() => {
@@ -494,11 +512,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
 
     useEffect(() => {
         speechRateRef.current = speechRate
-        // eleven_v3 has no server-side speed control, so update the currently
-        // playing audio's playbackRate immediately when the slider changes.
-        if (mobileAudioRef.current) {
-            mobileAudioRef.current.playbackRate = speechRate
-        }
+        listenEngineRef.current?.setRate(speechRate)
     }, [speechRate])
 
     // Preference save debounce
@@ -529,25 +543,15 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         }
     }, [selectedBook, selectedChapter, view])
 
-    // Cleanup speech on unmount or chapter change
+    // Cleanup desktop speech on unmount. Cloud Listen is disposed by the engine effect.
+    // Do not stop audio on chapter change: that raced with auto-advance.
     useEffect(() => {
         return () => {
-            // Desktop cleanup
             if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
                 window.speechSynthesis.cancel()
             }
-            // Mobile cleanup
-            mobileStoppedRef.current = true
-            if (mobileAudioRef.current) {
-                mobileAudioRef.current.pause()
-                mobileAudioRef.current = null
-            }
-            for (const item of mobileQueueRef.current) {
-                if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
-            }
-            mobileQueueRef.current = []
         }
-    }, [selectedBook, selectedChapter])
+    }, [])
 
     // Drop chapter-relative Listen offsets when the page changes. Verse 13 in
     // John 1 is not "verse 13" of John 2, even though both chapters have one.
@@ -1154,402 +1158,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         setPausedAtVerse(null)
     }
 
-    // ---- MOBILE: Cloud TTS verse-by-verse with pre-buffering ----
-
-    // Fetch a single verse audio blob
-    const fetchVerseAudio = async (text: string, voice: string): Promise<{ audio: HTMLAudioElement; blobUrl: string }> => {
-        const res = await throttledTtsFetch({ text, voice })
-        if (!res.ok) {
-            throw new Error(`TTS failed: ${res.status}`)
-        }
-        const blob = await res.blob()
-        if (blob.size === 0) {
-            throw new Error('TTS returned empty audio')
-        }
-        const blobUrl = URL.createObjectURL(blob)
-        const audio = new Audio(blobUrl)
-        // eleven_v3 ignores server-side speed, so control playback speed here.
-        audio.playbackRate = speechRateRef.current
-        // Preload the audio data
-        await new Promise<void>((resolve, reject) => {
-            audio.addEventListener('canplaythrough', () => resolve(), { once: true })
-            audio.addEventListener('error', () => reject(new Error('Audio load error')), { once: true })
-            audio.load()
-        })
-        return { audio, blobUrl }
-    }
-
-    // Build the text for a verse at a given index
-    const buildVerseText = (verseIdx: number, isFirst: boolean) => {
-        const v = verses[verseIdx]
-        if (!v) return ''
-        const bookName = books.find(b => b.id === selectedBook)?.name || ''
-        const verseText = v.text.replace(/\n/g, ' ').trim()
-        if (skipVerseNumbersRef.current) {
-            return isFirst ? `${bookName} chapter ${selectedChapter}. ${verseText}` : verseText
-        }
-        return isFirst ? `${bookName} chapter ${selectedChapter}. Verse ${v.verse}. ${verseText}` : `Verse ${v.verse}. ${verseText}`
-    }
-
-    // Number of verses to batch into a single TTS request for smoother transitions
-    const BATCH_SIZE = 3
-
-    // Build the batched text for a queue item (adds the chapter intro for batch 0)
-    const buildBatchText = (item: MobileQueueItem, queueIdx: number) => {
-        let text = ''
-        item.verseIndices.forEach((vIdx, j) => {
-            const part = buildVerseText(vIdx, queueIdx === 0 && j === 0)
-            text += (j > 0 ? ' ' : '') + part
-        })
-        return text
-    }
-
-    // Prefetch the next chapter's verses + first audio batches. Called when the
-    // auto-advance countdown starts so the next chapter can begin reading with no
-    // gap once we navigate. Keyed by the exact batch text ensureItemAudio will build.
-    const prefetchNextChapter = async () => {
-        if (!shouldUseCloudTTS || !selectedBook || !selectedChapter || !chapters.length) return
-        const next = selectedChapter + 1
-        if (next > chapters.length) return
-        if (prefetchedChapterRef.current === next) return
-        prefetchedChapterRef.current = next
-
-        // Clear any stale prefetch from a previous chapter to avoid blob-URL leaks.
-        nextChapterAudioRef.current.forEach(({ blobUrl }) => URL.revokeObjectURL(blobUrl))
-        nextChapterAudioRef.current.clear()
-
-        try {
-            const res = await fetch(
-                `/api/bible?action=verses&translation=${translation}&book=${selectedBook}&chapter=${next}`
-            )
-            const data = await res.json()
-            const nextVerses: BibleVerse[] = data?.verses || []
-            if (!nextVerses.length) return
-
-            const bookName = books.find(b => b.id === selectedBook)?.name || ''
-            const voice = selectedCloudVoice
-            const PREFETCH_BATCHES = 3
-
-            for (let b = 0; b < PREFETCH_BATCHES; b++) {
-                const start = b * BATCH_SIZE
-                if (start >= nextVerses.length) break
-                // Build batch text identical to buildBatchText for the next chapter.
-                let text = ''
-                for (let j = 0; j < BATCH_SIZE && start + j < nextVerses.length; j++) {
-                    const v = nextVerses[start + j]
-                    const verseText = v.text.replace(/\n/g, ' ').trim()
-                    const isFirst = b === 0 && j === 0
-                    let part: string
-                    if (skipVerseNumbersRef.current) {
-                        part = isFirst ? `${bookName} chapter ${next}. ${verseText}` : verseText
-                    } else {
-                        part = isFirst
-                            ? `${bookName} chapter ${next}. Verse ${v.verse}. ${verseText}`
-                            : `Verse ${v.verse}. ${verseText}`
-                    }
-                    text += (j > 0 ? ' ' : '') + part
-                }
-                if (nextChapterAudioRef.current.has(text)) continue
-                fetchVerseAudio(text, voice)
-                    .then(({ audio, blobUrl }) => {
-                        // Only keep it if this is still the chapter we expect to advance to.
-                        if (prefetchedChapterRef.current === next) {
-                            nextChapterAudioRef.current.set(text, { audio, blobUrl })
-                        } else {
-                            URL.revokeObjectURL(blobUrl)
-                        }
-                    })
-                    .catch(() => { })
-            }
-        } catch {
-            // Prefetch is best-effort; on failure the normal fetch path still runs.
-        }
-    }
-
-    // Ensure a queue item's audio is fetched exactly once. Concurrent callers
-    // (pre-buffering + playback) share the same in-flight promise so no batch is
-    // ever requested twice, which cuts request volume and avoids 429s.
-    const ensureItemAudio = (item: MobileQueueItem, queueIdx: number, voice: string): Promise<void> => {
-        if (item.audio) return Promise.resolve()
-        if (item.promise) return item.promise
-        item.loading = true
-        const text = buildBatchText(item, queueIdx)
-        // Use prefetched audio from the countdown if available (instant start).
-        const prefetched = nextChapterAudioRef.current.get(text)
-        if (prefetched) {
-            nextChapterAudioRef.current.delete(text)
-            item.audio = prefetched.audio
-            item.blobUrl = prefetched.blobUrl
-            item.loading = false
-            return Promise.resolve()
-        }
-        item.promise = fetchVerseAudio(text, voice)
-            .then(({ audio, blobUrl }) => {
-                item.loading = false
-                if (mobileStoppedRef.current) {
-                    URL.revokeObjectURL(blobUrl)
-                    return
-                }
-                item.audio = audio
-                item.blobUrl = blobUrl
-            })
-            .catch((err) => {
-                item.loading = false
-                item.promise = undefined // allow a later retry of this batch
-                throw err
-            })
-        return item.promise
-    }
-
-    // Pre-buffer upcoming batches in the queue (fire-and-forget)
-    const preBufferAhead = (startQueueIdx: number, voice: string) => {
-        const queue = mobileQueueRef.current
-        const BUFFER_AHEAD = 3
-        for (let i = startQueueIdx; i < Math.min(startQueueIdx + BUFFER_AHEAD, queue.length); i++) {
-            const item = queue[i]
-            if (item && !item.audio && !item.loading && !item.promise) {
-                void ensureItemAudio(item, i, voice).catch(() => { })
-            }
-        }
-    }
-
-    // Ref to hold verse highlight interval timers (cleared on stop)
-    const verseHighlightTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-    // Play the next batch item in the queue
-    const playMobileQueueItem = async (queueIdx: number, voice: string) => {
-        if (mobileStoppedRef.current) return
-        const queue = mobileQueueRef.current
-        if (queueIdx >= queue.length) {
-            // Finished all batches
-            setIsPlaying(false)
-            setCurrentReadingVerse(null)
-            setAudioLoading(false)
-            mobilePlayingRef.current = false
-            setTtsProgress(1) // 100% complete
-            setAutoAdvanceCountdown(3)
-            // Start fetching the next chapter's audio NOW (during the countdown) so it
-            // is ready to play the instant we navigate — no gap between chapters.
-            void prefetchNextChapter()
-            return
-        }
-
-        mobileCurrentIdxRef.current = queueIdx
-        const item = queue[queueIdx]
-
-        // Update progress based on first verse in this batch
-        const totalChapterVerses = verses.length
-        setTtsProgress(totalChapterVerses > 0 ? item.verseIndices[0] / totalChapterVerses : 0)
-
-        // Set verse highlight to first verse in batch
-        setCurrentReadingVerse(item.verseNums[0])
-
-        // Pre-buffer upcoming batches
-        preBufferAhead(queueIdx + 1, voice)
-
-        // Wait for this batch's audio if not ready yet (shares any in-flight fetch)
-        if (!item.audio) {
-            if (queueIdx === 0) setAudioLoading(true)
-            try {
-                await ensureItemAudio(item, queueIdx, voice)
-                if (mobileStoppedRef.current) return
-            } catch {
-                setIsPlaying(false)
-                setCurrentReadingVerse(null)
-                setAudioLoading(false)
-                mobilePlayingRef.current = false
-                toast.error('Could not load audio. Please try again.')
-                return
-            }
-        }
-
-        if (mobileStoppedRef.current) return
-        setAudioLoading(false)
-
-        const audio = item.audio!
-        // Re-apply the current speed in case this batch was pre-buffered earlier at
-        // a different reading-speed setting.
-        audio.playbackRate = speechRateRef.current
-        mobileAudioRef.current = audio
-
-        // Animate verse highlights within a batch using estimated timing
-        // Split the audio duration evenly across verses in the batch
-        if (item.verseNums.length > 1) {
-            // We estimate timing after audio starts -- use timeupdate to cycle through verses
-            let currentVerseInBatch = 0
-            const totalVersesInBatch = item.verseNums.length
-            // Estimate each verse's share based on text length
-            const verseLengths = item.verseIndices.map(idx => {
-                const v = verses[idx]
-                return v ? v.text.length : 50
-            })
-            const totalLength = verseLengths.reduce((a, b) => a + b, 0)
-            const verseTimeFractions = verseLengths.map(l => l / totalLength)
-
-            const onTimeUpdate = () => {
-                if (mobileStoppedRef.current || !audio.duration) return
-                const progress = audio.currentTime / audio.duration
-                let cumulative = 0
-                for (let i = 0; i < totalVersesInBatch; i++) {
-                    cumulative += verseTimeFractions[i]
-                    if (progress < cumulative) {
-                        if (currentVerseInBatch !== i) {
-                            currentVerseInBatch = i
-                            setCurrentReadingVerse(item.verseNums[i])
-                            // Update tts progress
-                            setTtsProgress(totalChapterVerses > 0 ? item.verseIndices[i] / totalChapterVerses : 0)
-                        }
-                        break
-                    }
-                }
-            }
-            audio.addEventListener('timeupdate', onTimeUpdate)
-            audio.onended = () => {
-                audio.removeEventListener('timeupdate', onTimeUpdate)
-                if (mobileStoppedRef.current) return
-                if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
-                playMobileQueueItem(queueIdx + 1, voice)
-            }
-        } else {
-            audio.onended = () => {
-                if (mobileStoppedRef.current) return
-                if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
-                playMobileQueueItem(queueIdx + 1, voice)
-            }
-        }
-
-        audio.onerror = () => {
-            if (mobileStoppedRef.current) return
-            // Retry: try to continue with the next item instead of stopping completely
-            console.log('[v0] Audio error, attempting to continue with next item')
-            if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
-            // Small delay before retry/continue
-            setTimeout(() => {
-                if (!mobileStoppedRef.current) {
-                    playMobileQueueItem(queueIdx + 1, voice)
-                }
-            }, 500)
-        }
-
-        audio.play().catch((err) => {
-            if (mobileStoppedRef.current) return
-            console.log('[v0] Audio play failed, attempting to continue:', err)
-            // Retry: try to continue with the next item
-            if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
-            setTimeout(() => {
-                if (!mobileStoppedRef.current) {
-                    playMobileQueueItem(queueIdx + 1, voice)
-                }
-            }, 500)
-        })
-    }
-
-    const handlePlayMobile = (initialStartVerse?: number) => {
-        if (verses.length === 0) return
-        let startFromVerse = initialStartVerse
-        const forceFirstVerse = forceStartAtFirstVerseRef.current
-        forceStartAtFirstVerseRef.current = false
-
-        // Resume from pause on the same page. A page turn must not resume the
-        // previous chapter's audio or reuse its verse number as a start index.
-        if (!forceFirstVerse && isPaused && !startFromVerse && mobileAudioRef.current) {
-            mobileAudioRef.current.play()
-            setIsPaused(false)
-            setIsPlaying(true)
-            // Restore the verse highlight that was showing when paused
-            if (pausedAtVerse !== null) {
-                setCurrentReadingVerse(pausedAtVerse)
-            }
-            return
-        }
-
-        // If paused and requesting new play, restart from paused position
-        if (!forceFirstVerse && isPaused && !startFromVerse && pausedAtVerse !== null) {
-            startFromVerse = pausedAtVerse
-        }
-
-        // Stop any existing playback
-        handleStopMobile()
-
-        const verseIndex = resolveListenStartIndex({
-            verses,
-            explicitStartVerse: startFromVerse ?? null,
-            pausedAtVerse,
-            audioStartVerse,
-            forceFirstVerse,
-            offsetScope: listenOffsetScopeRef.current,
-            currentBook: selectedBook,
-            currentChapter: selectedChapter,
-        })
-
-        // Build the batched queue (group verses in batches of BATCH_SIZE)
-        mobileStoppedRef.current = false
-        mobilePlayingRef.current = true
-        const queue: MobileQueueItem[] = []
-        for (let i = verseIndex; i < verses.length; i += BATCH_SIZE) {
-            const endIdx = Math.min(i + BATCH_SIZE, verses.length)
-            const verseIndices: number[] = []
-            const verseNums: number[] = []
-            for (let j = i; j < endIdx; j++) {
-                verseIndices.push(j)
-                verseNums.push(verses[j].verse)
-            }
-            queue.push({ verseIndices, verseNums, audio: null, loading: false })
-        }
-        mobileQueueRef.current = queue
-
-        setIsPlaying(true)
-        setIsPaused(false)
-        setAudioLoading(true) // Show loading immediately on the Listen button
-        // Set initial progress based on starting position within entire chapter
-        setTtsProgress(verses.length > 0 ? verseIndex / verses.length : 0)
-        clearAutoAdvance()
-
-        // Start pre-buffering the first few batches immediately (throttled + deduped)
-        const voice = selectedCloudVoice
-        const INITIAL_BUFFER = 3
-        for (let i = 0; i < Math.min(INITIAL_BUFFER, queue.length); i++) {
-            void ensureItemAudio(queue[i], i, voice).catch(() => { })
-        }
-
-        // Start playing the first batch
-        playMobileQueueItem(0, voice)
-    }
-
-    const handlePauseMobile = () => {
-        if (mobileAudioRef.current) {
-            mobileAudioRef.current.pause()
-            setIsPaused(true)
-            setIsPlaying(false)
-            setPausedAtVerse(currentReadingVerse)
-            // Keep currentReadingVerse set so the verse stays highlighted while paused
-        }
-    }
-
-    const handleStopMobile = () => {
-        mobileStoppedRef.current = true
-        mobilePlayingRef.current = false
-        if (verseHighlightTimerRef.current) {
-            clearInterval(verseHighlightTimerRef.current)
-            verseHighlightTimerRef.current = null
-        }
-        if (mobileAudioRef.current) {
-            mobileAudioRef.current.pause()
-            mobileAudioRef.current.onended = null
-            mobileAudioRef.current.onerror = null
-            mobileAudioRef.current = null
-        }
-        // Clean up all blob URLs in the queue
-        for (const item of mobileQueueRef.current) {
-            if (item.blobUrl) URL.revokeObjectURL(item.blobUrl)
-        }
-        mobileQueueRef.current = []
-        setIsPlaying(false)
-        setIsPaused(false)
-        setCurrentReadingVerse(null)
-        setPausedAtVerse(null)
-        setAudioLoading(false)
-    }
+    // Cloud TTS playback lives in ListenEngine. See engine setup after updateURL.
 
     // ---- Unified handlers ----
     const handleExplainVerse = async (reference: string, verseText: string) => {
@@ -1595,23 +1204,49 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         }
     }
 
-    // Check if current voice selection is a cloud voice (OpenAI or Google)
-    // This is only used to determine playback method on desktop when NOT using cloud voices by default
-    const isCloudVoiceSelected = CLOUD_TTS_VOICES_IDS.has(selectedCloudVoice)
-
     // Determine if we should use cloud TTS for playback
     // On mobile/Apple: always use cloud voices
     // On desktop: use browser speechSynthesis (don't use cloud voices even if one is "selected" in state)
     const shouldUseCloudTTS = useCloudVoices
 
+    const playCloudChapter = (initialStartVerse?: number) => {
+        const engine = listenEngineRef.current
+        if (!engine || !selectedBook || !selectedChapter) return
+        if (engine.getState().status === 'paused' && initialStartVerse == null) {
+            engine.resume()
+            return
+        }
+        if (verses.length === 0) return
+        const verseIndex = resolveListenStartIndex({
+            verses,
+            explicitStartVerse: initialStartVerse ?? null,
+            pausedAtVerse,
+            audioStartVerse,
+            forceFirstVerse: false,
+            offsetScope: listenOffsetScopeRef.current,
+            currentBook: selectedBook,
+            currentChapter: selectedChapter,
+        })
+        const bookName = books.find(b => b.id === selectedBook)?.name || ''
+        engine.play({
+            location: { book: selectedBook, chapter: selectedChapter },
+            verses,
+            bookName,
+            startIndex: verseIndex,
+            hasNextChapter: selectedChapter < chapters.length,
+        })
+        const first = verses[verseIndex]?.verse
+        if (initialStartVerse == null && first != null) {
+            document.getElementById(`verse-${first}`)?.scrollIntoView({ behavior: 'auto', block: 'start' })
+        }
+    }
+
     const handlePlayChapter = (initialStartVerse?: number) => {
-        // Use cloud playback only for mobile/Apple devices
-        if (shouldUseCloudTTS) handlePlayMobile(initialStartVerse)
+        if (shouldUseCloudTTS) playCloudChapter(initialStartVerse)
         else handlePlayDesktop(initialStartVerse)
     }
     const handlePauseAudio = () => {
-        // Use cloud pause only for mobile/Apple
-        if (shouldUseCloudTTS) handlePauseMobile()
+        if (shouldUseCloudTTS) listenEngineRef.current?.pause()
         else handlePauseDesktop()
     }
     const clearAutoAdvance = useCallback(() => {
@@ -1619,8 +1254,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     }, [])
 
     const handleStopAudio = () => {
-        // Use cloud stop only for mobile/Apple
-        if (shouldUseCloudTTS) handleStopMobile()
+        if (shouldUseCloudTTS) listenEngineRef.current?.stop()
         else handleStopDesktop()
         setTtsProgress(0)
         clearAutoAdvance()
@@ -1636,91 +1270,85 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         router.replace(`/dashboard/bible${query ? `?${query}` : ''}`, { scroll: false })
     }, [router])
 
-    // Auto-advance countdown: tick down from 3 to 0, then navigate
+    listenNavRef.current = {
+        selectedBook,
+        selectedChapter,
+        chaptersLength: chapters.length,
+        translation,
+        updateURL,
+    }
+
     useEffect(() => {
-        if (autoAdvanceCountdown === null) return
-        // Check if we can actually advance
-        if (!selectedChapter || !chapters.length || selectedChapter >= chapters.length) {
-            setAutoAdvanceCountdown(null)
-            return
-        }
-        if (autoAdvanceCountdown <= 0) {
-            // Time's up -- navigate to next chapter
-            setAutoAdvanceCountdown(null)
-            setTtsProgress(0)
-
-            // Fully stop current playback before transitioning
-            handleStopMobile()
-            mobileStoppedRef.current = true
-            mobilePlayingRef.current = false
-            setIsPlaying(false)
-            setIsPaused(false)
-            setCurrentReadingVerse(null)
-
-            // Small delay to ensure audio is fully stopped
-            setTimeout(() => {
-                const next = selectedChapter + 1
+        const engine = new ListenEngine({
+            fetchAudio: async (text, signal) => {
+                const res = await throttledTtsFetch({ text, voice: selectedCloudVoiceRef.current }, signal)
+                if (!res.ok) throw new Error(`TTS failed: ${res.status}`)
+                const blob = await res.blob()
+                if (blob.size === 0) throw new Error('TTS returned empty audio')
+                return URL.createObjectURL(blob)
+            },
+            playAudio: (url, handlers) => createBrowserListenPlayer(url, handlers, speechRateRef.current),
+            revokeUrl: (url) => URL.revokeObjectURL(url),
+            onStateChange: (s) => {
+                setIsPlaying(s.status === 'playing')
+                setIsPaused(s.status === 'paused')
+                setAudioLoading(isListenAudioLoading(s))
+                setCurrentReadingVerse(listenHighlightVerse(s))
+                setAutoAdvanceCountdown(s.status === 'countdown' ? s.countdown : null)
+                setTtsProgress(listenProgress(s))
+                if (s.status === 'paused') {
+                    setPausedAtVerse(listenHighlightVerse(s))
+                } else if (s.status === 'idle' || s.status === 'awaiting-verses' || s.status === 'error') {
+                    setPausedAtVerse(null)
+                }
+            },
+            onAutoAdvance: () => {
+                const nav = listenNavRef.current
+                if (!nav.selectedBook || !nav.selectedChapter || nav.selectedChapter >= nav.chaptersLength) {
+                    return null
+                }
+                const next = nav.selectedChapter + 1
                 setWeekVerseRange(null)
                 setSelectedChapter(next)
-                updateURL(selectedBook, next, translation)
-                // Reset the stopped flag so new chapter can play
-                mobileStoppedRef.current = false
-                // New chapter: always start at verse 1, not a leftover offset.
-                forceStartAtFirstVerseRef.current = true
-                setAutoPlayNextChapter(true)
-            }, 200)
-            return
-        }
-        // Tick down every second
-        const timer = setTimeout(() => {
-            setAutoAdvanceCountdown(prev => prev !== null ? prev - 1 : null)
-        }, 1000)
-        return () => clearTimeout(timer)
-    }, [autoAdvanceCountdown, selectedChapter, chapters.length, selectedBook, translation, updateURL])
-
-    // Auto-play when new chapter verses load after auto-advance.
-    // NOTE: we intentionally do NOT return a cleanup that clears the play timer.
-    // Resetting autoPlayNextChapter below re-runs this effect, and an effect-cleanup
-    // clearTimeout would cancel the pending playback before it fires (the original
-    // bug that made audio stop on the next page). The timer is stored in a ref and
-    // only cleared on unmount; a handled flag guards against double-scheduling.
-    useEffect(() => {
-        // Wait until verses are fully loaded (not loading) and we have content
-        if (autoPlayNextChapter && verses.length > 0 && !versesLoading && !autoPlayHandledRef.current) {
-            autoPlayHandledRef.current = true
-            setAutoPlayNextChapter(false)
-            setTtsProgress(0)
-
-            // Ensure previous audio is fully stopped before starting new chapter
-            handleStopMobile()
-
-            // Short delay to let the new chapter render; audio is already prefetched
-            // (during the countdown) so playback resumes with virtually no gap.
-            autoPlayTimerRef.current = setTimeout(() => {
-                autoPlayTimerRef.current = null
-                // Double-check we still have verses and conditions are met
-                if (verses.length > 0) {
-                    forceStartAtFirstVerseRef.current = true
-                    const firstVerse = verses[0]?.verse
-                    if (firstVerse != null) {
-                        document.getElementById(`verse-${firstVerse}`)
-                            ?.scrollIntoView({ behavior: 'auto', block: 'start' })
-                    }
-                    handlePlayChapter(firstVerse)
+                nav.updateURL(nav.selectedBook, next, nav.translation)
+                return {
+                    location: { book: nav.selectedBook, chapter: next },
+                    hasNextChapter: next < nav.chaptersLength,
                 }
-                // Allow the next chapter transition to schedule again.
-                autoPlayHandledRef.current = false
-            }, 300)
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [autoPlayNextChapter, verses, versesLoading])
-
-    // Clear any pending auto-play timer on unmount to avoid leaks / stray playback.
-    useEffect(() => {
+            },
+            onError: (message) => toast.error(message),
+            skipVerseNumbers: () => skipVerseNumbersRef.current,
+            speechRate: () => speechRateRef.current,
+            countdownSeconds: 3,
+        })
+        listenEngineRef.current = engine
         return () => {
-            if (autoPlayTimerRef.current) clearTimeout(autoPlayTimerRef.current)
+            engine.dispose()
+            if (listenEngineRef.current === engine) listenEngineRef.current = null
         }
     }, [])
+
+    // When auto-advance is waiting, only start once verses belong to this chapter.
+    useEffect(() => {
+        const engine = listenEngineRef.current
+        if (!engine || !selectedBook || selectedChapter == null) return
+        const bookName = books.find(b => b.id === selectedBook)?.name || ''
+        engine.notifyVerses({
+            location: { book: selectedBook, chapter: selectedChapter },
+            verses,
+            versesLoading,
+            bookName,
+            hasNextChapter: chapters.length > 0 && selectedChapter < chapters.length,
+        })
+        const state = engine.getState()
+        if (state.status === 'loading-audio' && state.currentIndex === 0) {
+            const firstVerse = state.verses[0]?.verse
+            if (firstVerse != null) {
+                document.getElementById(`verse-${firstVerse}`)
+                    ?.scrollIntoView({ behavior: 'auto', block: 'start' })
+            }
+        }
+    }, [selectedBook, selectedChapter, verses, versesLoading, chapters.length, books])
 
     const handleSelectBook = (bookId: string) => {
         setSelectedBook(bookId)
@@ -2412,16 +2040,26 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             {/* Audio controls */}
                             {!highlightMode && (
                                 <div className="flex items-center gap-1 ml-auto">
-                                    {audioLoading || (autoPlayNextChapter && versesLoading) ? (
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-8 gap-1.5 text-xs bg-card"
-                                            disabled
-                                        >
-                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                            Loading...
-                                        </Button>
+                                    {audioLoading ? (
+                                        <>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 gap-1.5 text-xs bg-card"
+                                                disabled
+                                            >
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                Loading...
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 text-xs"
+                                                onClick={handleStopAudio}
+                                            >
+                                                <VolumeX className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </>
                                     ) : isPlaying ? (
                                         <>
                                             <Button
@@ -2578,6 +2216,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
                             </p>
                         ) : (
                             <div className="space-y-2">
+                                {audioLoading && (
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground font-sans bg-muted/50 rounded-md px-3 py-1.5">
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                                        <span>Loading audio...</span>
+                                    </div>
+                                )}
                                 {weekVerseRange && (
                                     <div className="flex items-center gap-2 text-xs text-primary font-sans bg-primary/15 rounded-md px-3 py-1.5 border border-primary/20">
                                         <BookMarked className="h-3.5 w-3.5 shrink-0" />
