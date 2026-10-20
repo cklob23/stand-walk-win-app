@@ -6,6 +6,7 @@ import { WeekCelebrationModal } from '@/components/celebration/week-celebration-
 import { useRouter } from 'next/navigation'
 import { groupAssignments } from '@/lib/assignment-grouping'
 import type { Assignment } from '@/lib/types'
+import { resolveJourneyTotalWeeks } from '@/lib/journey-graduation'
 
 interface CelebrationContextType {
     checkForPendingCelebration: () => Promise<void>
@@ -71,7 +72,7 @@ export function CelebrationProvider({ children, initialCelebration }: Celebratio
             const currentWeek = pairing.current_week || 1
             const lastCelebratedWeek = pairing.last_celebrated_week || 0
 
-            if (currentWeek > lastCelebratedWeek + 1 && currentWeek <= 6) {
+            if (currentWeek > lastCelebratedWeek + 1 && currentWeek <= resolveJourneyTotalWeeks()) {
                 const weekToCheck = currentWeek - 1
 
                 const { data: weekContent } = await supabase

@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { GraduationCap, Users, BookOpen, ArrowRight, Sparkles, Check, Building2, ShoppingCart, Send, Archive, Trophy, PartyPopper } from 'lucide-react'
 import { graduateToLeader, getAvailableJourneys, startNewJourney } from '@/lib/graduation-actions'
+import { markGraduationModalSeen } from '@/lib/graduation-modal-once'
+import { resolveJourneyTotalWeeks } from '@/lib/journey-graduation'
 import { submitOrgMemberRequest } from '@/lib/org-request-actions'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
@@ -36,6 +38,7 @@ interface GraduationModalProps {
     journeyId?: string // Current journey ID to filter from available journeys
     journeyName?: string
     journeySubtitle?: string // e.g., "New Believer Foundations" - displays after the main name
+    totalWeeks?: number
     canBeLeader?: boolean
     subscriptionTier?: { max_learners: number } | null
     organizationId?: string | null
@@ -51,6 +54,7 @@ export function GraduationModal({
     journeyId,
     journeyName = 'Stand Walk Run',
     journeySubtitle,
+    totalWeeks,
     canBeLeader = true,
     subscriptionTier,
     organizationId,
@@ -66,6 +70,13 @@ export function GraduationModal({
 
     const isOrgMember = !!organizationId
     const maxLearners = subscriptionTier?.max_learners || 1
+    const journeyWeekCount = resolveJourneyTotalWeeks({ total_weeks: totalWeeks })
+
+    useEffect(() => {
+        if (isOpen && pairingId) {
+            markGraduationModalSeen(pairingId)
+        }
+    }, [isOpen, pairingId])
 
     // Trigger confetti on celebration step
     useEffect(() => {
@@ -201,7 +212,7 @@ export function GraduationModal({
                                     <div>
                                         <p className="font-semibold text-lg">Journey Complete!</p>
                                         <p className="text-sm text-muted-foreground">
-                                            You've completed all 6 weeks of assignments and spiritual growth
+                                            You've completed all {journeyWeekCount} weeks of assignments and spiritual growth
                                         </p>
                                     </div>
                                 </div>

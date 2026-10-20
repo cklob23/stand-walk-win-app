@@ -8,8 +8,14 @@ import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { pickActivePairing, preferredPairingIds, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 import type { Message, Profile, Pairing, Journey, Assignment } from '@/lib/types'
 import { groupAssignments } from '@/lib/assignment-grouping'
+import { resolveDashboardLoadWritePairingId } from '@/lib/dashboard-load-writes'
+import {
+  isJourneyCompleteForGraduation,
+  resolveJourneyTotalWeeks,
+} from '@/lib/journey-graduation'
 import { ensureCompletedMeetingProgress } from '@/lib/meeting-progress'
 import { notifyLeaderOfJourneyComplete } from '@/lib/notifications'
+import { advancePairingWeek, markPairingJourneyCompleted } from '@/lib/pairing-writes'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -51,6 +57,7 @@ export default async function DashboardPage({
   let pairing = null
   let partner = null
   let allLearners: LearnerWithPairing[] = []
+  const cookiePairingId = profile.role === 'leader' ? await getSelectedPairingId() : null
 
   if (profile.role === 'leader') {
     // Fetch ALL pairings for this leader (multi-learner support)
@@ -77,7 +84,6 @@ export default async function DashboardPage({
       // URL → cookie → first active pairing that actually has a learner.
       // An invalid/stale ?pairing= (or an unclaimed invite) falls back instead
       // of rendering a blank page.
-      const cookiePairingId = await getSelectedPairingId()
       const selectedPairing = pickActivePairing(allPairings, 'leader', preferredPairingIds(params.pairing, cookiePairingId))
 
       if (selectedPairing) {
@@ -147,7 +153,7 @@ export default async function DashboardPage({
   if (pairing?.journey_id) {
     const { data: journey } = await supabase
       .from('journeys')
-      .select('name, description')
+      .select('name, description, total_weeks')
       .eq('id', pairing.journey_id)
       .single()
     journeyName = journey?.name
@@ -172,6 +178,13 @@ export default async function DashboardPage({
       organizationName = org.name
     }
   }
+
+  const totalWeeks = resolveJourneyTotalWeeks(pairing?.journey)
+  const writePairingId = resolveDashboardLoadWritePairingId({
+    shownPairingId: pairing?.id,
+    requestedPairingIds: preferredPairingIds(params.pairing, cookiePairingId),
+  })
+  const canWriteShownPairing = !!pairing && writePairingId === pairing.id
 
   // Get assignments for current week — scope to this pairing's journey so we
   // don't inflate counts with rows from other journeys.
@@ -217,7 +230,7 @@ export default async function DashboardPage({
   // This MUST happen before the week completion check so meetings count toward completion.
   // Uses the admin client (via helper) so a signed-in leader can persist the
   // learner's meeting row — RLS otherwise rejects that write silently.
-  if (pairing && assignments && completedMeetingsCount > 0) {
+  if (canWriteShownPairing && pairing && assignments && completedMeetingsCount > 0) {
     const { wrote } = await ensureCompletedMeetingProgress({
       callerUserId: user.id,
       pairing: {
@@ -228,6 +241,7 @@ export default async function DashboardPage({
       assignments,
       existingProgress: assignmentProgress,
       completedMeetingsCount,
+      expectedPairingId: writePairingId,
     })
 
     // Refetch assignment progress if we inserted any records so week
@@ -259,7 +273,7 @@ export default async function DashboardPage({
 
   // Check if current week is complete and auto-advance if needed
   let effectiveCurrentWeek = currentWeek
-  if (pairing && assignments && assignments.length > 0) {
+  if (canWriteShownPairing && pairing && assignments && assignments.length > 0) {
     // Get assignments for the current week, then group multi-question rows together
     const currentWeekAssignments = (assignments as Assignment[]).filter(a => a.week_number === currentWeek)
     const currentWeekGrouped = groupAssignments(currentWeekAssignments)
@@ -270,28 +284,51 @@ export default async function DashboardPage({
     ).length
 
     // If all assignments for current week are complete, advance to next week
-    if (currentWeekGrouped.length > 0 && currentWeekCompletedCount >= currentWeekGrouped.length && currentWeek < 6) {
+    if (currentWeekGrouped.length > 0 && currentWeekCompletedCount >= currentWeekGrouped.length && currentWeek < totalWeeks) {
       const nextWeek = currentWeek + 1
+      const { updated } = await advancePairingWeek({
+        pairingId: pairing.id,
+        expectedPairingId: writePairingId!,
+        nextWeek,
+        maxWeek: totalWeeks,
+      })
 
-      // Update the pairing's current week in the database
-      await supabase
-        .from('pairings')
-        .update({ current_week: nextWeek })
-        .eq('id', pairing.id)
-
-      // Update the local value
-      effectiveCurrentWeek = nextWeek
-      pairing.current_week = nextWeek
+      if (updated) {
+        effectiveCurrentWeek = nextWeek
+        pairing.current_week = nextWeek
+      }
     }
   }
 
-  // Week 6 completion (learner assignment or leader-marked meeting) notifies
-  // the leader once. Safe to call on every load: check-before-insert + unique index.
-  if (pairing && (pairing.current_week || 1) >= 6) {
-    try {
-      await notifyLeaderOfJourneyComplete(pairing.id)
-    } catch (error) {
-      console.error('[dashboard] journey complete notification failed', error)
+  // Journey completion (learner assignment or leader-marked meeting) notifies
+  // the leader once, then marks the pairing completed. Guarded so a fallback
+  // selection after another learner graduates cannot write to this pairing.
+  if (canWriteShownPairing && pairing) {
+    const groupedAll = groupAssignments((assignments || []) as Assignment[])
+    const journeyComplete = isJourneyCompleteForGraduation({
+      currentWeek: pairing.current_week || 1,
+      totalWeeks,
+      groupedAssignments: groupedAll,
+      completedAssignmentIds: assignmentProgress
+        .filter((row) => row.status === 'completed')
+        .map((row) => row.assignment_id),
+    })
+
+    if (journeyComplete) {
+      try {
+        await notifyLeaderOfJourneyComplete(pairing.id)
+      } catch (error) {
+        console.error('[dashboard] journey complete notification failed', error)
+      }
+      try {
+        await markPairingJourneyCompleted({
+          pairingId: pairing.id,
+          expectedPairingId: writePairingId!,
+        })
+        pairing.status = 'completed'
+      } catch (error) {
+        console.error('[dashboard] mark pairing completed failed', error)
+      }
     }
   }
 
@@ -415,8 +452,8 @@ export default async function DashboardPage({
     const lastCelebratedWeek = pairing.last_celebrated_week || 0
 
     // If there's an uncelebrated week (current > last + 1 means a week was completed but not celebrated)
-    // Only for weeks 1-5 (week 6 completion triggers graduation modal instead)
-    if (currentWeek > lastCelebratedWeek + 1 && currentWeek <= 6) {
+    // Only for weeks before the final week (final week triggers graduation instead)
+    if (currentWeek > lastCelebratedWeek + 1 && currentWeek <= totalWeeks) {
       const weekToCheck = currentWeek - 1
 
       // Get the week content for the title

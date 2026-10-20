@@ -2,12 +2,19 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
     JOURNEY_COMPLETE_NOTIFICATION_TYPE,
+    JOURNEY_COMPLETE_TOTAL_WEEKS,
+    USER_JOURNEY_ON_CONFLICT,
+    WEEK_UNLOCKED_EVENT,
+    buildCompletedUserJourneyRow,
     buildJourneyCompleteNotification,
+    buildWeekUnlockedMetadata,
     decideJourneyGraduationNotification,
     displayLearnerName,
     isJourneyCompleteForGraduation,
     isPostgresUniqueViolation,
     journeyCompleteHref,
+    resolveJourneyTotalWeeks,
+    weekUnlockRecipientIds,
 } from './journey-graduation.ts'
 
 const pairingA = {
@@ -134,6 +141,18 @@ describe('isJourneyCompleteForGraduation', () => {
         )
     })
 
+    it('uses the journey week count when provided', () => {
+        assert.equal(
+            isJourneyCompleteForGraduation({
+                currentWeek: 4,
+                totalWeeks: 4,
+                groupedAssignments: grouped,
+                completedAssignmentIds: ['w1', 'w6-reading', 'w6-meeting'],
+            }),
+            true,
+        )
+    })
+
     it('is false when there are no assignments to complete', () => {
         assert.equal(
             isJourneyCompleteForGraduation({
@@ -180,10 +199,30 @@ describe('decideJourneyGraduationNotification', () => {
         assert.deepEqual(decision, { action: 'skip', reason: 'missing_relationship' })
     })
 
-    it('skips completed pairings so a later Graduate to Leader click does not re-fire', () => {
+    it('still inserts for a completed pairing so notify-then-complete in one request works', () => {
         const decision = decideJourneyGraduationNotification({
             ...completeInput,
             pairing: { ...pairingA, status: 'completed' },
+        })
+        assert.equal(decision.action, 'insert')
+        if (decision.action === 'insert') {
+            assert.equal(decision.payload.pairing_id, 'pairing-paul')
+        }
+    })
+
+    it('skips a later Graduate to Leader click because the leader was already notified', () => {
+        const decision = decideJourneyGraduationNotification({
+            ...completeInput,
+            alreadyNotified: true,
+            pairing: { ...pairingA, status: 'completed' },
+        })
+        assert.deepEqual(decision, { action: 'skip', reason: 'already_notified' })
+    })
+
+    it('skips pending pairings', () => {
+        const decision = decideJourneyGraduationNotification({
+            ...completeInput,
+            pairing: { ...pairingA, status: 'pending' },
         })
         assert.deepEqual(decision, { action: 'skip', reason: 'pairing_not_active' })
     })
@@ -204,6 +243,52 @@ describe('decideJourneyGraduationNotification', () => {
             alreadyNotified: false,
         })
         assert.deepEqual(decision, { action: 'skip', reason: 'missing_pairing' })
+    })
+})
+
+describe('resolveJourneyTotalWeeks', () => {
+    it('uses the journey week count when present', () => {
+        assert.equal(resolveJourneyTotalWeeks({ total_weeks: 8 }), 8)
+        assert.equal(resolveJourneyTotalWeeks({ duration_weeks: 4 }), 4)
+    })
+
+    it('falls back to the shared constant', () => {
+        assert.equal(resolveJourneyTotalWeeks(null), JOURNEY_COMPLETE_TOTAL_WEEKS)
+        assert.equal(resolveJourneyTotalWeeks({ total_weeks: 0 }), JOURNEY_COMPLETE_TOTAL_WEEKS)
+    })
+})
+
+describe('weekUnlockRecipientIds', () => {
+    it('notifies the leader and the learner exactly once each', () => {
+        assert.deepEqual(weekUnlockRecipientIds('leader-1', 'learner-1'), ['leader-1', 'learner-1'])
+    })
+
+    it('does not notify the same person twice on a self-pairing', () => {
+        assert.deepEqual(weekUnlockRecipientIds('same', 'same'), ['same'])
+    })
+})
+
+describe('buildCompletedUserJourneyRow', () => {
+    it('matches the admin conflict target and completed shape', () => {
+        assert.equal(USER_JOURNEY_ON_CONFLICT, 'user_id,journey_id')
+        const row = buildCompletedUserJourneyRow({
+            userId: 'learner-1',
+            journeyId: 'journey-1',
+            pairingId: 'pairing-1',
+            completedAt: '2026-10-20T00:00:00.000Z',
+        })
+        assert.deepEqual(row, {
+            user_id: 'learner-1',
+            journey_id: 'journey-1',
+            pairing_id: 'pairing-1',
+            status: 'completed',
+            completed_at: '2026-10-20T00:00:00.000Z',
+            completion_percentage: 100,
+        })
+        assert.deepEqual(buildWeekUnlockedMetadata(3), {
+            event: WEEK_UNLOCKED_EVENT,
+            weekNumber: 3,
+        })
     })
 })
 

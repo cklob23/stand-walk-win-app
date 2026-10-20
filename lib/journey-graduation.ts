@@ -8,6 +8,10 @@ export const JOURNEY_COMPLETE_NOTIFICATION_TYPE = 'journey_complete' as const
 
 export const JOURNEY_COMPLETE_TOTAL_WEEKS = 6
 
+export const USER_JOURNEY_ON_CONFLICT = 'user_id,journey_id'
+
+export const WEEK_UNLOCKED_EVENT = 'week_unlocked' as const
+
 export type JourneyGraduationSkipReason =
   | 'missing_pairing'
   | 'missing_relationship'
@@ -74,6 +78,57 @@ export function journeyCompleteHref(pairingId: string): string {
   return `/dashboard?pairing=${encodeURIComponent(pairingId)}`
 }
 
+export function resolveJourneyTotalWeeks(
+  journey?: { total_weeks?: number | null; duration_weeks?: number | null } | null,
+): number {
+  const fromJourney = journey?.total_weeks || journey?.duration_weeks
+  return fromJourney && fromJourney > 0 ? fromJourney : JOURNEY_COMPLETE_TOTAL_WEEKS
+}
+
+export function buildCompletedUserJourneyRow(params: {
+  userId: string
+  journeyId: string
+  pairingId: string
+  completedAt?: string
+}): {
+  user_id: string
+  journey_id: string
+  pairing_id: string
+  status: 'completed'
+  completed_at: string
+  completion_percentage: 100
+} {
+  return {
+    user_id: params.userId,
+    journey_id: params.journeyId,
+    pairing_id: params.pairingId,
+    status: 'completed',
+    completed_at: params.completedAt ?? new Date().toISOString(),
+    completion_percentage: 100,
+  }
+}
+
+/** One leader + one learner. A self-pairing is notified once. */
+export function weekUnlockRecipientIds(
+  leaderId: string | null | undefined,
+  learnerId: string | null | undefined,
+): string[] {
+  const ids: string[] = []
+  if (leaderId) ids.push(leaderId)
+  if (learnerId && learnerId !== leaderId) ids.push(learnerId)
+  return ids
+}
+
+export function buildWeekUnlockedMetadata(weekNumber: number): {
+  event: typeof WEEK_UNLOCKED_EVENT
+  weekNumber: number
+} {
+  return {
+    event: WEEK_UNLOCKED_EVENT,
+    weekNumber,
+  }
+}
+
 export function isJourneyCompleteForGraduation(params: {
   currentWeek: number
   totalWeeks?: number
@@ -107,7 +162,9 @@ export function decideJourneyGraduationNotification(input: {
   }
 
   const status = input.pairing.status || 'active'
-  if (status !== 'active') {
+  // Active or already-completed is fine: we may mark the pairing completed
+  // in the same request as the notification. Pending/cancelled never notify.
+  if (status !== 'active' && status !== 'completed') {
     return { action: 'skip', reason: 'pairing_not_active' }
   }
 

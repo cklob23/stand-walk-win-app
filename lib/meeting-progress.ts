@@ -34,13 +34,23 @@ export async function ensureCompletedMeetingProgress({
   assignments,
   existingProgress,
   completedMeetingsCount,
+  expectedPairingId,
 }: {
   callerUserId: string
   pairing: MeetingProgressPairing
   assignments: MeetingProgressAssignment[]
   existingProgress: MeetingProgressRow[]
   completedMeetingsCount: number
+  expectedPairingId?: string
 }): Promise<{ wrote: boolean }> {
+  if (expectedPairingId && expectedPairingId !== pairing.id) {
+    console.error(
+      '[ensureCompletedMeetingProgress] refused write for a pairing other than the one shown',
+      { pairingId: pairing.id, expectedPairingId },
+    )
+    return { wrote: false }
+  }
+
   if (!pairing.learner_id || completedMeetingsCount <= 0) {
     return { wrote: false }
   }

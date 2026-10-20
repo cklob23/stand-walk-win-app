@@ -43,6 +43,11 @@ import { LocalDateTime } from '@/components/ui/local-datetime'
 import type { Assignment } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { notifyAssignmentCompleted, advanceToNextWeek } from '@/lib/notifications'
+import {
+  hasSeenGraduationModal,
+  markGraduationModalSeen,
+  shouldAutoOpenGraduationModal,
+} from '@/lib/graduation-modal-once'
 import { extractScriptureReferences, extractBookReferences } from '@/lib/bible-utils'
 import { toggleAssignmentReaction, replyToAssignment, deleteAssignmentReply } from '@/lib/assignment-actions'
 import { WeekCelebrationModal } from '@/components/celebration/week-celebration-modal'
@@ -105,6 +110,7 @@ interface AssignmentCardProps {
   userName?: string
   journeyName?: string
   journeySubtitle?: string
+  totalWeeks?: number
   canBeLeader?: boolean
   subscriptionTier?: { max_learners: number } | null
   // Organization context for graduation modal
@@ -168,6 +174,7 @@ export function AssignmentCard({
   userName,
   journeyName,
   journeySubtitle,
+  totalWeeks,
   canBeLeader = true,
   subscriptionTier,
   organizationId,
@@ -535,8 +542,16 @@ export function AssignmentCard({
             setIsLoading(false)
 
             if (result.journeyComplete) {
-              // Show graduation modal for journey completion
-              setShowGraduationModal(true)
+              if (
+                shouldAutoOpenGraduationModal({
+                  isJourneyComplete: true,
+                  alreadyShownThisMount: showGraduationModal,
+                  alreadySeenForPairing: hasSeenGraduationModal(pairingId),
+                })
+              ) {
+                markGraduationModalSeen(pairingId)
+                setShowGraduationModal(true)
+              }
             } else {
               // Show week celebration modal
               setShowWeekCelebration(true)
@@ -1414,6 +1429,7 @@ export function AssignmentCard({
         pairingId={pairingId}
         journeyName={journeyName}
         journeySubtitle={journeySubtitle}
+        totalWeeks={totalWeeks}
         canBeLeader={canBeLeader}
         subscriptionTier={subscriptionTier}
         organizationId={organizationId}

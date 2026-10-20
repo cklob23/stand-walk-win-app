@@ -17,6 +17,7 @@ import {
 import type { Profile, WeeklyContent, Pairing, Assignment } from "@/lib/types";
 import { groupAssignments } from "@/lib/assignment-grouping";
 import { pickActivePairing, preferredPairingIds } from "@/lib/pairing-resolution";
+import { resolveJourneyTotalWeeks } from "@/lib/journey-graduation";
 
 interface Partner {
   full_name: string | null;
@@ -180,6 +181,7 @@ export default function ProgressPage() {
 
   const currentWeek = pairing?.current_week || 1;
   const isLeader = profile?.role === 'leader';
+  const totalWeeks = resolveJourneyTotalWeeks(pairing?.journey);
 
   // Group multi-question assignments so each logical assignment counts once
   const groupedAssignmentsAll = groupAssignments(assignments);
@@ -273,8 +275,8 @@ export default function ProgressPage() {
         </h1>
         <p className="text-sm sm:text-base text-muted-foreground">
           {isLeader
-            ? `Track ${learnerName?.split(' ')[0] || 'your learner'}'s journey through the 6-week discipleship program`
-            : "Track your journey through the 6-week discipleship program"
+            ? `Track ${learnerName?.split(' ')[0] || 'your learner'}'s journey through the ${totalWeeks}-week discipleship program`
+            : `Track your journey through the ${totalWeeks}-week discipleship program`
           }
         </p>
       </div>
@@ -287,7 +289,7 @@ export default function ProgressPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">Week {currentWeek}</div>
-            <p className="text-xs text-muted-foreground">of 6 weeks total</p>
+            <p className="text-xs text-muted-foreground">of {totalWeeks} weeks total</p>
           </CardContent>
         </Card>
 
@@ -326,12 +328,12 @@ export default function ProgressPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {currentWeek >= 6 && overallProgress === 100
+              {currentWeek >= totalWeeks && overallProgress === 100
                 ? "Complete!"
                 : "In Progress"}
             </div>
             <p className="text-xs text-muted-foreground">
-              {Math.max(0, 6 - currentWeek)} weeks remaining
+              {Math.max(0, totalWeeks - currentWeek)} weeks remaining
             </p>
           </CardContent>
         </Card>

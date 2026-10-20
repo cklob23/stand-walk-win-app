@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button'
 import { Sparkles, Trophy, Star, Heart, Flame, Mountain, Sun, ArrowRight } from 'lucide-react'
 import confetti from 'canvas-confetti'
+import { resolveJourneyTotalWeeks } from '@/lib/journey-graduation'
 
 // Different celebration content for each week
 const WEEK_CELEBRATIONS = [
@@ -66,6 +67,7 @@ interface WeekCelebrationModalProps {
     weekNumber: number
     weekTitle?: string
     onContinue?: () => void
+    totalWeeks?: number
 }
 
 export function WeekCelebrationModal({
@@ -74,8 +76,10 @@ export function WeekCelebrationModal({
     weekNumber,
     weekTitle,
     onContinue,
+    totalWeeks,
 }: WeekCelebrationModalProps) {
     const [hasTriggeredConfetti, setHasTriggeredConfetti] = useState(false)
+    const journeyWeekCount = resolveJourneyTotalWeeks({ total_weeks: totalWeeks })
 
     // Get celebration content for this week (weeks 1-5)
     const celebration = WEEK_CELEBRATIONS[weekNumber - 1] || WEEK_CELEBRATIONS[0]
@@ -149,7 +153,7 @@ export function WeekCelebrationModal({
                         {/* Week indicator */}
                         <div className="flex items-center gap-2 mb-2">
                             <Sparkles className="h-4 w-4 text-amber-500" />
-                            <span className="text-sm font-medium text-muted-foreground">Week {weekNumber} of 6</span>
+                            <span className="text-sm font-medium text-muted-foreground">Week {weekNumber} of {journeyWeekCount}</span>
                             <Sparkles className="h-4 w-4 text-amber-500" />
                         </div>
 
@@ -172,7 +176,7 @@ export function WeekCelebrationModal({
 
                     {/* Progress visual */}
                     <div className="flex items-center justify-center gap-1.5 py-2">
-                        {[1, 2, 3, 4, 5, 6].map((week) => (
+                        {Array.from({ length: journeyWeekCount }, (_, i) => i + 1).map((week) => (
                             <div
                                 key={week}
                                 className={`h-2.5 w-8 rounded-full transition-colors ${week <= weekNumber

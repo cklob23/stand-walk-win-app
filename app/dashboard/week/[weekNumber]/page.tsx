@@ -4,10 +4,13 @@ import { WeekDetailView } from '@/components/week/week-detail-view'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { pickActivePairing, preferredPairingIds, unwrapJoinedProfile } from '@/lib/pairing-resolution'
 import { groupAssignments } from '@/lib/assignment-grouping'
-import type { Assignment } from '@/lib/types'
+import type { Assignment, Journey } from '@/lib/types'
 import { resolveBibleTranslation } from '@/lib/bible-utils'
+import { resolveDashboardLoadWritePairingId } from '@/lib/dashboard-load-writes'
+import { resolveJourneyTotalWeeks } from '@/lib/journey-graduation'
 import { ensureCompletedMeetingProgress } from '@/lib/meeting-progress'
 import { notifyLeaderOfJourneyComplete } from '@/lib/notifications'
+import { markPairingJourneyCompleted } from '@/lib/pairing-writes'
 
 interface WeekPageProps {
   params: Promise<{ weekNumber: string }>
@@ -23,7 +26,7 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
   const cookiePairingId = await getSelectedPairingId()
   const weekNum = parseInt(weekNumber, 10)
 
-  if (isNaN(weekNum) || weekNum < 1 || weekNum > 6) {
+  if (isNaN(weekNum) || weekNum < 1) {
     notFound()
   }
 
@@ -90,6 +93,29 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
     redirect('/dashboard')
   }
 
+  const writePairingId = resolveDashboardLoadWritePairingId({
+    shownPairingId: pairing.id,
+    requestedPairingIds: preferredPairingIds(urlPairingId, cookiePairingId),
+  })
+  const canWriteShownPairing = writePairingId === pairing.id
+
+  let journeyInfo: { total_weeks?: number | null; name?: string; description?: string | null } | null = null
+  if (pairing.journey_id) {
+    const { data: journeyWeeks } = await supabase
+      .from('journeys')
+      .select('total_weeks, name, description')
+      .eq('id', pairing.journey_id)
+      .maybeSingle()
+    if (journeyWeeks) {
+      journeyInfo = journeyWeeks
+    }
+  }
+  const totalWeeks = resolveJourneyTotalWeeks(journeyInfo)
+
+  if (weekNum > totalWeeks) {
+    notFound()
+  }
+
   // Check if week is accessible.
   // Leaders can view every week of the journey (to prepare ahead) regardless of
   // the learner's current progress. Learners remain gated by their current week.
@@ -138,7 +164,7 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
   // Auto-complete meeting assignment when meeting is completed.
   // Shared helper writes via the admin client so a signed-in leader can
   // persist the learner's row (RLS otherwise rejects that write silently).
-  if (assignments && pairing.learner_id) {
+  if (canWriteShownPairing && assignments && pairing.learner_id) {
     const { count: meetingCount } = await supabase
       .from('scheduled_meetings')
       .select('*', { count: 'exact', head: true })
@@ -157,6 +183,7 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
       assignments,
       existingProgress: assignmentProgress || [],
       completedMeetingsCount,
+      expectedPairingId: writePairingId,
     })
 
     if (wrote) {
@@ -170,13 +197,21 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
     }
   }
 
-  // Catch the path where a leader marking the last week-6 meeting complete
-  // finishes the journey. Idempotent; no-op when assignments remain.
-  if ((pairing.current_week || 1) >= 6 || weekNum >= 6) {
+  // Catch the path where a leader marking the last meeting complete
+  // finishes the journey. Helpers re-check the full journey before writing.
+  if (canWriteShownPairing && ((pairing.current_week || 1) >= totalWeeks || weekNum >= totalWeeks)) {
     try {
       await notifyLeaderOfJourneyComplete(pairing.id)
     } catch (error) {
       console.error('[week] journey complete notification failed', error)
+    }
+    try {
+      await markPairingJourneyCompleted({
+        pairingId: pairing.id,
+        expectedPairingId: writePairingId,
+      })
+    } catch (error) {
+      console.error('[week] mark pairing completed failed', error)
     }
   }
 
@@ -213,18 +248,8 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
     .eq('week_number', weekNum)
     .order('created_at', { ascending: false })
 
-  // Get journey name and description for the pairing
-  let journeyName: string | undefined
-  let journeySubtitle: string | undefined
-  if (pairing?.journey_id) {
-    const { data: journey } = await supabase
-      .from('journeys')
-      .select('name, description')
-      .eq('id', pairing.journey_id)
-      .single()
-    journeyName = journey?.name
-    journeySubtitle = journey?.description || undefined
-  }
+  const journeyName = journeyInfo?.name
+  const journeySubtitle = journeyInfo?.description || undefined
 
   // Get organization info for the user
   let organizationId: string | null = null
@@ -264,7 +289,7 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
     const lastCelebratedWeek = pairing.last_celebrated_week || 0
 
     // If there's an uncelebrated week (weeks 1-5 only)
-    if (currentWeek > lastCelebratedWeek + 1 && currentWeek <= 6) {
+    if (currentWeek > lastCelebratedWeek + 1 && currentWeek <= totalWeeks) {
       const weekToCheck = currentWeek - 1
 
       // Get assignments for this week
@@ -296,6 +321,16 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
         }
       }
     }
+  }
+
+  if (journeyInfo && pairing.journey_id) {
+    pairing.journey = {
+      ...(pairing.journey || {}),
+      id: pairing.journey_id,
+      name: journeyInfo.name || pairing.journey?.name || '',
+      description: journeyInfo.description ?? pairing.journey?.description ?? null,
+      total_weeks: journeyInfo.total_weeks || totalWeeks,
+    } as Journey
   }
 
   return (

@@ -1,10 +1,12 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { USER_JOURNEY_ON_CONFLICT, buildCompletedUserJourneyRow } from '@/lib/journey-graduation'
 
 export async function graduateToLeader(pairingId: string) {
     const supabase = await createClient()
+    const admin = createAdminClient()
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
@@ -23,6 +25,10 @@ export async function graduateToLeader(pairingId: string) {
         return { success: false, error: 'Pairing not found' }
     }
 
+    if (!pairing.journey_id) {
+        return { success: false, error: 'Pairing is missing a journey' }
+    }
+
     // Get the user's current profile
     const { data: profile } = await supabase
         .from('profiles')
@@ -34,39 +40,42 @@ export async function graduateToLeader(pairingId: string) {
         return { success: false, error: 'Profile not found' }
     }
 
-    // Update the pairing status to completed
-    const { error: pairingError } = await supabase
+    const completedAt = new Date().toISOString()
+
+    // Update the pairing status to completed (admin client — RLS)
+    const { error: pairingError } = await admin
         .from('pairings')
         .update({
             status: 'completed',
-            completed_at: new Date().toISOString()
+            completed_at: completedAt
         })
         .eq('id', pairingId)
+        .eq('learner_id', user.id)
 
     if (pairingError) {
         return { success: false, error: 'Failed to complete pairing' }
     }
 
-    // Create user_journey record for the completed journey
-    const { error: journeyError } = await supabase
+    // Same conflict key and shape as app/actions/admin-user-actions.ts
+    const { error: journeyError } = await admin
         .from('user_journeys')
-        .upsert({
-            user_id: user.id,
-            journey_id: pairing.journey_id,
-            pairing_id: pairingId,
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-            completion_percentage: 100
-        }, {
-            onConflict: 'user_id,journey_id,pairing_id'
-        })
+        .upsert(
+            buildCompletedUserJourneyRow({
+                userId: user.id,
+                journeyId: pairing.journey_id,
+                pairingId,
+                completedAt,
+            }),
+            { onConflict: USER_JOURNEY_ON_CONFLICT },
+        )
 
     if (journeyError) {
         console.error('Failed to record journey completion:', journeyError)
+        return { success: false, error: 'Failed to record journey completion' }
     }
 
     // Update the user's profile to be a leader
-    const { error: profileError } = await supabase
+    const { error: profileError } = await admin
         .from('profiles')
         .update({
             role: 'leader',
@@ -85,6 +94,7 @@ export async function graduateToLeader(pairingId: string) {
 
 export async function startNewJourney(pairingId: string, journeyId: string) {
     const supabase = await createClient()
+    const admin = createAdminClient()
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
@@ -128,42 +138,56 @@ export async function startNewJourney(pairingId: string, journeyId: string) {
     }
 
     // Complete the current pairing
-    const { error: completeError } = await supabase
+    const completedAt = new Date().toISOString()
+    const { error: completeError } = await admin
         .from('pairings')
         .update({
             status: 'completed',
-            completed_at: new Date().toISOString()
+            completed_at: completedAt
         })
         .eq('id', pairingId)
+        .eq('learner_id', user.id)
 
     if (completeError) {
         return { success: false, error: 'Failed to complete current pairing' }
     }
 
-    // Record the completed journey
-    await supabase
-        .from('user_journeys')
-        .upsert({
-            user_id: user.id,
-            journey_id: pairing.journey_id,
-            pairing_id: pairingId,
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-            completion_percentage: 100
-        }, {
-            onConflict: 'user_id,journey_id,pairing_id'
-        })
+    if (pairing.journey_id) {
+        const { error: completedJourneyError } = await admin
+            .from('user_journeys')
+            .upsert(
+                buildCompletedUserJourneyRow({
+                    userId: user.id,
+                    journeyId: pairing.journey_id,
+                    pairingId,
+                    completedAt,
+                }),
+                { onConflict: USER_JOURNEY_ON_CONFLICT },
+            )
+
+        if (completedJourneyError) {
+            console.error('Failed to record journey completion:', completedJourneyError)
+            return { success: false, error: 'Failed to record journey completion' }
+        }
+    }
 
     // The user will need to be paired again with a leader for the new journey
     // For now, just record the intent to start a new journey
-    await supabase
+    const { error: newJourneyError } = await admin
         .from('user_journeys')
-        .insert({
+        .upsert({
             user_id: user.id,
             journey_id: journeyId,
             status: 'paused', // Paused until they get a new leader
             completion_percentage: 0
+        }, {
+            onConflict: USER_JOURNEY_ON_CONFLICT,
         })
+
+    if (newJourneyError) {
+        console.error('Failed to record new journey intent:', newJourneyError)
+        return { success: false, error: 'Failed to start new journey' }
+    }
 
     revalidatePath('/dashboard')
     return { success: true, needsNewPairing: true }
@@ -215,55 +239,3 @@ export async function getAvailableJourneys(userId: string, currentJourneyId?: st
     }
 }
 
-export async function checkJourneyCompletion(pairingId: string, userId: string) {
-    const supabase = await createClient()
-
-    // Get the pairing and its journey
-    const { data: pairing } = await supabase
-        .from('pairings')
-        .select('*, journey:journeys(*)')
-        .eq('id', pairingId)
-        .single()
-
-    if (!pairing) {
-        return { isComplete: false }
-    }
-
-    const totalWeeks = pairing.journey?.total_weeks || 6
-
-    // Check if user is on the last week and has completed all assignments
-    if (pairing.current_week < totalWeeks) {
-        return { isComplete: false }
-    }
-
-    // Get all assignments for this journey
-    const { data: assignments } = await supabase
-        .from('assignments')
-        .select('id')
-        .lte('week_number', totalWeeks)
-
-    if (!assignments || assignments.length === 0) {
-        return { isComplete: false }
-    }
-
-    // Get user's completed assignments for this pairing
-    const { data: progress } = await supabase
-        .from('assignment_progress')
-        .select('assignment_id')
-        .eq('pairing_id', pairingId)
-        .eq('user_id', userId)
-        .eq('status', 'completed')
-
-    const completedCount = progress?.length || 0
-    const totalCount = assignments.length
-
-    // Consider journey complete if all assignments are done
-    const isComplete = completedCount >= totalCount
-
-    return {
-        isComplete,
-        completedCount,
-        totalCount,
-        percentage: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
-    }
-}

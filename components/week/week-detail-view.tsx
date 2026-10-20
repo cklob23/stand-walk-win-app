@@ -30,6 +30,7 @@ import { ScriptureText } from '@/components/bible/scripture-text'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { weekDetailSteps } from '@/lib/tour-steps'
 import { WeekCelebrationPopup } from '@/components/celebration/week-celebration-popup'
+import { resolveJourneyTotalWeeks } from '@/lib/journey-graduation'
 
 interface AssignmentReaction {
   id: string
@@ -123,7 +124,8 @@ export function WeekDetailView({
   const hasPrevWeek = weekNumber > 1
   // Leaders can navigate to every week to prepare ahead; learners are limited to
   // weeks up to their current progress.
-  const hasNextWeek = weekNumber < 6 && (isLeader || weekNumber < pairing.current_week)
+  const totalWeeks = resolveJourneyTotalWeeks(pairing.journey)
+  const hasNextWeek = weekNumber < totalWeeks && (isLeader || weekNumber < pairing.current_week)
 
   const handleSubmitReflection = async () => {
     if (!reflectionText.trim()) {
@@ -274,6 +276,7 @@ export function WeekDetailView({
                   userName={profile.role === 'learner' ? (profile.full_name || 'Learner') : (partner?.full_name || 'Learner')}
                   journeyName={journeyName}
                   journeySubtitle={journeySubtitle}
+                  totalWeeks={totalWeeks}
                   organizationId={organizationId}
                   organizationName={organizationName}
                 />
