@@ -15,10 +15,14 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#ffffff',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#121a21' },
+  ],
 }
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://standwalkrun.com'),
   title: 'Stand Walk Run - Grow Together in Faith',
   description: 'A 6-week discipleship journey connecting Leaders and Learners for spiritual growth and mentorship.',
   generator: 'Developed by Caleb Klobe',
@@ -55,8 +59,8 @@ export default function RootLayout({
       <body className={`font-sans antialiased`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="light"
-          enableSystem={false}
+          defaultTheme="system"
+          enableSystem
           disableTransitionOnChange
         >
           {children}
