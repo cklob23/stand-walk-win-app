@@ -12,6 +12,7 @@ import { Users, Sprout, ArrowRight, ArrowLeft, Loader2, CheckCircle } from 'luci
 import { AppLogoStatic } from '@/components/app-logo'
 import { toast } from 'sonner'
 import type { Profile } from '@/lib/types'
+import { createPendingLeaderPairing } from '@/lib/pairing-create'
 
 interface OnboardingWizardProps {
   userId: string
@@ -91,18 +92,9 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
         .maybeSingle()
 
       if (!existingPairing) {
-        const code = generatePairingCode()
-
-        const { error: pairingError } = await supabase
-          .from('pairings')
-          .insert({
-            leader_id: userId,
-            invite_code: code,
-            status: 'pending',
-          })
-
-        if (pairingError) {
-          toast.error('Failed to create pairing code')
+        const result = await createPendingLeaderPairing()
+        if (!result.success) {
+          toast.error(result.error || 'Failed to create pairing code')
           setIsLoading(false)
           return
         }
@@ -117,15 +109,6 @@ export function OnboardingWizard({ userId, userEmail, existingProfile }: Onboard
 
     setIsLoading(false)
     router.push('/dashboard')
-  }
-
-  const generatePairingCode = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    let code = ''
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    return code
   }
 
   return (

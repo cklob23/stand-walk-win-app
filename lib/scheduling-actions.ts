@@ -2,7 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { createNotification } from '@/lib/notifications'
+import { createNotification, notifyLeaderOfJourneyComplete } from '@/lib/notifications'
+import { syncPairingProgressAfterExplicitAction } from '@/lib/pairing-writes'
 
 export async function updateContactInfo(data: {
     phone?: string
@@ -248,6 +249,18 @@ export async function completeMeeting(meetingId: string) {
                 title: 'Meeting Completed',
                 message: `${completer?.full_name || 'Your partner'} marked your meeting on ${formattedDate} as completed.`,
             })
+
+            const progress = await syncPairingProgressAfterExplicitAction({
+                callerUserId: user.id,
+                pairingId: meeting.pairing_id,
+            })
+            if (progress.completed) {
+                try {
+                    await notifyLeaderOfJourneyComplete(meeting.pairing_id)
+                } catch (error) {
+                    console.error('[completeMeeting] journey complete notification failed', error)
+                }
+            }
         }
 
         revalidatePath('/dashboard/schedule')

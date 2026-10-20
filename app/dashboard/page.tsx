@@ -180,9 +180,13 @@ export default async function DashboardPage({
   }
 
   const totalWeeks = resolveJourneyTotalWeeks(pairing?.journey)
+  const activePairingCount = profile.role === 'leader' ? allLearners.length : 1
   const writePairingId = resolveDashboardLoadWritePairingId({
     shownPairingId: pairing?.id,
-    requestedPairingIds: preferredPairingIds(params.pairing, cookiePairingId),
+    urlPairingId: params.pairing,
+    cookiePairingId,
+    activePairingCount,
+    role: profile.role,
   })
   const canWriteShownPairing = !!pairing && writePairingId === pairing.id
 

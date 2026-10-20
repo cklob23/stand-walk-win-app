@@ -50,6 +50,7 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
   // Get pairing and partner
   let pairing = null
   let partner = null
+  let activePairingCount = 1
 
   if (profile.role === 'leader') {
     // Fetch ALL pairings for multi-learner support
@@ -64,6 +65,7 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
       .order('created_at', { ascending: false })
 
     if (allPairings && allPairings.length > 0) {
+      activePairingCount = allPairings.filter((p) => p.learner_id && (p.status === 'active' || p.status === 'pending')).length
       const selectedPairing = pickActivePairing(allPairings, 'leader', preferredPairingIds(urlPairingId, cookiePairingId))
       if (selectedPairing) {
         pairing = selectedPairing
@@ -95,7 +97,10 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
 
   const writePairingId = resolveDashboardLoadWritePairingId({
     shownPairingId: pairing.id,
-    requestedPairingIds: preferredPairingIds(urlPairingId, cookiePairingId),
+    urlPairingId,
+    cookiePairingId,
+    activePairingCount,
+    role: profile.role,
   })
   const canWriteShownPairing = writePairingId === pairing.id
 

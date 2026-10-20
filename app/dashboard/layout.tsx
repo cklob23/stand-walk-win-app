@@ -168,7 +168,10 @@ export default async function DashboardLayout({
         >
           <DynamicFavicon />
           <div className="min-h-screen bg-background overflow-x-hidden">
-            <SyncSelectedPairing pairingId={currentPairingId} />
+            <SyncSelectedPairing
+              pairingId={currentPairingId}
+              activePairingCount={allLearners.length}
+            />
             <SyncLocalDate />
             <UnreadToLeaderProvider
               leaderId={profile.role === 'leader' ? user.id : null}
