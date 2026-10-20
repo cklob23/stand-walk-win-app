@@ -3,6 +3,7 @@
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { USER_JOURNEY_ON_CONFLICT, buildCompletedUserJourneyRow } from '@/lib/journey-graduation'
+import { fetchDefaultJourneyId } from '@/lib/default-journey'
 
 export async function graduateToLeader(pairingId: string) {
     const supabase = await createClient()
@@ -25,7 +26,19 @@ export async function graduateToLeader(pairingId: string) {
         return { success: false, error: 'Pairing not found' }
     }
 
-    if (!pairing.journey_id) {
+    let journeyId = pairing.journey_id as string | null
+    if (!journeyId) {
+        journeyId = await fetchDefaultJourneyId(admin)
+        if (journeyId) {
+            await admin
+                .from('pairings')
+                .update({ journey_id: journeyId })
+                .eq('id', pairingId)
+                .eq('learner_id', user.id)
+        }
+    }
+
+    if (!journeyId) {
         return { success: false, error: 'Pairing is missing a journey' }
     }
 
@@ -62,7 +75,7 @@ export async function graduateToLeader(pairingId: string) {
         .upsert(
             buildCompletedUserJourneyRow({
                 userId: user.id,
-                journeyId: pairing.journey_id,
+                journeyId,
                 pairingId,
                 completedAt,
             }),
@@ -152,13 +165,18 @@ export async function startNewJourney(pairingId: string, journeyId: string) {
         return { success: false, error: 'Failed to complete current pairing' }
     }
 
-    if (pairing.journey_id) {
+    let completedJourneyId = pairing.journey_id as string | null
+    if (!completedJourneyId) {
+        completedJourneyId = await fetchDefaultJourneyId(admin)
+    }
+
+    if (completedJourneyId) {
         const { error: completedJourneyError } = await admin
             .from('user_journeys')
             .upsert(
                 buildCompletedUserJourneyRow({
                     userId: user.id,
-                    journeyId: pairing.journey_id,
+                    journeyId: completedJourneyId,
                     pairingId,
                     completedAt,
                 }),

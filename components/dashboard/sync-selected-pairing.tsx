@@ -1,25 +1,36 @@
 'use client'
 
 import { useEffect } from 'react'
+import { resolveSelectedPairingCookieWrite } from '@/lib/dashboard-load-writes'
 import { readSelectedPairingCookie, writeSelectedPairingCookie } from '@/lib/selected-pairing-cookie'
 
 /**
- * Keeps the selected-pairing cookie aligned with the pairing the page is
- * actually showing. Prefer the URL (source of truth after a learner switch)
- * so a stale layout cookie cannot overwrite a just-pushed ?pairing=.
+ * Keeps the selected-pairing cookie aligned with an explicit learner choice
+ * (URL after a switcher click, or the only active pairing).
  *
- * Writes the cookie on the client only — a server action here would
- * refresh the current route and can cancel an in-flight router.push.
+ * Never overwrites a completed / stale cookie with a fallback pairing — that
+ * rewrite was what let the next /dashboard load pass the write guard.
  */
-export function SyncSelectedPairing({ pairingId }: { pairingId: string | null | undefined }) {
-    useEffect(() => {
-        const urlPairing = new URLSearchParams(window.location.search).get('pairing')
-        const target = urlPairing || pairingId
-        if (!target) return
-        if (readSelectedPairingCookie() !== target) {
-            writeSelectedPairingCookie(target)
-        }
-    }, [pairingId])
+export function SyncSelectedPairing({
+  pairingId,
+  activePairingCount = 0,
+}: {
+  pairingId: string | null | undefined
+  activePairingCount?: number
+}) {
+  useEffect(() => {
+    const urlPairing = new URLSearchParams(window.location.search).get('pairing')
+    const cookie = readSelectedPairingCookie()
+    const next = resolveSelectedPairingCookieWrite({
+      shownPairingId: pairingId,
+      urlPairingId: urlPairing,
+      cookiePairingId: cookie,
+      activePairingCount,
+    })
+    if (next && next !== cookie) {
+      writeSelectedPairingCookie(next)
+    }
+  }, [pairingId, activePairingCount])
 
-    return null
+  return null
 }

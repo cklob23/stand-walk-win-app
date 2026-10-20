@@ -3,12 +3,14 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/server'
 import { groupAssignments } from '@/lib/assignment-grouping'
 import type { Assignment } from '@/lib/types'
+import { ensureCompletedMeetingProgress } from '@/lib/meeting-progress'
 import {
   USER_JOURNEY_ON_CONFLICT,
   buildCompletedUserJourneyRow,
   isJourneyCompleteForGraduation,
   resolveJourneyTotalWeeks,
 } from '@/lib/journey-graduation'
+import { fetchDefaultJourneyId } from '@/lib/default-journey'
 
 /**
  * Advance current_week for the pairing the page is actually showing.
@@ -81,6 +83,14 @@ export async function markPairingJourneyCompleted(params: {
     return { completed: false, reason: 'pairing_not_active' }
   }
 
+  let journeyId = pairing.journey_id as string | null
+  if (!journeyId) {
+    journeyId = await fetchDefaultJourneyId(admin)
+    if (journeyId) {
+      await admin.from('pairings').update({ journey_id: journeyId }).eq('id', pairing.id)
+    }
+  }
+
   const journey = Array.isArray(pairing.journey) ? pairing.journey[0] : pairing.journey
   const totalWeeks = resolveJourneyTotalWeeks(journey)
 
@@ -88,8 +98,8 @@ export async function markPairingJourneyCompleted(params: {
     .from('assignments')
     .select('id, week_number, title, assignment_type, order_index, created_at')
     .lte('week_number', totalWeeks)
-  if (pairing.journey_id) {
-    assignmentQuery = assignmentQuery.eq('journey_id', pairing.journey_id)
+  if (journeyId) {
+    assignmentQuery = assignmentQuery.eq('journey_id', journeyId)
   }
 
   const { data: assignments } = await assignmentQuery
@@ -128,13 +138,13 @@ export async function markPairingJourneyCompleted(params: {
     return { completed: false, error: updateError.message }
   }
 
-  if (pairing.journey_id) {
+  if (journeyId) {
     const { error: journeyError } = await admin
       .from('user_journeys')
       .upsert(
         buildCompletedUserJourneyRow({
           userId: pairing.learner_id,
-          journeyId: pairing.journey_id,
+          journeyId,
           pairingId: pairing.id,
           completedAt,
         }),
@@ -148,4 +158,123 @@ export async function markPairingJourneyCompleted(params: {
   }
 
   return { completed: true }
+}
+
+/**
+ * Persist meeting-assignment progress, week advance, and pairing completion
+ * for a pairing the caller just changed (e.g. marked a meeting done).
+ * This is an explicit action — not a /dashboard load-time fallback write.
+ */
+export async function syncPairingProgressAfterExplicitAction(params: {
+  callerUserId: string
+  pairingId: string
+}): Promise<{ wroteMeetingProgress: boolean; advancedWeek: boolean; completed: boolean }> {
+  const empty = { wroteMeetingProgress: false, advancedWeek: false, completed: false }
+  if (!params.pairingId || !params.callerUserId) return empty
+
+  const admin = createAdminClient()
+  const { data: pairing } = await admin
+    .from('pairings')
+    .select('id, status, current_week, leader_id, learner_id, journey_id, journey:journeys(total_weeks)')
+    .eq('id', params.pairingId)
+    .maybeSingle()
+
+  if (!pairing?.learner_id || pairing.status !== 'active') return empty
+
+  let journeyId = pairing.journey_id as string | null
+  if (!journeyId) {
+    journeyId = await fetchDefaultJourneyId(admin)
+  }
+
+  const journey = Array.isArray(pairing.journey) ? pairing.journey[0] : pairing.journey
+  const totalWeeks = resolveJourneyTotalWeeks(journey)
+
+  let assignmentQuery = admin
+    .from('assignments')
+    .select('id, week_number, title, assignment_type, order_index, created_at')
+    .lte('week_number', totalWeeks)
+  if (journeyId) {
+    assignmentQuery = assignmentQuery.eq('journey_id', journeyId)
+  }
+  const { data: assignments } = await assignmentQuery
+
+  const { count: meetingCount } = await admin
+    .from('scheduled_meetings')
+    .select('*', { count: 'exact', head: true })
+    .eq('pairing_id', pairing.id)
+    .eq('status', 'completed')
+
+  const { data: existingProgress } = await admin
+    .from('assignment_progress')
+    .select('assignment_id, status')
+    .eq('pairing_id', pairing.id)
+    .eq('user_id', pairing.learner_id)
+
+  const { wrote } = await ensureCompletedMeetingProgress({
+    callerUserId: params.callerUserId,
+    pairing: {
+      id: pairing.id,
+      leader_id: pairing.leader_id,
+      learner_id: pairing.learner_id,
+    },
+    assignments: (assignments || []) as Assignment[],
+    existingProgress: existingProgress || [],
+    completedMeetingsCount: meetingCount ?? 0,
+    expectedPairingId: pairing.id,
+  })
+
+  let progressRows = existingProgress || []
+  if (wrote) {
+    const { data: refreshed } = await admin
+      .from('assignment_progress')
+      .select('assignment_id, status')
+      .eq('pairing_id', pairing.id)
+      .eq('user_id', pairing.learner_id)
+    progressRows = refreshed || []
+  }
+
+  const currentWeek = pairing.current_week || 1
+  const currentWeekGrouped = groupAssignments(
+    ((assignments || []) as Assignment[]).filter((a) => a.week_number === currentWeek),
+  )
+  const currentWeekCompleted = currentWeekGrouped.filter((g) =>
+    progressRows.some((p) => p.assignment_id === g.id && p.status === 'completed'),
+  ).length
+
+  let advancedWeek = false
+  let effectiveWeek = currentWeek
+  if (
+    currentWeekGrouped.length > 0 &&
+    currentWeekCompleted >= currentWeekGrouped.length &&
+    currentWeek < totalWeeks
+  ) {
+    const { updated } = await advancePairingWeek({
+      pairingId: pairing.id,
+      expectedPairingId: pairing.id,
+      nextWeek: currentWeek + 1,
+      maxWeek: totalWeeks,
+    })
+    advancedWeek = updated
+    if (updated) effectiveWeek = currentWeek + 1
+  }
+
+  const journeyComplete = isJourneyCompleteForGraduation({
+    currentWeek: effectiveWeek,
+    totalWeeks,
+    groupedAssignments: groupAssignments((assignments || []) as Assignment[]),
+    completedAssignmentIds: progressRows
+      .filter((row) => row.status === 'completed')
+      .map((row) => row.assignment_id),
+  })
+
+  let completed = false
+  if (journeyComplete) {
+    const result = await markPairingJourneyCompleted({
+      pairingId: pairing.id,
+      expectedPairingId: pairing.id,
+    })
+    completed = result.completed
+  }
+
+  return { wroteMeetingProgress: wrote, advancedWeek, completed }
 }

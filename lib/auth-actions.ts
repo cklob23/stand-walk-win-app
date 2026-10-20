@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { fetchDefaultJourneyId } from '@/lib/default-journey'
 
 // Create admin client that bypasses RLS
 function getAdminClient() {
@@ -157,6 +158,8 @@ export async function redeemPairingCode(userId: string, pairingId: string) {
       return { error: 'Pairing not found' }
     }
 
+    const journeyId = pairing.journey_id || await fetchDefaultJourneyId(adminSupabase)
+
     // Update the pairing with the learner
     const { error: updateError } = await adminSupabase
       .from('pairings')
@@ -164,6 +167,7 @@ export async function redeemPairingCode(userId: string, pairingId: string) {
         learner_id: userId,
         status: 'active',
         started_at: new Date().toISOString(),
+        ...(journeyId && !pairing.journey_id ? { journey_id: journeyId } : {}),
       })
       .eq('id', pairingId)
 
@@ -701,6 +705,8 @@ export async function joinPairing(inviteCode: string) {
       return { error: 'You cannot join your own pairing.' }
     }
 
+    const journeyId = pairing.journey_id || await fetchDefaultJourneyId(supabase)
+
     // Update the pairing with the learner
     const { data: updateData, error: updateError } = await supabase
       .from('pairings')
@@ -708,6 +714,7 @@ export async function joinPairing(inviteCode: string) {
         learner_id: user.id,
         status: 'active',
         started_at: new Date().toISOString(),
+        ...(journeyId && !pairing.journey_id ? { journey_id: journeyId } : {}),
       })
       .eq('id', pairing.id)
       .select()

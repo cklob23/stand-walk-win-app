@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import type { Profile, SubscriptionTier } from '@/lib/types'
 import Link from 'next/link'
 import { checkLearnerLimit } from '@/lib/subscription-helpers'
+import { createPendingLeaderPairing } from '@/lib/pairing-create'
 
 interface NoPairingStateProps {
   profile: Profile
@@ -76,23 +77,15 @@ export function NoPairingState({
 
     setIsCreating(true)
 
-    const code = generatePairingCode()
+    const result = await createPendingLeaderPairing()
 
-    const { error } = await supabase
-      .from('pairings')
-      .insert({
-        leader_id: profile.id,
-        invite_code: code,
-        status: 'pending',
-      })
-
-    if (error) {
-      toast.error('Failed to create pairing code')
+    if (!result.success || !result.inviteCode) {
+      toast.error(result.error || 'Failed to create pairing code')
       setIsCreating(false)
       return
     }
 
-    setCurrentCode(code)
+    setCurrentCode(result.inviteCode)
     setIsCreating(false)
     toast.success('Pairing code created!')
     router.refresh()
