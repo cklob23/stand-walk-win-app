@@ -7,6 +7,7 @@ import { groupAssignments } from '@/lib/assignment-grouping'
 import type { Assignment } from '@/lib/types'
 import { resolveBibleTranslation } from '@/lib/bible-utils'
 import { ensureCompletedMeetingProgress } from '@/lib/meeting-progress'
+import { notifyLeaderOfJourneyComplete } from '@/lib/notifications'
 
 interface WeekPageProps {
   params: Promise<{ weekNumber: string }>
@@ -166,6 +167,16 @@ export default async function WeekPage({ params, searchParams }: WeekPageProps) 
         .eq('user_id', progressUserId)
 
       assignmentProgress = refreshedProgress
+    }
+  }
+
+  // Catch the path where a leader marking the last week-6 meeting complete
+  // finishes the journey. Idempotent; no-op when assignments remain.
+  if ((pairing.current_week || 1) >= 6 || weekNum >= 6) {
+    try {
+      await notifyLeaderOfJourneyComplete(pairing.id)
+    } catch (error) {
+      console.error('[week] journey complete notification failed', error)
     }
   }
 

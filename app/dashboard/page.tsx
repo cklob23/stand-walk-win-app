@@ -9,6 +9,7 @@ import { pickActivePairing, preferredPairingIds, unwrapJoinedProfile } from '@/l
 import type { Message, Profile, Pairing, Journey, Assignment } from '@/lib/types'
 import { groupAssignments } from '@/lib/assignment-grouping'
 import { ensureCompletedMeetingProgress } from '@/lib/meeting-progress'
+import { notifyLeaderOfJourneyComplete } from '@/lib/notifications'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -281,6 +282,16 @@ export default async function DashboardPage({
       // Update the local value
       effectiveCurrentWeek = nextWeek
       pairing.current_week = nextWeek
+    }
+  }
+
+  // Week 6 completion (learner assignment or leader-marked meeting) notifies
+  // the leader once. Safe to call on every load: check-before-insert + unique index.
+  if (pairing && (pairing.current_week || 1) >= 6) {
+    try {
+      await notifyLeaderOfJourneyComplete(pairing.id)
+    } catch (error) {
+      console.error('[dashboard] journey complete notification failed', error)
     }
   }
 

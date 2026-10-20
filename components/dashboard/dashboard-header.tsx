@@ -21,7 +21,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { Bell, BookOpen, Calendar, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check, BookMarked, PenLine, UserPlus, Loader2, Shield, Crown, PanelLeftClose, PanelLeft, Archive } from 'lucide-react'
+import { Bell, BookOpen, Calendar, LayoutDashboard, MessageSquare, ScrollText, Settings, LogOut, User, Menu, X, CheckCircle2, Users, Check, BookMarked, PenLine, UserPlus, Loader2, Shield, Crown, PanelLeftClose, PanelLeft, Archive, GraduationCap } from 'lucide-react'
 import { useSplitScreen } from '@/contexts/split-screen-context'
 import { AppLogo } from '@/components/app-logo'
 import { useBranding } from '@/contexts/branding-context'
@@ -78,6 +78,7 @@ const notificationIcons: Record<string, typeof Bell> = {
   meeting_declined: X,
   meeting_counter_proposed: Calendar,
   meeting_completed: CheckCircle2,
+  journey_complete: GraduationCap,
 }
 
 function getNotificationHref(notification: Notification, pairingOverride?: string, userRole?: string): string {
@@ -132,6 +133,7 @@ function getNotificationHref(notification: Notification, pairingOverride?: strin
       const baseUrl = pairingParam ? `/dashboard?pairing=${pairingParam}` : '/dashboard'
       return assignmentId ? `${baseUrl}${pairingParam ? '&' : '?'}assignmentId=${assignmentId}` : baseUrl
     }
+    case 'journey_complete':
     case 'week_complete':
     case 'encouragement':
     default:

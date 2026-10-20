@@ -14,7 +14,8 @@ import {
   BookOpen,
   Trash2,
   Check,
-  BellOff
+  BellOff,
+  GraduationCap,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Notification } from '@/lib/types'
@@ -40,6 +41,7 @@ const notificationIcons: Record<string, typeof Bell> = {
   journal_shared: BookOpen,
   covenant: BookOpen,
   pairing: Users,
+  journey_complete: GraduationCap,
 }
 
 function getNotificationHref(notification: Notification, userRole?: string): string {
@@ -88,6 +90,7 @@ function getNotificationHref(notification: Notification, userRole?: string): str
       const baseUrl = pairingParam ? `/dashboard?pairing=${pairingParam}` : '/dashboard'
       return assignmentId ? `${baseUrl}${pairingParam ? '&' : '?'}assignmentId=${assignmentId}` : baseUrl
     }
+    case 'journey_complete':
     case 'week_complete':
     case 'encouragement':
     default:
