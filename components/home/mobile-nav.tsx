@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,22 @@ import { homeNavLinks } from '@/lib/home-content'
 
 export function HomeMobileNav() {
   const [open, setOpen] = useState(false)
+  const pendingSection = useRef<string | null>(null)
+
+  function closeAndScroll(id: string) {
+    pendingSection.current = id
+    history.replaceState(null, '', `#${id}`)
+    setOpen(false)
+    window.setTimeout(() => {
+      pendingSection.current = null
+      const el = document.getElementById(id)
+      if (!el) return
+      el.scrollIntoView({ behavior: 'auto', block: 'start' })
+      window.setTimeout(() => {
+        el.scrollIntoView({ behavior: 'auto', block: 'start' })
+      }, 400)
+    }, 350)
+  }
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -32,7 +48,15 @@ export function HomeMobileNav() {
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="w-[min(20rem,85vw)]">
+      <SheetContent
+        side="right"
+        className="w-[min(20rem,85vw)]"
+        onCloseAutoFocus={(event) => {
+          if (pendingSection.current) {
+            event.preventDefault()
+          }
+        }}
+      >
         <SheetHeader>
           <SheetTitle>Menu</SheetTitle>
           <SheetDescription className="sr-only">
@@ -41,14 +65,17 @@ export function HomeMobileNav() {
         </SheetHeader>
         <nav className="flex flex-col gap-1 px-4" aria-label="Homepage">
           {homeNavLinks.map((link) => (
-            <SheetClose asChild key={link.href}>
-              <a
-                href={link.href}
-                className="rounded-md px-2 py-2.5 text-base font-medium text-foreground hover:bg-muted"
-              >
-                {link.label}
-              </a>
-            </SheetClose>
+            <a
+              key={link.href}
+              href={link.href}
+              className="rounded-md px-2 py-2.5 text-base font-medium text-foreground hover:bg-muted"
+              onClick={(event) => {
+                event.preventDefault()
+                closeAndScroll(link.href.slice(1))
+              }}
+            >
+              {link.label}
+            </a>
           ))}
         </nav>
         <SheetFooter className="gap-2">
