@@ -9,12 +9,13 @@ export const metadata = {
 }
 
 interface SignupPageProps {
-  searchParams: Promise<{ org_admin?: string }>
+  searchParams: Promise<{ org_admin?: string; pairing?: string }>
 }
 
 export default async function SignupPage({ searchParams }: SignupPageProps) {
   const params = await searchParams
   const isOrgAdmin = params.org_admin === 'true'
+  const preferPairing = params.pairing === '1' || params.pairing === 'true'
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-8">
@@ -42,7 +43,10 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
           </div>
         )}
 
-        <SignupForm isOrgAdmin={isOrgAdmin} />
+        <SignupForm
+          isOrgAdmin={isOrgAdmin}
+          initialCodeType={preferPairing ? 'pairing' : 'access'}
+        />
 
         <p className="text-center text-sm text-muted-foreground">
           Already have an account?{' '}
