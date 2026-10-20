@@ -37,9 +37,10 @@ type CodeType = 'access' | 'pairing'
 
 interface SignupFormProps {
   isOrgAdmin?: boolean
+  initialCodeType?: CodeType
 }
 
-export function SignupForm({ isOrgAdmin = false }: SignupFormProps) {
+export function SignupForm({ isOrgAdmin = false, initialCodeType = 'access' }: SignupFormProps) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -48,7 +49,7 @@ export function SignupForm({ isOrgAdmin = false }: SignupFormProps) {
   const [isLoading, setIsLoading] = useState(false)
 
   // Code type toggle
-  const [codeType, setCodeType] = useState<CodeType>('access')
+  const [codeType, setCodeType] = useState<CodeType>(initialCodeType)
 
   // Access code state
   const [accessCode, setAccessCode] = useState('')
