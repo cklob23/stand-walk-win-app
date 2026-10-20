@@ -2,6 +2,7 @@ import { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { CompletedJourneysContent } from '@/components/dashboard/completed-journeys-content'
+import { JOURNEY_COMPLETE_TOTAL_WEEKS, resolveJourneyTotalWeeks } from '@/lib/journey-graduation'
 
 export const metadata: Metadata = {
     title: 'Journey History - Stand Walk Run',
@@ -28,7 +29,7 @@ export default async function JourneyHistoryPage() {
     }
 
     // Fetch completed pairings where user is leader or learner
-    // A journey is complete if status='completed' OR current_week >= 6
+    // A journey is complete if status='completed' OR current_week is the last week
     const { data: allUserPairings } = await supabase
         .from('pairings')
         .select(`
@@ -44,7 +45,8 @@ export default async function JourneyHistoryPage() {
         id,
         name,
         description,
-        duration_weeks
+        duration_weeks,
+        total_weeks
       ),
       leader:profiles!pairings_leader_id_fkey(
         id,
@@ -62,7 +64,9 @@ export default async function JourneyHistoryPage() {
 
     // Filter to only show completed journeys
     const completedPairings = allUserPairings?.filter(p => {
-        return p.status === 'completed' || (p.current_week && p.current_week >= 6)
+        const journey = Array.isArray(p.journey) ? p.journey[0] : p.journey
+        const totalWeeks = resolveJourneyTotalWeeks(journey) || JOURNEY_COMPLETE_TOTAL_WEEKS
+        return p.status === 'completed' || (p.current_week && p.current_week >= totalWeeks)
     }) || []
 
     // Get assignment progress for completed journeys

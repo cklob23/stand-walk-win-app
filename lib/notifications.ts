@@ -1,6 +1,20 @@
 'use server'
 
 import { createAdminClient as createClient } from '@/lib/supabase/server'
+import { groupAssignments } from '@/lib/assignment-grouping'
+import { unwrapJoinedProfile } from '@/lib/pairing-resolution'
+import type { Assignment } from '@/lib/types'
+import {
+  JOURNEY_COMPLETE_NOTIFICATION_TYPE,
+  buildWeekUnlockedMetadata,
+  decideJourneyGraduationNotification,
+  isJourneyCompleteForGraduation,
+  isPostgresUniqueViolation,
+  journeyCompleteHref,
+  resolveJourneyTotalWeeks,
+  weekUnlockRecipientIds,
+} from '@/lib/journey-graduation'
+import { markPairingJourneyCompleted } from '@/lib/pairing-writes'
 
 // Lazy-initialize web-push to avoid build-time module evaluation errors
 let _webpush: typeof import('web-push') | null = null
@@ -24,7 +38,7 @@ async function getWebPush() {
   return _webpush!
 }
 
-type NotificationType = 'message' | 'assignment' | 'assignment_reply' | 'assignment_reaction' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing' | 'journal_shared' | 'meeting_request' | 'meeting_accepted' | 'meeting_declined' | 'meeting_counter_proposed' | 'meeting_completed'
+type NotificationType = 'message' | 'assignment' | 'assignment_reply' | 'assignment_reaction' | 'week_complete' | 'encouragement' | 'covenant' | 'pairing' | 'journal_shared' | 'meeting_request' | 'meeting_accepted' | 'meeting_declined' | 'meeting_counter_proposed' | 'meeting_completed' | 'journey_complete'
 
 interface CreateNotificationParams {
   userId: string
@@ -36,6 +50,7 @@ interface CreateNotificationParams {
 }
 
 function getNotificationUrl(type: NotificationType, pairingId?: string): string {
+  if (type === 'journey_complete' && pairingId) return journeyCompleteHref(pairingId)
   if (type === 'message' && pairingId) return `/dashboard/messages/${pairingId}`
   if (type === 'journal_shared') return '/dashboard/journal?section=shared'
   if (type === 'pairing') return '/dashboard/schedule'
@@ -230,12 +245,38 @@ export async function notifyWeekUnlocked(
   newWeekNumber: number,
   newWeekTitle: string
 ) {
+  if (!userId || !pairingId) {
+    return { error: 'Missing user or pairing' }
+  }
+
+  const supabase = createClient()
+  const metadata = buildWeekUnlockedMetadata(newWeekNumber)
+
+  const { data: existing, error: existingError } = await supabase
+    .from('notifications')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('pairing_id', pairingId)
+    .eq('type', 'week_complete')
+    .contains('metadata', metadata)
+    .limit(1)
+
+  if (existingError) {
+    console.error('notifyWeekUnlocked existing lookup failed:', existingError)
+    return { error: existingError.message }
+  }
+
+  if ((existing?.length ?? 0) > 0) {
+    return { success: true, created: false }
+  }
+
   return createNotification({
     userId,
     pairingId,
     type: 'week_complete',
     title: `Week ${newWeekNumber} Unlocked!`,
     message: `Congratulations! You can now begin "${newWeekTitle}".`,
+    metadata,
   })
 }
 
@@ -327,9 +368,19 @@ export async function advanceToNextWeek(
   const nextWeek = currentWeek + 1
   const nextWeekContent = weeklyContent.find(w => w.week_number === nextWeek)
 
-  // Only advance if there's a next week (max 6 weeks)
-  if (nextWeek > 6 || !nextWeekContent) {
-    // Journey complete! Return celebration info for the final week
+  const { data: pairingRow } = await supabase
+    .from('pairings')
+    .select('id, leader_id, learner_id, current_week, journey_id, journey:journeys(total_weeks)')
+    .eq('id', pairingId)
+    .maybeSingle()
+
+  const journey = Array.isArray(pairingRow?.journey) ? pairingRow.journey[0] : pairingRow?.journey
+  const totalWeeks = resolveJourneyTotalWeeks(journey)
+
+  // Only advance if there's a next week
+  if (nextWeek > totalWeeks || !nextWeekContent) {
+    await notifyLeaderOfJourneyComplete(pairingId)
+    await markPairingJourneyCompleted({ pairingId, expectedPairingId: pairingId })
     return {
       success: true,
       journeyComplete: true,
@@ -343,15 +394,21 @@ export async function advanceToNextWeek(
     .from('pairings')
     .update({ current_week: nextWeek })
     .eq('id', pairingId)
+    .eq('status', 'active')
 
   if (error) {
     console.error('Failed to advance week:', error)
     return { error: error.message }
   }
 
-  // Notify both parties
-  await notifyWeekUnlocked(leaderId, pairingId, nextWeek, nextWeekContent.title)
-  await notifyWeekUnlocked(leaderId, pairingId, nextWeek, nextWeekContent.title)
+  const recipients = weekUnlockRecipientIds(
+    pairingRow?.leader_id || leaderId,
+    pairingRow?.learner_id,
+  )
+
+  for (const userId of recipients) {
+    await notifyWeekUnlocked(userId, pairingId, nextWeek, nextWeekContent.title)
+  }
 
   // Return celebration info for the completed week
   return {
@@ -359,5 +416,141 @@ export async function advanceToNextWeek(
     newWeek: nextWeek,
     completedWeek: currentWeek,
     completedWeekTitle: currentWeekContent?.title || `Week ${currentWeek}`,
+  }
+}
+
+/**
+ * Notify the leader that this pairing's learner finished the 6-week journey.
+ * Admin client, relationship verified from the pairing row, check-before-insert
+ * plus unique index (scripts/011) so it fires at most once per pairing.
+ */
+export async function notifyLeaderOfJourneyComplete(pairingId: string): Promise<{
+  created: boolean
+  reason?: string
+  error?: string
+}> {
+  if (!pairingId) {
+    return { created: false, reason: 'missing_pairing' }
+  }
+
+  try {
+    const admin = createClient()
+
+    const { data: pairing, error: pairingError } = await admin
+      .from('pairings')
+      .select(`
+        id,
+        leader_id,
+        learner_id,
+        status,
+        current_week,
+        journey_id,
+        journey:journeys(total_weeks),
+        learner:profiles!pairings_learner_id_fkey(id, full_name)
+      `)
+      .eq('id', pairingId)
+      .maybeSingle()
+
+    if (pairingError) {
+      console.error('[notifyLeaderOfJourneyComplete] pairing lookup failed', pairingError)
+      return { created: false, error: pairingError.message }
+    }
+
+    const { data: existing, error: existingError } = await admin
+      .from('notifications')
+      .select('id')
+      .eq('type', JOURNEY_COMPLETE_NOTIFICATION_TYPE)
+      .eq('pairing_id', pairingId)
+      .limit(1)
+
+    if (existingError) {
+      console.error('[notifyLeaderOfJourneyComplete] existing lookup failed', existingError)
+      return { created: false, error: existingError.message }
+    }
+
+    const alreadyNotified = (existing?.length ?? 0) > 0
+    if (alreadyNotified) {
+      return { created: false, reason: 'already_notified' }
+    }
+
+    const journey = Array.isArray(pairing?.journey) ? pairing.journey[0] : pairing?.journey
+    const totalWeeks = resolveJourneyTotalWeeks(journey)
+
+    let isComplete = false
+    if (pairing?.learner_id && (pairing.current_week || 1) >= totalWeeks) {
+      let assignmentQuery = admin
+        .from('assignments')
+        .select('id, week_number, title, assignment_type, order_index, created_at')
+        .lte('week_number', totalWeeks)
+
+      if (pairing.journey_id) {
+        assignmentQuery = assignmentQuery.eq('journey_id', pairing.journey_id)
+      }
+
+      const { data: assignments } = await assignmentQuery
+      const grouped = groupAssignments((assignments || []) as Assignment[])
+
+      const { data: progress } = await admin
+        .from('assignment_progress')
+        .select('assignment_id')
+        .eq('pairing_id', pairingId)
+        .eq('user_id', pairing.learner_id)
+        .eq('status', 'completed')
+
+      isComplete = isJourneyCompleteForGraduation({
+        currentWeek: pairing.current_week || 1,
+        totalWeeks,
+        groupedAssignments: grouped,
+        completedAssignmentIds: (progress || []).map((row) => row.assignment_id),
+      })
+    }
+
+    const learner = unwrapJoinedProfile(pairing?.learner as { id: string; full_name: string | null } | { id: string; full_name: string | null }[] | null)
+    const decision = decideJourneyGraduationNotification({
+      pairing: pairing
+        ? {
+            id: pairing.id,
+            leader_id: pairing.leader_id,
+            learner_id: pairing.learner_id,
+            status: pairing.status,
+            current_week: pairing.current_week,
+          }
+        : null,
+      learnerName: learner?.full_name,
+      isJourneyComplete: isComplete,
+      alreadyNotified,
+    })
+
+    if (decision.action === 'skip') {
+      return { created: false, reason: decision.reason }
+    }
+
+    const { error } = await admin
+      .from('notifications')
+      .insert(decision.payload)
+
+    if (error) {
+      if (isPostgresUniqueViolation(error)) {
+        return { created: false, reason: 'already_notified' }
+      }
+      console.error('[notifyLeaderOfJourneyComplete] insert failed', error)
+      return { created: false, error: error.message }
+    }
+
+    sendWebPush(
+      decision.payload.user_id,
+      decision.payload.title,
+      decision.payload.message,
+      journeyCompleteHref(pairingId),
+      `journey-complete-${pairingId}`,
+    )
+
+    return { created: true }
+  } catch (error) {
+    console.error('[notifyLeaderOfJourneyComplete] unexpected error', error)
+    return {
+      created: false,
+      error: error instanceof Error ? error.message : 'Unexpected error',
+    }
   }
 }

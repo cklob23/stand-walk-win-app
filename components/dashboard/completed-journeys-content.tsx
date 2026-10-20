@@ -26,11 +26,14 @@ import {
 import { format } from 'date-fns'
 import Link from 'next/link'
 
+import { resolveJourneyTotalWeeks } from '@/lib/journey-graduation'
+
 interface Journey {
     id: string
     name: string
     description: string
-    duration_weeks: number
+    duration_weeks?: number
+    total_weeks?: number
 }
 
 interface Profile {
@@ -243,7 +246,7 @@ export function CompletedJourneysContent({
                                     <div className="text-right">
                                         <p className="text-sm font-medium">{completedCount} Assignments</p>
                                         <p className="text-xs text-muted-foreground">
-                                            {journey?.duration_weeks || 6} Weeks
+                                            {resolveJourneyTotalWeeks(journey)} Weeks
                                         </p>
                                     </div>
                                 </div>
@@ -301,7 +304,7 @@ export function CompletedJourneysContent({
 
                             {/* Assignments by Week */}
                             <Accordion type="single" collapsible className="w-full">
-                                {Array.from({ length: extractFirst(selectedPairing.journey)?.duration_weeks || 6 }, (_, i) => i + 1).map((weekNum) => {
+                                {Array.from({ length: resolveJourneyTotalWeeks(extractFirst(selectedPairing.journey)) }, (_, i) => i + 1).map((weekNum) => {
                                     const weekProgress = (assignmentProgress[selectedPairing.id] || [])
                                         .filter(p => p.assignment?.week_number === weekNum)
 

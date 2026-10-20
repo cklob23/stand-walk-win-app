@@ -37,6 +37,12 @@ import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { learnerDashboardSteps } from '@/lib/tour-steps'
 import { GraduationModal } from '@/components/graduation/graduation-modal'
 import { WeekCelebrationPopup } from '@/components/celebration/week-celebration-popup'
+import {
+  hasSeenGraduationModal,
+  markGraduationModalSeen,
+  shouldAutoOpenGraduationModal,
+} from '@/lib/graduation-modal-once'
+import { resolveJourneyTotalWeeks } from '@/lib/journey-graduation'
 
 interface LearnerDashboardProps {
   profile: Profile
@@ -99,8 +105,7 @@ export function LearnerDashboard({
   ).length
   const progressPercentage = totalAssignments > 0 ? Math.round((completedAssignments / totalAssignments) * 100) : 0
 
-  // Calculate full journey completion (all 6 weeks)
-  const TOTAL_WEEKS = 6
+  const totalWeeks = resolveJourneyTotalWeeks(pairing.journey)
   const allAssignmentsTotal = groupedAll.length
   const allPrimaryIds = new Set(groupedAll.map(a => a.id))
   const allAssignmentsCompleted = assignmentProgress.filter(
@@ -109,19 +114,25 @@ export function LearnerDashboard({
   const journeyCompletionPercentage = allAssignmentsTotal > 0
     ? Math.round((allAssignmentsCompleted / allAssignmentsTotal) * 100)
     : 0
-  const isJourneyComplete = journeyCompletionPercentage === 100 && currentWeek >= TOTAL_WEEKS && !profile.graduated_at
+  const isJourneyComplete = journeyCompletionPercentage === 100 && currentWeek >= totalWeeks && !profile.graduated_at
 
-  // Show graduation modal when journey is 100% complete
+  // Show graduation modal exactly once when the journey is 100% complete
   useEffect(() => {
-    if (isJourneyComplete && !hasShownGraduation) {
-      // Small delay to let the UI update first
+    if (
+      shouldAutoOpenGraduationModal({
+        isJourneyComplete,
+        alreadyShownThisMount: hasShownGraduation,
+        alreadySeenForPairing: hasSeenGraduationModal(pairing.id),
+      })
+    ) {
       const timer = setTimeout(() => {
+        markGraduationModalSeen(pairing.id)
         setShowGraduationModal(true)
         setHasShownGraduation(true)
       }, 1000)
       return () => clearTimeout(timer)
     }
-  }, [isJourneyComplete, hasShownGraduation])
+  }, [isJourneyComplete, hasShownGraduation, pairing.id])
 
   const partnerInitials = partner?.full_name
     ?.split(' ')
@@ -332,7 +343,7 @@ export function LearnerDashboard({
                 <span>Your Journey</span>
               </CardTitle>
               <CardDescription className="text-sm">
-                Track your progress through the 6-week discipleship journey
+                Track your progress through the {totalWeeks}-week discipleship journey
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -601,6 +612,7 @@ export function LearnerDashboard({
         journeyId={pairing.journey_id || undefined}
         journeyName={pairing.journey?.name || 'Stand Walk Run'}
         journeySubtitle={pairing.journey?.description || undefined}
+        totalWeeks={totalWeeks}
         canBeLeader={profile.can_be_leader !== false}
         subscriptionTier={profile.subscription_tier}
         organizationId={profile.organization_id}

@@ -90,7 +90,7 @@ function createHarness(options?: {
         onStateChange: (s) => {
             states.push(s)
         },
-        onAutoAdvance: () => {
+        onAutoAdvance: (): { location: ListenLocation; hasNextChapter: boolean } | null => {
             const loc = engine.getState().location
             if (!loc) return null
             const nextChapter = loc.chapter + 1
