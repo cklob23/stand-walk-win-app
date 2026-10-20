@@ -16,7 +16,7 @@ import {
  */
 export async function advancePairingWeek(params: {
   pairingId: string
-  expectedPairingId: string
+  expectedPairingId: string | null
   nextWeek: number
   maxWeek: number
 }): Promise<{ updated: boolean; error?: string }> {
@@ -51,7 +51,7 @@ export async function advancePairingWeek(params: {
  */
 export async function markPairingJourneyCompleted(params: {
   pairingId: string
-  expectedPairingId?: string
+  expectedPairingId?: string | null
 }): Promise<{ completed: boolean; reason?: string; error?: string }> {
   if (!params.pairingId) {
     return { completed: false, reason: 'missing_pairing' }

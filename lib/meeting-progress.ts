@@ -41,7 +41,7 @@ export async function ensureCompletedMeetingProgress({
   assignments: MeetingProgressAssignment[]
   existingProgress: MeetingProgressRow[]
   completedMeetingsCount: number
-  expectedPairingId?: string
+  expectedPairingId?: string | null
 }): Promise<{ wrote: boolean }> {
   if (expectedPairingId && expectedPairingId !== pairing.id) {
     console.error(

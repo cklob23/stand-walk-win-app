@@ -288,7 +288,7 @@ export default async function DashboardPage({
       const nextWeek = currentWeek + 1
       const { updated } = await advancePairingWeek({
         pairingId: pairing.id,
-        expectedPairingId: writePairingId!,
+        expectedPairingId: writePairingId,
         nextWeek,
         maxWeek: totalWeeks,
       })
@@ -323,7 +323,7 @@ export default async function DashboardPage({
       try {
         await markPairingJourneyCompleted({
           pairingId: pairing.id,
-          expectedPairingId: writePairingId!,
+          expectedPairingId: writePairingId,
         })
         pairing.status = 'completed'
       } catch (error) {
