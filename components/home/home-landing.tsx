@@ -26,16 +26,11 @@ import {
 import { AppLogoStatic } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
 import { AppScreenshot, BrowserScreenshot, PhoneScreenshot } from '@/components/home/app-screenshot'
+import { HomeFaqAnswer } from '@/components/home/faq-answer'
+import { HomeHeader } from '@/components/home/home-header'
+import { homeFaqs } from '@/lib/home-content'
 import { cn } from '@/lib/utils'
 import type { ReactNode } from 'react'
-
-const navLinks = [
-  { href: '#how', label: 'How it works' },
-  { href: '#roles', label: 'Leaders and Learners' },
-  { href: '#features', label: 'Features' },
-  { href: '#journey', label: 'The journey' },
-  { href: '#faq', label: 'FAQ' },
-] as const
 
 const steps: { icon: LucideIcon; title: string; body: string }[] = [
   {
@@ -237,87 +232,10 @@ const weeks = [
   },
 ] as const
 
-const faqs: { question: string; answer: ReactNode; open?: boolean }[] = [
-  {
-    question: 'How much does it cost?',
-    open: true,
-    answer: (
-      <>
-        Learners never pay. A Leader pays for a plan, or a church or organization buys plans for its
-        leaders. The plan sets how many Learners each Leader can pair with.{' '}
-        <Link href="/pricing" className="font-medium text-primary underline underline-offset-2">
-          See plans for individual leaders and churches
-        </Link>
-        .
-      </>
-    ),
-  },
-  {
-    question: 'Is a weekly meeting required?',
-    open: true,
-    answer:
-      "Yes. Every week includes at least one meeting between the Leader and Learner as part of that week's assignments. You book it right in the app, for FaceTime, Zoom, a phone call, or in person.",
-  },
-  {
-    question: 'How does a Learner join?',
-    answer:
-      'The Leader invites them. Every Leader gets a 6-character pairing code to share with the person they want to disciple. The Learner signs up free with that code and is connected right away.',
-  },
-  {
-    question: 'What devices does it work on?',
-    answer:
-      'Stand Walk Run works in any web browser on your phone, tablet, or computer. There is nothing to download, and you can turn on notifications for new messages and updates.',
-  },
-  {
-    question: 'Is what I share private?',
-    answer:
-      'Your messages are only between you and your partner, and journal entries stay private unless you choose to share them. Your Leader sees your assignment responses so they can encourage you. Both of you also agree to keep conversations confidential when you sign the covenant.',
-  },
-  {
-    question: 'Can a Leader disciple more than one person?',
-    answer:
-      'Yes. Each plan sets how many Learners a Leader can pair with, and Leaders switch between them from the dashboard.',
-  },
-  {
-    question: 'What happens after the 6 weeks?',
-    answer:
-      'You celebrate together. The Learner can then graduate to become a Leader and invite someone of their own, or start another journey as new ones become available.',
-  },
-  {
-    question: 'Are there other journeys?',
-    answer:
-      'New Believer Foundations is the first journey. More journeys for other groups are on the way.',
-  },
-]
-
 export function HomeLanding() {
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 border-b bg-card/50 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:py-4">
-          <Link href="/" className="flex items-center gap-2">
-            <AppLogoStatic />
-          </Link>
-          <nav className="hidden items-center gap-7 text-sm text-muted-foreground lg:flex">
-            {navLinks.map((link) => (
-              <a key={link.href} href={link.href} className="hover:text-foreground">
-                {link.label}
-              </a>
-            ))}
-          </nav>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Button variant="ghost" asChild size="sm">
-              <Link href="/auth/login">Sign in</Link>
-            </Button>
-            <Button asChild size="sm" className="sm:hidden">
-              <Link href="/auth/signup">Start</Link>
-            </Button>
-            <Button asChild className="hidden sm:inline-flex">
-              <Link href="/auth/signup">Get Started</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
+      <HomeHeader />
 
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/10" />
@@ -598,7 +516,7 @@ export function HomeLanding() {
             </h2>
           </div>
           <div className="mt-10 space-y-3">
-            {faqs.map((faq) => (
+            {homeFaqs.map((faq) => (
               <details
                 key={faq.question}
                 className="group rounded-xl border bg-card px-5 py-4"
@@ -608,7 +526,9 @@ export function HomeLanding() {
                   {faq.question}
                   <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
                 </summary>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{faq.answer}</p>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  <HomeFaqAnswer faq={faq} />
+                </p>
               </details>
             ))}
           </div>

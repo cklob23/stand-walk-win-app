@@ -31,7 +31,7 @@ interface SettingsViewProps {
 }
 
 export function SettingsView({ profile }: SettingsViewProps) {
-  const { theme, setTheme } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
   const router = useRouter()
   const { branding } = useBranding()
   const [mounted, setMounted] = useState(false)
@@ -60,9 +60,9 @@ export function SettingsView({ profile }: SettingsViewProps) {
 
   useEffect(() => {
     if (mounted) {
-      setIsDark(theme === 'dark')
+      setIsDark(resolvedTheme === 'dark')
     }
-  }, [mounted, theme])
+  }, [mounted, resolvedTheme])
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
