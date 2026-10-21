@@ -12,6 +12,7 @@ export interface AdditionalQuestion {
     description: string
     commentary?: string | null
     prayer?: string | null
+    prayer_note?: string | null
 }
 
 export interface GroupedAssignment extends Assignment {
@@ -61,6 +62,7 @@ export function groupAssignments(assignments: Assignment[]): GroupedAssignment[]
                     description: a.description,
                     commentary: a.commentary ?? null,
                     prayer: a.prayer ?? null,
+                    prayer_note: a.prayer_note ?? null,
                 })
             }
         }

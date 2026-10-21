@@ -178,6 +178,8 @@ export interface Assignment {
   created_at: string
   commentary?: string | null
   prayer?: string | null
+  prayer_note?: string | null
+  guided_prayer?: string | null
   weekly_content?: WeeklyContent
 }
 

@@ -1,7 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
-import { BookMarked, BookOpen, ChevronDown, Heart } from 'lucide-react'
+import { BookMarked, BookOpen, ChevronDown, HandHeart, Link2 } from 'lucide-react'
 import {
   Collapsible,
   CollapsibleContent,
@@ -13,6 +14,13 @@ import { cn } from '@/lib/utils'
 
 function hasText(value?: string | null): value is string {
   return !!value && value.trim().length > 0
+}
+
+function toParagraphs(value: string): string[] {
+  return value
+    .split(/\n\s*\n/)
+    .map((part) => part.trim())
+    .filter(Boolean)
 }
 
 function ScriptureReadButtons({ text }: { text: string }) {
@@ -40,34 +48,85 @@ function ScriptureReadButtons({ text }: { text: string }) {
 }
 
 function GuidanceCard({
-  title,
-  text,
-  icon: Icon,
+  kind,
+  paragraphs,
+  note,
   defaultOpen = false,
 }: {
-  title: string
-  text: string
-  icon: typeof BookOpen
+  kind: 'commentary' | 'prayer'
+  paragraphs: string[]
+  note?: string | null
   defaultOpen?: boolean
 }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const isPrayer = kind === 'prayer'
+  const Icon = isPrayer ? HandHeart : BookOpen
+  const preview = paragraphs[0] || ''
+
   return (
-    <Collapsible defaultOpen={defaultOpen} className="rounded-lg border bg-muted/20">
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="group flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium text-foreground"
-        >
-          <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="flex-1">{title}</span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="space-y-2 border-t px-3 pb-3 pt-2">
-          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{text}</p>
-          <ScriptureReadButtons text={text} />
-        </div>
-      </CollapsibleContent>
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <div
+        className={cn(
+          'rounded-lg border overflow-hidden',
+          isPrayer
+            ? 'border-pink-200/70 dark:border-pink-900/40 bg-gradient-to-b from-pink-50/70 dark:from-pink-950/20 to-card'
+            : 'bg-muted/40 border-border'
+        )}
+      >
+        <CollapsibleTrigger asChild>
+          <button type="button" className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left">
+            <span
+              className={cn(
+                'flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
+                isPrayer
+                  ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300'
+                  : 'bg-primary/10 text-primary'
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </span>
+            <span className="flex-1 text-xs font-semibold text-foreground uppercase tracking-wide">
+              {isPrayer ? 'Prayer' : 'Commentary'}
+            </span>
+            <span className="text-xs text-muted-foreground">{open ? 'Hide' : 'Read'}</span>
+            <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-180')} />
+          </button>
+        </CollapsibleTrigger>
+        {!open && (
+          <div className="px-3 pb-3 -mt-0.5">
+            <p
+              className={cn(
+                'text-sm text-muted-foreground line-clamp-2',
+                isPrayer && 'font-serif italic leading-relaxed'
+              )}
+            >
+              {preview}
+            </p>
+          </div>
+        )}
+        <CollapsibleContent>
+          <div className="px-3 pb-3 space-y-2.5">
+            {hasText(note) && (
+              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Link2 className="h-3.5 w-3.5 mt-px shrink-0" />
+                {note}
+              </p>
+            )}
+            {paragraphs.map((paragraph) => (
+              <p
+                key={paragraph.slice(0, 48)}
+                className={cn(
+                  'text-sm text-foreground/90 leading-relaxed',
+                  isPrayer && 'font-serif italic leading-7'
+                )}
+              >
+                {paragraph}
+              </p>
+            ))}
+            <ScriptureReadButtons text={paragraphs.join(' ')} />
+          </div>
+        </CollapsibleContent>
+      </div>
     </Collapsible>
   )
 }
@@ -75,33 +134,30 @@ function GuidanceCard({
 interface QuestionGuidanceProps {
   commentary?: string | null
   prayer?: string | null
+  prayerNote?: string | null
   defaultOpen?: boolean
 }
 
 export function QuestionGuidance({
   commentary,
   prayer,
+  prayerNote,
   defaultOpen = false,
 }: QuestionGuidanceProps) {
-  const showCommentary = hasText(commentary)
+  const commentaryParagraphs = hasText(commentary) ? toParagraphs(commentary) : []
   const showPrayer = hasText(prayer)
-  if (!showCommentary && !showPrayer) return null
+  if (commentaryParagraphs.length === 0 && !showPrayer) return null
 
   return (
-    <div className={cn('space-y-2')}>
-      {showCommentary && (
-        <GuidanceCard
-          title="Commentary"
-          text={commentary}
-          icon={BookOpen}
-          defaultOpen={defaultOpen}
-        />
+    <div className="space-y-2">
+      {commentaryParagraphs.length > 0 && (
+        <GuidanceCard kind="commentary" paragraphs={commentaryParagraphs} defaultOpen={defaultOpen} />
       )}
       {showPrayer && (
         <GuidanceCard
-          title="Prayer"
-          text={prayer}
-          icon={Heart}
+          kind="prayer"
+          paragraphs={toParagraphs(prayer)}
+          note={prayerNote}
           defaultOpen={defaultOpen}
         />
       )}

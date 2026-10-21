@@ -51,6 +51,7 @@ describe('groupAssignments commentary and prayer', () => {
             description: 'In John 3:8, what does the wind represent',
             commentary: 'Commentary 2 wind',
             prayer: 'Prayer about the wind',
+            prayer_note: null,
         })
         assert.equal(grouped[0].additionalQuestions[1].id, 'q5')
         assert.deepEqual(getAllIdsForGroup(grouped[0]), ['q1', 'q2', 'q5'])

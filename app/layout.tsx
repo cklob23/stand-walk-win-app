@@ -5,11 +5,15 @@ import { Toaster } from '@/components/ui/sonner'
 import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
-const _inter = Inter({ subsets: ["latin"] });
-const _merriweather = Merriweather({
+const inter = Inter({
+  subsets: ["latin"],
+  variable: '--font-inter',
+})
+const merriweather = Merriweather({
   weight: ['300', '400', '700'],
-  subsets: ["latin"]
-});
+  subsets: ['latin'],
+  variable: '--font-merriweather',
+})
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -55,8 +59,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`font-sans antialiased`}>
+    <html lang="en" className={`${inter.variable} ${merriweather.variable}`} suppressHydrationWarning>
+      <body className="font-sans antialiased">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
