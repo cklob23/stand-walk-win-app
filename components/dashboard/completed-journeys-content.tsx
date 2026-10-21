@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from '@/components/ui/empty'
+import { QuestionGuidance } from '@/components/dashboard/question-guidance'
 import {
     BookOpen,
     Award,
@@ -63,6 +64,8 @@ interface Assignment {
     assignment_type: string
     week_number: number
     scripture_reference?: string
+    commentary?: string | null
+    prayer?: string | null
 }
 
 interface WeeklyContent {
@@ -345,6 +348,13 @@ export function CompletedJourneysContent({
                                                                             {item.assignment.description}
                                                                         </p>
                                                                     )}
+
+                                                                    <div className="mt-2">
+                                                                        <QuestionGuidance
+                                                                            commentary={item.assignment?.commentary}
+                                                                            prayer={item.assignment?.prayer}
+                                                                        />
+                                                                    </div>
 
                                                                     {/* Scripture reference from weekly content */}
                                                                     {(() => {

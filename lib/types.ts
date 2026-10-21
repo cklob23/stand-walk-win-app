@@ -176,6 +176,8 @@ export interface Assignment {
   assignment_type: 'reading' | 'reflection' | 'action' | 'discussion' | 'prayer' | 'meeting'
   order_index: number
   created_at: string
+  commentary?: string | null
+  prayer?: string | null
   weekly_content?: WeeklyContent
 }
 

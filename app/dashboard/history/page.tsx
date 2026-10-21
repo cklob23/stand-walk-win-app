@@ -91,7 +91,9 @@ export default async function JourneyHistoryPage() {
           title,
           description,
           assignment_type,
-          week_number
+          week_number,
+          commentary,
+          prayer
         )
       `)
             .in('pairing_id', completedPairingIds)

@@ -7,12 +7,19 @@ import type { Assignment } from './types'
  * for progress tracking; the others become additional questions rendered with their
  * own scripture/Read buttons but sharing a single response textarea.
  */
+export interface AdditionalQuestion {
+    id: string
+    description: string
+    commentary?: string | null
+    prayer?: string | null
+}
+
 export interface GroupedAssignment extends Assignment {
     /**
-     * Descriptions of additional question rows that share this assignment's
-     * title, week, and type. The primary description is still on `description`.
+     * Extra question rows that share this assignment's title, week, and type.
+     * The primary description, commentary, and prayer stay on the group itself.
      */
-    additionalQuestions: { id: string; description: string }[]
+    additionalQuestions: AdditionalQuestion[]
 }
 
 /**
@@ -49,7 +56,12 @@ export function groupAssignments(assignments: Assignment[]): GroupedAssignment[]
             )
             // Skip exact duplicates (same title + same prompt copied across journeys)
             if (incoming && incoming !== primary && !alreadyListed) {
-                existing.additionalQuestions.push({ id: a.id, description: a.description })
+                existing.additionalQuestions.push({
+                    id: a.id,
+                    description: a.description,
+                    commentary: a.commentary ?? null,
+                    prayer: a.prayer ?? null,
+                })
             }
         }
     }

@@ -40,7 +40,7 @@ export const BOOK_MAP: Record<string, string> = {
     'haggai': '37', 'hag': '37',
     'zechariah': '38', 'zech': '38', 'zec': '38',
     'malachi': '39', 'mal': '39',
-    'matthew': '40', 'matt': '40', 'mat': '40',
+    'matthew': '40', 'matt': '40', 'matt.': '40', 'mat': '40',
     'mark': '41', 'mrk': '41',
     'luke': '42', 'luk': '42',
     'john': '43', 'jhn': '43', 'jn': '43',

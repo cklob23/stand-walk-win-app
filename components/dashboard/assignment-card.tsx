@@ -52,6 +52,8 @@ import { extractScriptureReferences, extractBookReferences } from '@/lib/bible-u
 import { toggleAssignmentReaction, replyToAssignment, deleteAssignmentReply } from '@/lib/assignment-actions'
 import { WeekCelebrationModal } from '@/components/celebration/week-celebration-modal'
 import { GraduationModal } from '@/components/graduation/graduation-modal'
+import { QuestionGuidance } from '@/components/dashboard/question-guidance'
+import { GuidedPrayer } from '@/components/dashboard/guided-prayer'
 import {
   Popover,
   PopoverContent,
@@ -70,6 +72,8 @@ interface AssignmentReaction {
 interface AdditionalQuestion {
   id: string
   description: string
+  commentary?: string | null
+  prayer?: string | null
 }
 
 interface AssignmentCardProps {
@@ -106,6 +110,7 @@ interface AssignmentCardProps {
   hasWeeklyMeeting?: boolean
   weekTitle?: string
   defaultOpen?: boolean
+  guidanceDefaultOpen?: boolean
   // Graduation modal props
   userName?: string
   journeyName?: string
@@ -171,6 +176,7 @@ export function AssignmentCard({
   hasWeeklyMeeting,
   weekTitle,
   defaultOpen = false,
+  guidanceDefaultOpen = false,
   userName,
   journeyName,
   journeySubtitle,
@@ -232,6 +238,8 @@ export function AssignmentCard({
 
   // Prayer timer state
   const isPrayerType = assignment.assignment_type === 'prayer'
+  const isGuidedPrayer = isPrayerType && !!assignment.prayer?.trim()
+  const [prayerConfirmed, setPrayerConfirmed] = useState(false)
   const prayerDuration = isPrayerType ? extractDurationSeconds(assignment.description || '') : null
   const [timerRunning, setTimerRunning] = useState(false)
   const [timerSecondsLeft, setTimerSecondsLeft] = useState(prayerDuration || 0)
@@ -469,6 +477,10 @@ export function AssignmentCard({
       toast.error('Please answer the question first.')
       return
     }
+    if (newStatus === 'completed' && isGuidedPrayer && !prayerConfirmed) {
+      toast.error('Please confirm you prayed this prayer.')
+      return
+    }
 
     setIsLoading(true)
 
@@ -697,6 +709,12 @@ export function AssignmentCard({
                   </div>
                 )
               })()}
+
+              <QuestionGuidance
+                commentary={assignment.commentary}
+                prayer={isPrayerType ? null : assignment.prayer}
+                defaultOpen={guidanceDefaultOpen}
+              />
             </div>
 
             {/* Additional questions, each with its own Read buttons */}
@@ -765,10 +783,25 @@ export function AssignmentCard({
                           )}
                         </div>
                       )}
+                      <QuestionGuidance
+                        commentary={q.commentary}
+                        prayer={q.prayer}
+                        defaultOpen={guidanceDefaultOpen}
+                      />
                     </div>
                   )
                 })}
               </div>
+            )}
+
+            {isPrayerType && (
+              <GuidedPrayer
+                prayer={assignment.prayer}
+                confirmed={prayerConfirmed}
+                onConfirmedChange={setPrayerConfirmed}
+                isLeader={isLeader}
+                isCompleted={isCompleted}
+              />
             )}
 
             {/* Prayer Timer */}
@@ -1304,7 +1337,7 @@ export function AssignmentCard({
                   <Button
                     size="sm"
                     onClick={() => handleSaveProgress('completed')}
-                    disabled={isLoading || (requiresResponse && !isSalvationStory && !stripSalvationPrefix(response).trim()) || (isSalvationStory && salvationChoice === null)}
+                    disabled={isLoading || (requiresResponse && !isSalvationStory && !stripSalvationPrefix(response).trim()) || (isSalvationStory && salvationChoice === null) || (isGuidedPrayer && !prayerConfirmed)}
                   >
                     {isLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -1318,6 +1351,9 @@ export function AssignmentCard({
                   )}
                   {requiresResponse && !isSalvationStory && !stripSalvationPrefix(response).trim() && (
                     <p className="text-xs text-muted-foreground self-center">Write a response first</p>
+                  )}
+                  {isGuidedPrayer && !prayerConfirmed && (
+                    <p className="text-xs text-muted-foreground self-center">Confirm you prayed first</p>
                   )}
                 </>
               )}
