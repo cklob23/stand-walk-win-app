@@ -221,7 +221,6 @@ function PreviewInner() {
             </h2>
             <AssignmentCard assignment={week2LearningToPray} {...cardProps} currentWeek={2} defaultOpen guidanceDefaultOpen />
             <AssignmentCard assignment={understandingPrayer} {...cardProps} currentWeek={2} defaultOpen />
-            <AssignmentCard assignment={comingSoonPrayer} {...cardProps} currentWeek={3} defaultOpen />
           </section>
         )}
 
