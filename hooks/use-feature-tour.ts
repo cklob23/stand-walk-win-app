@@ -45,6 +45,7 @@ function isBlockingDialogOpen(): boolean {
     for (const d of dialogs) {
         if (d.hasAttribute('data-feature-tour')) continue
         if (d.hasAttribute('data-journal-popup') || !!d.closest('[data-journal-popup]')) continue
+        if (d.hasAttribute('data-prayer-popup') || !!d.closest('[data-prayer-popup]')) continue
         return true
     }
     return false

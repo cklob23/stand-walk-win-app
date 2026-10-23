@@ -15,7 +15,8 @@ import { JournalHistory, AddCustomEntryButton, type JournalEntry } from '@/compo
 import type { JournalAttachment } from '@/lib/journal-actions'
 import { JournalEntryEditor } from '@/components/journal/journal-entry-editor'
 import { SharedWithMe, type SharedItem } from '@/components/journal/shared-with-me'
-import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
+import { DailyPopups } from '@/components/journal/daily-popups'
+import type { DailyPrayerPartner, DailyPrayerInput } from '@/lib/daily-prayer-content'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { getJournalSteps } from '@/lib/tour-steps'
 import { useMemo } from 'react'
@@ -32,6 +33,8 @@ interface JournalPageClientProps {
     initialSection?: string | null
     currentUserId: string
     currentUserName: string
+    dailyPrayerPartners?: DailyPrayerPartner[]
+    dailyPrayerInput?: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
 }
 
 export function JournalPageClient({
@@ -45,6 +48,8 @@ export function JournalPageClient({
     initialSection,
     currentUserId,
     currentUserName,
+    dailyPrayerPartners = [],
+    dailyPrayerInput,
 }: JournalPageClientProps) {
     const router = useRouter()
     const searchParamsHook = useSearchParams()
@@ -340,11 +345,13 @@ export function JournalPageClient({
                     hasTodayEntry={hasTodayEntry}
                 />
             </div>
-            {/* Daily reflection prompt -- popup manages its own open/dismissed state */}
-            <DailyJournalPopup
+            <DailyPopups
                 pairingId={pairingId}
-                hasEntryToday={hasTodayEntry}
-                leaderName={isLeader ? learnerName : leaderName}
+                hasJournalEntryToday={hasTodayEntry}
+                journalShareName={isLeader ? learnerName : leaderName}
+                viewerRole={isLeader ? 'leader' : 'learner'}
+                partners={dailyPrayerPartners}
+                prayerInput={dailyPrayerInput || {}}
             />
 
             {/* Onboarding Tour */}
