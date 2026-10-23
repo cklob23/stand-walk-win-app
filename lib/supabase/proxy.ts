@@ -7,6 +7,17 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const fullUrl = request.nextUrl.href
 
+  // Local preview routes do not need a session.
+  if (pathname.startsWith('/dev/')) {
+    const previewResponse = NextResponse.next({
+      request: { headers: requestHeaders },
+    })
+    previewResponse.headers.set('x-pathname', pathname)
+    previewResponse.headers.set('x-url', fullUrl)
+    previewResponse.headers.set('x-invoke-path', pathname)
+    return previewResponse
+  }
+
   requestHeaders.set('x-pathname', pathname)
   requestHeaders.set('x-url', fullUrl)
   // Add additional header that Next.js uses internally
