@@ -52,6 +52,8 @@ import { extractScriptureReferences, extractBookReferences } from '@/lib/bible-u
 import { toggleAssignmentReaction, replyToAssignment, deleteAssignmentReply } from '@/lib/assignment-actions'
 import { WeekCelebrationModal } from '@/components/celebration/week-celebration-modal'
 import { GraduationModal } from '@/components/graduation/graduation-modal'
+import { QuestionGuidance } from '@/components/dashboard/question-guidance'
+import { GuidedPrayer, hasGuidedPrayerText } from '@/components/dashboard/guided-prayer'
 import {
   Popover,
   PopoverContent,
@@ -70,6 +72,9 @@ interface AssignmentReaction {
 interface AdditionalQuestion {
   id: string
   description: string
+  commentary?: string | null
+  prayer?: string | null
+  prayer_note?: string | null
 }
 
 interface AssignmentCardProps {
@@ -106,6 +111,8 @@ interface AssignmentCardProps {
   hasWeeklyMeeting?: boolean
   weekTitle?: string
   defaultOpen?: boolean
+  guidanceDefaultOpen?: boolean
+  defaultPrayerConfirmed?: boolean
   // Graduation modal props
   userName?: string
   journeyName?: string
@@ -128,11 +135,11 @@ const typeIcons: Record<string, typeof BookOpen> = {
 }
 
 const typeColors: Record<string, string> = {
-  reading: 'bg-blue-100 text-blue-700',
-  reflection: 'bg-amber-100 text-amber-700',
-  action: 'bg-green-100 text-green-700',
-  discussion: 'bg-purple-100 text-purple-700',
-  prayer: 'bg-pink-100 text-pink-700',
+  reading: 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
+  reflection: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+  action: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300',
+  discussion: 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+  prayer: 'bg-pink-100 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300',
   meeting: 'bg-primary/10 text-primary',
 }
 
@@ -171,6 +178,8 @@ export function AssignmentCard({
   hasWeeklyMeeting,
   weekTitle,
   defaultOpen = false,
+  guidanceDefaultOpen = false,
+  defaultPrayerConfirmed = false,
   userName,
   journeyName,
   journeySubtitle,
@@ -230,9 +239,13 @@ export function AssignmentCard({
     }
   }, [response, draftKey, progress?.notes])
 
-  // Prayer timer state
+  // Prayer timer state. Guided prayers hide the timer and use the confirm box.
   const isPrayerType = assignment.assignment_type === 'prayer'
-  const prayerDuration = isPrayerType ? extractDurationSeconds(assignment.description || '') : null
+  const isGuidedPrayer = hasGuidedPrayerText(assignment.guided_prayer)
+  const [prayerConfirmed, setPrayerConfirmed] = useState(defaultPrayerConfirmed)
+  const prayerDuration = isPrayerType && !isGuidedPrayer
+    ? extractDurationSeconds(assignment.description || '')
+    : null
   const [timerRunning, setTimerRunning] = useState(false)
   const [timerSecondsLeft, setTimerSecondsLeft] = useState(prayerDuration || 0)
   const [timerStarted, setTimerStarted] = useState(false)
@@ -469,6 +482,10 @@ export function AssignmentCard({
       toast.error('Please answer the question first.')
       return
     }
+    if (newStatus === 'completed' && isGuidedPrayer && !prayerConfirmed) {
+      toast.error('Please confirm you prayed this prayer.')
+      return
+    }
 
     setIsLoading(true)
 
@@ -596,16 +613,31 @@ export function AssignmentCard({
 
             {/* Content */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1 mb-1">
+              <div className="flex flex-wrap items-center gap-1 mb-1">
                 <Badge
                   variant="secondary"
-                  className={cn("text-xs capitalize shrink-0", typeColors[assignment.assignment_type])}
+                  className={cn(
+                    "text-xs shrink-0",
+                    typeColors[isPrayerType && isGuidedPrayer ? 'prayer' : assignment.assignment_type],
+                    !(isPrayerType && isGuidedPrayer) && "capitalize"
+                  )}
                 >
                   <Icon className="h-3 w-3 mr-1" />
-                  {assignment.assignment_type}
+                  {isPrayerType && isGuidedPrayer ? 'Guided prayer' : assignment.assignment_type}
                 </Badge>
+                {isGuidedPrayer && !isPrayerType && (
+                  <Badge variant="secondary" className={cn("text-xs shrink-0", typeColors.prayer)}>
+                    <HandHeart className="h-3 w-3 mr-1" />
+                    Guided prayer
+                  </Badge>
+                )}
+                {isCompleted && isGuidedPrayer && (
+                  <Badge variant="secondary" className="text-xs shrink-0 bg-primary/10 text-primary">
+                    Done
+                  </Badge>
+                )}
               </div>
-              <h4 className="font-medium text-foreground text-sm truncate">{assignment.title}</h4>
+              <h4 className="font-medium text-foreground text-sm break-words">{assignment.title}</h4>
               {!isOpen && (
                 <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
                   {assignment.description}
@@ -697,6 +729,13 @@ export function AssignmentCard({
                   </div>
                 )
               })()}
+
+              <QuestionGuidance
+                commentary={assignment.commentary}
+                prayer={assignment.prayer}
+                prayerNote={assignment.prayer_note}
+                defaultOpen={guidanceDefaultOpen}
+              />
             </div>
 
             {/* Additional questions, each with its own Read buttons */}
@@ -765,11 +804,27 @@ export function AssignmentCard({
                           )}
                         </div>
                       )}
+                      <QuestionGuidance
+                        commentary={q.commentary}
+                        prayer={q.prayer}
+                        prayerNote={q.prayer_note}
+                        defaultOpen={guidanceDefaultOpen}
+                      />
                     </div>
                   )
                 })}
               </div>
             )}
+
+            <GuidedPrayer
+              prayer={assignment.guided_prayer}
+              assignmentType={assignment.assignment_type}
+              confirmed={prayerConfirmed}
+              onConfirmedChange={setPrayerConfirmed}
+              isLeader={isLeader}
+              isCompleted={isCompleted}
+              completedAt={displayProgress?.completed_at}
+            />
 
             {/* Prayer Timer */}
             {isPrayerType && prayerDuration && !isLeader && (
@@ -1304,7 +1359,10 @@ export function AssignmentCard({
                   <Button
                     size="sm"
                     onClick={() => handleSaveProgress('completed')}
-                    disabled={isLoading || (requiresResponse && !isSalvationStory && !stripSalvationPrefix(response).trim()) || (isSalvationStory && salvationChoice === null)}
+                    disabled={isLoading || (requiresResponse && !isSalvationStory && !stripSalvationPrefix(response).trim()) || (isSalvationStory && salvationChoice === null) || (isGuidedPrayer && !prayerConfirmed)}
+                    className={cn(
+                      isGuidedPrayer && !prayerConfirmed && 'disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:hover:bg-muted'
+                    )}
                   >
                     {isLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -1318,6 +1376,9 @@ export function AssignmentCard({
                   )}
                   {requiresResponse && !isSalvationStory && !stripSalvationPrefix(response).trim() && (
                     <p className="text-xs text-muted-foreground self-center">Write a response first</p>
+                  )}
+                  {isGuidedPrayer && !prayerConfirmed && (
+                    <p className="text-xs text-muted-foreground self-center">Check the box first</p>
                   )}
                 </>
               )}
@@ -1354,10 +1415,12 @@ export function AssignmentCard({
                       Save
                     </Button>
                   )}
-                  <div className="flex items-center gap-2 text-sm text-success">
-                    <CheckCircle2 className="h-4 w-4" />
-                    Completed
-                  </div>
+                  {!isGuidedPrayer && (
+                    <div className="flex items-center gap-2 text-sm text-success">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Completed
+                    </div>
+                  )}
                 </div>
               )}
             </div>

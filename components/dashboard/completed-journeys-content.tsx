@@ -8,6 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from '@/components/ui/empty'
+import { QuestionGuidance } from '@/components/dashboard/question-guidance'
+import { GuidedPrayer } from '@/components/dashboard/guided-prayer'
 import {
     BookOpen,
     Award,
@@ -63,6 +65,10 @@ interface Assignment {
     assignment_type: string
     week_number: number
     scripture_reference?: string
+    commentary?: string | null
+    prayer?: string | null
+    prayer_note?: string | null
+    guided_prayer?: string | null
 }
 
 interface WeeklyContent {
@@ -345,6 +351,27 @@ export function CompletedJourneysContent({
                                                                             {item.assignment.description}
                                                                         </p>
                                                                     )}
+
+                                                                    <div className="mt-2">
+                                                                        <QuestionGuidance
+                                                                            commentary={item.assignment?.commentary}
+                                                                            prayer={item.assignment?.prayer}
+                                                                            prayerNote={item.assignment?.prayer_note}
+                                                                        />
+                                                                        {item.assignment && (
+                                                                            <div className="mt-2">
+                                                                                <GuidedPrayer
+                                                                                    prayer={item.assignment.guided_prayer}
+                                                                                    assignmentType={item.assignment.assignment_type}
+                                                                                    confirmed
+                                                                                    onConfirmedChange={() => undefined}
+                                                                                    isLeader
+                                                                                    isCompleted
+                                                                                    completedAt={item.completed_at}
+                                                                                />
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
 
                                                                     {/* Scripture reference from weekly content */}
                                                                     {(() => {
