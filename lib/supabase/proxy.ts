@@ -1,5 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  shouldBypassAuthForDevPreview,
+  shouldNotFoundDevPreview,
+} from "@/lib/dev-preview-access";
 
 export async function updateSession(request: NextRequest) {
   // Clone the request headers and add the pathname
@@ -7,8 +11,13 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const fullUrl = request.nextUrl.href
 
-  // Local preview routes do not need a session.
-  if (pathname.startsWith('/dev/')) {
+  // Production: the screenshot harness 404s and never skips auth.
+  // Real routes always fall through to the session client below.
+  if (shouldNotFoundDevPreview(pathname)) {
+    return new NextResponse(null, { status: 404 })
+  }
+
+  if (shouldBypassAuthForDevPreview(pathname)) {
     const previewResponse = NextResponse.next({
       request: { headers: requestHeaders },
     })
