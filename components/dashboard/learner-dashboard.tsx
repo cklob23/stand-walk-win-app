@@ -59,6 +59,7 @@ interface LearnerDashboardProps {
   hasWeeklyMeeting: boolean
   completedMeetingsCount?: number
   hasJournalEntryToday: boolean
+  journalTodayKey?: string | null
   dailyPrayerPartners?: DailyPrayerPartner[]
   dailyPrayerInput?: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
   // Celebration data from server
@@ -79,6 +80,7 @@ export function LearnerDashboard({
   hasWeeklyMeeting,
   completedMeetingsCount = 0,
   hasJournalEntryToday,
+  journalTodayKey,
   dailyPrayerPartners = [],
   dailyPrayerInput,
   celebrationWeek,
@@ -600,6 +602,7 @@ export function LearnerDashboard({
       <DailyPopups
         pairingId={pairing.id}
         hasJournalEntryToday={hasJournalEntryToday}
+        journalTodayKey={journalTodayKey}
         journalShareName={partner?.full_name || 'your leader'}
         viewerRole="learner"
         partners={dailyPrayerPartners.length > 0

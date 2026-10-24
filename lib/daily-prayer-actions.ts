@@ -6,12 +6,18 @@ import { notifyNewMessage } from '@/lib/notifications'
 import { formatPrayerMessage, retargetPartnerMention } from '@/lib/daily-prayer-content'
 import {
     alreadySentDailyPrayerToday,
+    classifyPrayerSendWriteError,
     dailyPrayerSendKey,
     forgetDailyPrayerSend,
     rememberDailyPrayerSend,
     resolveClientLocalDate,
     wasDailyPrayerSendRemembered,
 } from '@/lib/daily-prayer-send'
+
+export type SendDailyPrayerResult =
+    | { success: true }
+    | { alreadySent: true }
+    | { error: string }
 
 export async function sendDailyPrayerToPartner(input: {
     pairingId: string
@@ -21,7 +27,7 @@ export async function sendDailyPrayerToPartner(input: {
     scriptureRef: string
     localDate?: string
     timezoneOffsetMinutes?: number
-}): Promise<{ success: true } | { error: string }> {
+}): Promise<SendDailyPrayerResult> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Not authenticated' }
@@ -49,27 +55,21 @@ export async function sendDailyPrayerToPartner(input: {
     })
     const sendKey = dailyPrayerSendKey(user.id, input.partnerUserId, localDate)
     if (wasDailyPrayerSendRemembered(sendKey)) {
-        return { success: true }
+        return { alreadySent: true }
     }
-    rememberDailyPrayerSend(sendKey)
 
-    const since = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
-    const { data: recentMessages } = await supabase
-        .from('messages')
-        .select('content, created_at')
-        .eq('pairing_id', pairing.id)
-        .eq('sender_id', user.id)
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
-        .limit(20)
-
-    if (alreadySentDailyPrayerToday({
+    const reserved = await reserveDailyPrayerSend(supabase, {
+        senderId: user.id,
+        recipientId: input.partnerUserId,
+        pairingId: pairing.id,
         localDate,
         timezoneOffsetMinutes,
-        messages: recentMessages || [],
-    })) {
-        return { success: true }
+    })
+    if (reserved === 'duplicate') {
+        rememberDailyPrayerSend(sendKey)
+        return { alreadySent: true }
     }
+    rememberDailyPrayerSend(sendKey)
 
     const { data: profiles } = await supabase
         .from('profiles')
@@ -93,6 +93,14 @@ export async function sendDailyPrayerToPartner(input: {
 
     if (error) {
         forgetDailyPrayerSend(sendKey)
+        if (reserved === 'inserted') {
+            await supabase
+                .from('prayer_sends')
+                .delete()
+                .eq('sender_id', user.id)
+                .eq('recipient_id', input.partnerUserId)
+                .eq('local_date', localDate)
+        }
         return { error: error.message }
     }
 
@@ -106,4 +114,47 @@ export async function sendDailyPrayerToPartner(input: {
     revalidatePath('/dashboard/messages')
     revalidatePath('/dashboard')
     return { success: true }
+}
+
+async function reserveDailyPrayerSend(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    input: {
+        senderId: string
+        recipientId: string
+        pairingId: string
+        localDate: string
+        timezoneOffsetMinutes: number
+    },
+): Promise<'inserted' | 'duplicate' | 'fallback-ok'> {
+    const { error } = await supabase.from('prayer_sends').insert({
+        sender_id: input.senderId,
+        recipient_id: input.recipientId,
+        pairing_id: input.pairingId,
+        local_date: input.localDate,
+    })
+
+    if (!error) return 'inserted'
+
+    const kind = classifyPrayerSendWriteError(error)
+    if (kind === 'duplicate') return 'duplicate'
+
+    const since = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
+    const { data: recentMessages } = await supabase
+        .from('messages')
+        .select('content, created_at')
+        .eq('pairing_id', input.pairingId)
+        .eq('sender_id', input.senderId)
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+    if (alreadySentDailyPrayerToday({
+        localDate: input.localDate,
+        timezoneOffsetMinutes: input.timezoneOffsetMinutes,
+        messages: recentMessages || [],
+    })) {
+        return 'duplicate'
+    }
+
+    return 'fallback-ok'
 }

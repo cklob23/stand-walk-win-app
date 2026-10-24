@@ -348,6 +348,7 @@ export function JournalPageClient({
             <DailyPopups
                 pairingId={pairingId}
                 hasJournalEntryToday={hasTodayEntry}
+                journalTodayKey={todayKey}
                 journalShareName={isLeader ? learnerName : leaderName}
                 viewerRole={isLeader ? 'leader' : 'learner'}
                 partners={dailyPrayerPartners}

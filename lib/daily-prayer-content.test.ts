@@ -20,10 +20,14 @@ import {
     retargetPartnerMention,
     sendPrayerButtonLabel,
     shouldMentionPartner,
+    scriptureDisplayText,
     singleVerseText,
     stripDashSeparators,
     stripEmDashes,
 } from './daily-prayer-content.ts'
+
+const FULL_2COR_5_17 =
+    'Therefore, if anyone is in Christ, he is a new creation. The old has passed away; behold, the new has come.'
 
 const WEEK_2_GUIDED =
     "Heavenly Father, I ask you to help guide me to pray without ceasing and to continuously pray with thanksgiving and praise to the One who is able to do exceedingly and abundantly above all I could ask or think. May your kingdom purposes come and be carried out in my life as I live in obedience to Your word and Your Holy Spirit promptings. Lead me not into temptations that distract me from Your design and deliver me from evil. Forgive me of my trespasses and missteps as I forgive those who do wrong to me. Just as I have been forgiven, I will walk in forgiveness toward others."
@@ -198,6 +202,55 @@ describe('partner mention frequency', () => {
         assert.equal(neutralized.includes('Strengthen my friendship'), false)
         assert.match(neutralized, /In Jesus' name I pray, Amen\.$/)
     })
+
+    it('retargets names that contain periods like J.R.', () => {
+        const namedForJr = insertPartnerSentence(
+            "Heavenly Father, thank You for this day. Teach me to listen. In Jesus' name I pray, Amen.",
+            'J.R. Smith',
+        )
+        assert.match(namedForJr, /Strengthen my friendship with J\.R\. as we walk this journey/)
+        const forSam = retargetPartnerMention(namedForJr, 'Sam Miller')
+        assert.match(forSam, /Strengthen my friendship with Sam as we walk this journey/)
+        assert.equal(forSam.includes('J.R.'), false)
+        const back = retargetPartnerMention(forSam, 'J.R. Smith')
+        assert.match(back, /Strengthen my friendship with J\.R\. as we walk this journey/)
+        const neutralized = retargetPartnerMention(namedForJr, null)
+        assert.equal(neutralized.includes('J.R.'), false)
+        assert.equal(neutralized.includes('Strengthen my friendship'), false)
+    })
+
+    it('keeps mentionsPartner in sync with the partner sentence after the word cap', () => {
+        let mentioned = 0
+        for (let i = 0; i < 365; i++) {
+            const journal = buildDailyPrayer({
+                dateKey: dateKey(i),
+                prayerItems: '1. peace at work and patience with my kids today',
+                partnerName: 'Alex Rivera',
+            })
+            const week = buildDailyPrayer({
+                dateKey: dateKey(i),
+                weekNumber: 2,
+                weekTitle: 'The New Life',
+                weekScripture: WEEK_2_SCRIPTURE,
+                guidedPrayer: WEEK_2_GUIDED,
+                partnerName: 'J.R. Smith',
+            })
+            for (const prayer of [journal, week]) {
+                const hasSentence = /Strengthen my friendship with \S+ as we walk this journey/.test(prayer.body)
+                assert.equal(prayer.mentionsPartner, hasSentence)
+                if (prayer.mentionsPartner) {
+                    assert.match(prayer.body, /Strengthen my friendship/)
+                    mentioned++
+                } else {
+                    assert.equal(prayer.body.includes('Strengthen my friendship'), false)
+                }
+                assert.ok(countWords(prayer.body) <= MAX_PRAYER_WORDS)
+                assert.match(prayer.body, /In Jesus' name I pray, Amen\.$/)
+            }
+        }
+        assert.ok(mentioned > 0)
+        assert.ok(mentioned <= 73 * 2)
+    })
 })
 
 describe('role send labels', () => {
@@ -300,10 +353,11 @@ describe('copy constraints', () => {
         assert.ok(countWords(clamped) <= MAX_PRAYER_WORDS)
     })
 
-    it('shows a single verse and a clean reference for Week 2 scripture dumps', () => {
+    it('shows the full Week 2 verse text with its own reference', () => {
         assert.equal(extractScriptureRef(WEEK_2_SCRIPTURE), '2 Corinthians 5:17')
+        assert.equal(scriptureDisplayText(FULL_2COR_5_17), FULL_2COR_5_17)
         assert.equal(
-            singleVerseText('Therefore, if anyone is in Christ, he is a new creation. The old has passed away; behold, the new has come.'),
+            singleVerseText(FULL_2COR_5_17),
             'Therefore, if anyone is in Christ, he is a new creation.',
         )
         const prayer = buildDailyPrayer({
@@ -314,13 +368,45 @@ describe('copy constraints', () => {
             guidedPrayer: WEEK_2_GUIDED,
         })
         assert.equal(prayer.scriptureRef, '2 Corinthians 5:17')
-        assert.equal(prayer.scriptureText, 'Therefore, if anyone is in Christ, he is a new creation.')
+        assert.equal(prayer.scriptureText, FULL_2COR_5_17)
+        assert.ok(prayer.scriptureText.includes('old has passed away'))
         assert.equal(prayer.scriptureText.includes('Let me hear in the morning'), false)
-        assert.equal(prayer.scriptureText.includes('old has passed away'), false)
         assert.equal(prayer.scriptureRef.includes(' - '), false)
         assert.equal(stripDashSeparators(WEEK_2_SCRIPTURE).includes(' - '), false)
-        assert.equal(prayer.scriptureText.includes('Let me hear in the morning'), false)
         assert.equal(prayer.scriptureRef.includes('Psalm'), false)
+    })
+
+    it('shows the full range text under Ephesians 6:10-11 and Philippians 4:6-7', () => {
+        const week = buildDailyPrayer({
+            dateKey: '2026-10-23',
+            weekNumber: 3,
+            weekTitle: 'The New Stand',
+            weekScripture: 'Ephesians 6:10-18',
+        })
+        assert.equal(week.scriptureRef, 'Ephesians 6:10-11')
+        assert.match(week.scriptureText, /be strong in the Lord/)
+        assert.match(week.scriptureText, /whole armor of God/)
+        assert.ok(countSentences(week.scriptureText) >= 2)
+
+        const journal = buildDailyPrayer({
+            dateKey: '2026-10-24',
+            prayerItems: '1. peace at work',
+        })
+        assert.equal(journal.scriptureRef, 'Philippians 4:6-7')
+        assert.match(journal.scriptureText, /Do not be anxious/)
+        assert.match(journal.scriptureText, /peace of God/)
+        assert.ok(countSentences(journal.scriptureText) >= 2)
+    })
+
+    it('trims even when the first sentence alone exceeds the word cap', () => {
+        const longFirst = `Heavenly Father, ${Array.from({ length: 80 }, (_, i) => `word${i}`).join(' ')} today.`
+        assert.ok(countWords(longFirst) > MAX_PRAYER_WORDS)
+        const clamped = clampPrayerBody(longFirst)
+        assert.ok(clamped)
+        assert.ok(countWords(clamped) <= MAX_PRAYER_WORDS)
+        assert.match(clamped, /^Heavenly Father/)
+        assert.match(clamped, /In Jesus' name I pray, Amen\.$/)
+        assert.ok(countSentences(clamped) <= 2)
     })
 
     it('always pairs verse text with its own reference from the same source', () => {
@@ -330,7 +416,7 @@ describe('copy constraints', () => {
         }
         const fromDump = pairScripture({ raw: WEEK_2_SCRIPTURE, fallback: psalm })
         assert.equal(fromDump.ref, '2 Corinthians 5:17')
-        assert.equal(fromDump.text, 'Therefore, if anyone is in Christ, he is a new creation.')
+        assert.equal(fromDump.text, FULL_2COR_5_17)
         assert.equal(fromDump.text.includes('steadfast love'), false)
 
         const unknown = pairScripture({ raw: 'Unknown 9:9', fallback: psalm })

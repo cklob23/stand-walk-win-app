@@ -57,6 +57,7 @@ interface LeaderDashboardProps {
   completedMeetingsCount?: number
   sharedJournalEntries?: { id: string; entry_date: string; prayer_items: string; god_saying: string }[]
   hasJournalEntryToday: boolean
+  journalTodayKey?: string | null
   expandedAssignmentId?: string | null
   allLearners?: { pairing: Pairing; learner: Profile }[]
   maxLearners?: number
@@ -78,6 +79,7 @@ export function LeaderDashboard({
   completedMeetingsCount = 0,
   sharedJournalEntries = [],
   hasJournalEntryToday,
+  journalTodayKey,
   expandedAssignmentId,
   allLearners = [],
   maxLearners = 1,
@@ -496,6 +498,7 @@ export function LeaderDashboard({
       <DailyPopups
         pairingId={pairing.id}
         hasJournalEntryToday={hasJournalEntryToday}
+        journalTodayKey={journalTodayKey}
         journalShareName={partner?.full_name || 'your partner'}
         viewerRole="leader"
         partners={dailyPrayerPartners.length > 0
