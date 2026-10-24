@@ -4,6 +4,7 @@ import {
     buildDailyPrayer,
     clampPrayerBody,
     countSentences,
+    countWords,
     extractJournalTopic,
     extractScriptureRef,
     firstPrayerItem,
@@ -12,7 +13,9 @@ import {
     insertPartnerSentence,
     isShortGuidedPrayer,
     MAX_PRAYER_SENTENCES,
+    MAX_PRAYER_WORDS,
     MIN_PRAYER_SENTENCES,
+    pairScripture,
     PARTNER_MENTION_MODULUS,
     retargetPartnerMention,
     sendPrayerButtonLabel,
@@ -263,14 +266,16 @@ describe('copy constraints', () => {
         ]
         for (const prayer of samples) {
             const sentences = countSentences(prayer.body)
-            assert.ok(sentences >= MIN_PRAYER_SENTENCES)
             assert.ok(sentences <= MAX_PRAYER_SENTENCES)
+            assert.ok(countWords(prayer.body) <= MAX_PRAYER_WORDS)
             assert.match(prayer.body, /^Heavenly Father/)
             assert.match(prayer.body, /In Jesus' name I pray, Amen\.$/)
             assert.equal(prayer.body.includes(' - '), false)
             assert.equal(prayer.scriptureText.includes(' - '), false)
             assert.equal(prayer.scriptureRef.includes(' - '), false)
         }
+        const journal = samples[0]
+        assert.ok(countSentences(journal.body) >= MIN_PRAYER_SENTENCES)
     })
 
     it('trims the long Week 2 guided prayer instead of using it verbatim', () => {
@@ -284,12 +289,15 @@ describe('copy constraints', () => {
         })
         assert.equal(prayer.source, 'week')
         assert.ok(countSentences(prayer.body) <= 4)
+        assert.ok(countWords(WEEK_2_GUIDED) > 100)
+        assert.ok(countWords(prayer.body) <= MAX_PRAYER_WORDS)
         assert.ok(prayer.body.includes('pray without ceasing'))
         assert.equal(prayer.body.includes('Just as I have been forgiven'), false)
         assert.match(prayer.body, /In Jesus' name I pray, Amen\.$/)
         const clamped = clampPrayerBody(WEEK_2_GUIDED, 4)
         assert.ok(clamped)
         assert.ok(countSentences(clamped) <= 4)
+        assert.ok(countWords(clamped) <= MAX_PRAYER_WORDS)
     })
 
     it('shows a single verse and a clean reference for Week 2 scripture dumps', () => {
@@ -311,5 +319,51 @@ describe('copy constraints', () => {
         assert.equal(prayer.scriptureText.includes('old has passed away'), false)
         assert.equal(prayer.scriptureRef.includes(' - '), false)
         assert.equal(stripDashSeparators(WEEK_2_SCRIPTURE).includes(' - '), false)
+        assert.equal(prayer.scriptureText.includes('Let me hear in the morning'), false)
+        assert.equal(prayer.scriptureRef.includes('Psalm'), false)
+    })
+
+    it('always pairs verse text with its own reference from the same source', () => {
+        const psalm = {
+            text: 'Let me hear in the morning of your steadfast love, for in you I trust. Make me know the way I should go, for to you I lift up my soul.',
+            ref: 'Psalm 143:8',
+        }
+        const fromDump = pairScripture({ raw: WEEK_2_SCRIPTURE, fallback: psalm })
+        assert.equal(fromDump.ref, '2 Corinthians 5:17')
+        assert.equal(fromDump.text, 'Therefore, if anyone is in Christ, he is a new creation.')
+        assert.equal(fromDump.text.includes('steadfast love'), false)
+
+        const unknown = pairScripture({ raw: 'Unknown 9:9', fallback: psalm })
+        assert.equal(unknown.ref, 'Psalm 143:8')
+        assert.match(unknown.text, /steadfast love/)
+        assert.equal(unknown.ref.includes('Corinthians'), false)
+
+        const prayer = buildDailyPrayer({
+            dateKey: '2026-10-23',
+            weekNumber: 2,
+            weekTitle: 'The New Life',
+            weekScripture: WEEK_2_SCRIPTURE,
+            guidedPrayer: WEEK_2_GUIDED,
+        })
+        const psalmText = prayer.scriptureText.includes('steadfast love')
+        const corRef = prayer.scriptureRef.includes('Corinthians')
+        assert.equal(psalmText && corRef, false)
+        assert.equal(prayer.scriptureRef, '2 Corinthians 5:17')
+        assert.equal(prayer.scriptureText.includes('2 Corinthians'), false)
+    })
+
+    it('caps Week 2 copy to about 60-70 words', () => {
+        assert.ok(countWords(WEEK_2_GUIDED) >= 100)
+        const prayer = buildDailyPrayer({
+            dateKey: '2026-10-23',
+            weekNumber: 2,
+            weekTitle: 'The New Life',
+            weekScripture: WEEK_2_SCRIPTURE,
+            guidedPrayer: WEEK_2_GUIDED,
+        })
+        const words = countWords(prayer.body)
+        assert.ok(words <= MAX_PRAYER_WORDS)
+        assert.ok(words >= 40)
+        assert.ok(countSentences(prayer.body) <= MAX_PRAYER_SENTENCES)
     })
 })
