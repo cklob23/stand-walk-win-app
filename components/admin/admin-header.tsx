@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 import type { User } from '@supabase/supabase-js'
 import { AdminBackToJourneyLink } from '@/components/admin/admin-back-to-journey'
 import { BACK_TO_JOURNEY_LABEL, getAdminLogoHref, getJourneyHomeHref } from '@/lib/admin-journey-nav'
+import { SUPPORT_EMAIL } from '@/lib/support'
 
 interface AdminHeaderProps {
     user: User
@@ -124,8 +125,8 @@ export function AdminHeader({ user, profile, organization, isMasterAdmin }: Admi
                             <p className="text-xs font-medium text-muted-foreground mb-1">Need help?</p>
                             <p className="text-xs text-muted-foreground">
                                 Contact support at{' '}
-                                <a href="mailto:standwalkrunapp@gmail.com" className="text-primary hover:underline">
-                                    standwalkrunapp@gmail.com
+                                <a href={`mailto:${SUPPORT_EMAIL}`} className="text-primary hover:underline">
+                                    {SUPPORT_EMAIL}
                                 </a>
                             </p>
                         </div>

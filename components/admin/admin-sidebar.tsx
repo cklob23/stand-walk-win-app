@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { AdminBackToJourneyLink } from '@/components/admin/admin-back-to-journey'
 import { getJourneyHomeHref } from '@/lib/admin-journey-nav'
+import { SUPPORT_EMAIL } from '@/lib/support'
 
 interface AdminSidebarProps {
     isMasterAdmin: boolean
@@ -129,8 +130,8 @@ export function AdminSidebar({ isMasterAdmin, journeyRole }: AdminSidebarProps) 
                     <p className="text-xs font-medium text-muted-foreground mb-1">Need help?</p>
                     <p className="text-xs text-muted-foreground">
                         Contact support at{' '}
-                        <a href="mailto:support@standwalkrun.com" className="text-primary hover:underline">
-                            support@standwalkrun.com
+                        <a href={`mailto:${SUPPORT_EMAIL}`} className="text-primary hover:underline">
+                            {SUPPORT_EMAIL}
                         </a>
                     </p>
                 </div>
