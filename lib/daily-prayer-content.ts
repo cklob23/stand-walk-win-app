@@ -42,7 +42,7 @@ const AMEN_TAIL = /In Jesus['\u2019] name I pray,?\s*Amen\.?\s*$/i
 const ENCOURAGEMENT_PRAYERS: { body: string; scriptureText: string; scriptureRef: string }[] = [
     {
         body: "Heavenly Father, thank You for meeting me in the middle of my workday. Give me Your peace where anxiety has been loud, and help me trust You with the conversations on my heart. Teach me to slow down and listen for Your voice today. In Jesus' name I pray, Amen.",
-        scriptureText: 'Do not be anxious about anything, but in everything by prayer and petition, with thanksgiving, present your requests to God. And the peace of God... will guard your hearts.',
+        scriptureText: 'Do not be anxious about anything, but in everything by prayer and petition, with thanksgiving, present your requests to God. And the peace of God, which surpasses all understanding, will guard your hearts and your minds in Christ Jesus.',
         scriptureRef: 'Philippians 4:6-7',
     },
     {
@@ -72,11 +72,11 @@ const WEEK_SCRIPTURES: Record<string, { text: string; ref: string }> = {
         ref: '2 Corinthians 5:17',
     },
     'ephesians 6:10-18': {
-        text: 'Finally, be strong in the Lord and in the strength of his might. Put on the whole armor of God.',
+        text: 'Finally, be strong in the Lord and in the strength of his might. Put on the whole armor of God, that you may be able to stand against the schemes of the devil.',
         ref: 'Ephesians 6:10-11',
     },
     'colossians 2:6-7': {
-        text: 'Therefore, as you received Christ Jesus the Lord, so walk in him, rooted and built up in him and established in the faith.',
+        text: 'Therefore, as you received Christ Jesus the Lord, so walk in him, rooted and built up in him and established in the faith, just as you were taught, abounding in thanksgiving.',
         ref: 'Colossians 2:6-7',
     },
     '1 john 5:4-5': {
@@ -84,9 +84,20 @@ const WEEK_SCRIPTURES: Record<string, { text: string; ref: string }> = {
         ref: '1 John 5:4',
     },
     '1 peter 3:15': {
-        text: 'In your hearts honor Christ the Lord as holy, always being prepared to make a defense to anyone who asks you for a reason for the hope that is in you.',
+        text: 'In your hearts honor Christ the Lord as holy, always being prepared to make a defense to anyone who asks you for a reason for the hope that is in you, yet do it with gentleness and respect.',
         ref: '1 Peter 3:15',
     },
+}
+
+/** Every catalog verse used by Today's prayer. Tests audit these for ellipses. */
+export function listDailyPrayerVerses(): { text: string; ref: string }[] {
+    return [
+        ...ENCOURAGEMENT_PRAYERS.map((prayer) => ({
+            text: prayer.scriptureText,
+            ref: prayer.scriptureRef,
+        })),
+        ...Object.values(WEEK_SCRIPTURES),
+    ]
 }
 
 export function hashString(value: string): number {
@@ -97,10 +108,17 @@ export function hashString(value: string): number {
     return hash
 }
 
+const HONORIFIC_RE = /^(?:dr|mr|mrs|ms|miss|pastor|rev|reverend|fr|father|prof|professor)\.?$/i
+
+/** Given name after Dr./Mr./Mrs./Ms./Pastor, so "Dr. Bob" does not become "Dr." */
 export function firstName(fullName: string | null | undefined): string {
-    const trimmed = (fullName || '').trim()
-    if (!trimmed) return ''
-    return trimmed.split(/\s+/)[0]
+    const parts = (fullName || '').trim().split(/\s+/).filter(Boolean)
+    if (!parts.length) return ''
+    let index = 0
+    while (index < parts.length && HONORIFIC_RE.test(parts[index])) {
+        index++
+    }
+    return parts[index] || parts[0]
 }
 
 export function sendPrayerButtonLabel(partnerName: string | null | undefined): string {
@@ -220,10 +238,16 @@ export function clampPrayerBody(
         sentences = sentences.slice(0, -1)
     }
     if (sentences.length === 0) return null
+    const isOpening = (sentence: string) => /^Heavenly Father/i.test(sentence)
     const room = Math.max(1, max - 1)
     if (sentences.length > room) {
-        const kept = keepPattern ? sentences.filter((sentence) => keepPattern.test(sentence)) : []
-        sentences = [...sentences.slice(0, Math.max(0, room - kept.length)), ...kept].slice(0, room)
+        const opening = sentences.find(isOpening)
+        const kept = keepPattern
+            ? sentences.filter((sentence) => keepPattern.test(sentence) && !isOpening(sentence))
+            : []
+        const others = sentences.filter((sentence) => sentence !== opening && !kept.includes(sentence))
+        const extra = Math.max(0, room - 1 - kept.length)
+        sentences = [opening, ...others.slice(0, extra), ...kept].filter((sentence): sentence is string => !!sentence)
     }
     const overCap = () => countWords(`${sentences.join(' ')} ${AMEN_LINE}`) > maxWords
     while (sentences.length > 1 && overCap()) {
@@ -231,6 +255,7 @@ export function clampPrayerBody(
         let removed = false
         for (let i = sentences.length - 1; i >= 0; i--) {
             if (i === keepIdx) continue
+            if (isOpening(sentences[i])) continue
             sentences.splice(i, 1)
             removed = true
             break
@@ -239,8 +264,17 @@ export function clampPrayerBody(
     }
     if (overCap()) {
         const amenWords = countWords(AMEN_LINE)
-        const budget = Math.max(4, maxWords - amenWords)
-        sentences = [trimSentenceToWords(sentences[0], budget)]
+        const opening = sentences.find(isOpening) || sentences[0]
+        const partner = keepPattern
+            ? sentences.filter((sentence) => keepPattern.test(sentence) && !isOpening(sentence))
+            : []
+        const reserved = partner.reduce((sum, sentence) => sum + countWords(sentence), 0)
+        const budget = Math.max(3, maxWords - amenWords - reserved)
+        const trimmed = trimSentenceToWords(opening, budget)
+        const openingOut = /^Heavenly Father/i.test(trimmed)
+            ? trimmed
+            : `Heavenly Father, ${trimmed}`
+        sentences = [openingOut, ...partner]
     }
     return `${sentences.join(' ')} ${AMEN_LINE}`
 }

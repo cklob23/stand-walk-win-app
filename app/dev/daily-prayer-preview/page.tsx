@@ -12,7 +12,7 @@ const WEEK_2_GUIDED =
 
 const specPrayer: DailyPrayerContent = {
     body: "Heavenly Father, thank You for meeting me in the middle of my workday. Give me Your peace where anxiety has been loud, and help me trust You with the conversations on my heart. Teach me to slow down and listen for Your voice today. In Jesus' name I pray, Amen.",
-    scriptureText: 'Do not be anxious about anything, but in everything by prayer and petition, with thanksgiving, present your requests to God. And the peace of God... will guard your hearts.',
+    scriptureText: 'Do not be anxious about anything, but in everything by prayer and petition, with thanksgiving, present your requests to God. And the peace of God, which surpasses all understanding, will guard your hearts and your minds in Christ Jesus.',
     scriptureRef: 'Philippians 4:6-7',
     source: 'journal',
     contextLabel: 'From your journal',
@@ -33,6 +33,13 @@ const week2Prayer = buildDailyPrayer({
     weekTitle: 'The New Life',
     weekScripture: '2 Corinthians 5:17 - "Therefore, if anyone is in Christ, he is a new creation. The old has passed away; behold, the new has come."',
     guidedPrayer: WEEK_2_GUIDED,
+})
+
+const ephPrayer = buildDailyPrayer({
+    dateKey: '2026-10-23',
+    weekNumber: 3,
+    weekTitle: 'The New Stand',
+    weekScripture: 'Ephesians 6:10-18',
 })
 
 const alex: DailyPrayerPartner = {
@@ -62,12 +69,15 @@ function PreviewInner() {
     const isHearted = state === 'hearted'
     const isCold = state === 'cold'
     const isWeek2 = state === 'week2'
+    const isEph = state === 'eph'
     const isJournal = state === 'journal'
-    const content = isWeek2
-        ? week2Prayer
-        : isCold
-            ? { ...coldPrayer, mentionsPartner: false }
-            : specPrayer
+    const content = isEph
+        ? ephPrayer
+        : isWeek2
+            ? week2Prayer
+            : isCold
+                ? { ...coldPrayer, mentionsPartner: false }
+                : specPrayer
     const partners = isLeaderPicker ? [alex, jordan] : [alex]
 
     return (
