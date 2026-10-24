@@ -14,9 +14,12 @@ import {
     Shield,
     Inbox,
 } from 'lucide-react'
+import { AdminBackToJourneyLink } from '@/components/admin/admin-back-to-journey'
+import { getJourneyHomeHref } from '@/lib/admin-journey-nav'
 
 interface AdminSidebarProps {
     isMasterAdmin: boolean
+    journeyRole?: string | null
 }
 
 const orgAdminLinks = [
@@ -85,9 +88,10 @@ const masterAdminLinks = [
     },
 ]
 
-export function AdminSidebar({ isMasterAdmin }: AdminSidebarProps) {
+export function AdminSidebar({ isMasterAdmin, journeyRole }: AdminSidebarProps) {
     const pathname = usePathname()
     const links = isMasterAdmin ? masterAdminLinks : orgAdminLinks
+    const journeyHomeHref = getJourneyHomeHref(journeyRole)
 
     return (
         <aside className="hidden lg:flex w-64 flex-col border-r bg-muted/30 min-h-[calc(100vh-4rem)]">
@@ -113,6 +117,12 @@ export function AdminSidebar({ isMasterAdmin }: AdminSidebarProps) {
                     )
                 })}
             </nav>
+
+            {journeyHomeHref && (
+                <div className="p-4 border-t">
+                    <AdminBackToJourneyLink href={journeyHomeHref} />
+                </div>
+            )}
 
             <div className="p-4 border-t">
                 <div className="rounded-lg bg-muted p-3">

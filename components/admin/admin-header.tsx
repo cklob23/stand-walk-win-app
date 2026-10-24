@@ -19,12 +19,14 @@ import {
     SheetTitle,
     SheetTrigger,
 } from '@/components/ui/sheet'
-import { Building2, LogOut, Settings, User as UserIcon, Shield, Menu, LayoutDashboard, Users, Ticket, CreditCard, BarChart3, Inbox } from 'lucide-react'
+import { ArrowLeft, Building2, LogOut, Settings, User as UserIcon, Shield, Menu, LayoutDashboard, Users, Ticket, CreditCard, BarChart3, Inbox } from 'lucide-react'
 import { adminSignOut } from '@/lib/admin-auth-actions'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import type { User } from '@supabase/supabase-js'
+import { AdminBackToJourneyLink } from '@/components/admin/admin-back-to-journey'
+import { BACK_TO_JOURNEY_LABEL, getAdminLogoHref, getJourneyHomeHref } from '@/lib/admin-journey-nav'
 
 interface AdminHeaderProps {
     user: User
@@ -62,6 +64,8 @@ export function AdminHeader({ user, profile, organization, isMasterAdmin }: Admi
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const pathname = usePathname()
     const links = isMasterAdmin ? masterAdminLinks : orgAdminLinks
+    const journeyHomeHref = getJourneyHomeHref(profile?.role)
+    const logoHref = getAdminLogoHref(profile?.role)
 
     const initials = profile?.full_name
         ?.split(' ')
@@ -73,11 +77,13 @@ export function AdminHeader({ user, profile, organization, isMasterAdmin }: Admi
         <>
             {/* Mobile menu Sheet - placed outside header to prevent layout shift */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-                <SheetContent side="left" className="w-72 p-0">
+                <SheetContent side="left" className="w-72 p-0 flex flex-col">
                     <SheetHeader className="p-4 border-b">
                         <SheetTitle className="flex items-center gap-2">
-                            <AppLogoStatic iconClassName="h-8 w-8 rounded-sm" showText={false} />
-                            <span>Stand Walk Run</span>
+                            <Link href={logoHref} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2">
+                                <AppLogoStatic iconClassName="h-8 w-8 rounded-sm" showText={false} />
+                                <span>Stand Walk Run</span>
+                            </Link>
                         </SheetTitle>
                     </SheetHeader>
                     <nav className="flex-1 p-4 space-y-1">
@@ -103,6 +109,16 @@ export function AdminHeader({ user, profile, organization, isMasterAdmin }: Admi
                             )
                         })}
                     </nav>
+                    {journeyHomeHref && (
+                        <div className="px-4 pb-2">
+                            <AdminBackToJourneyLink
+                                href={journeyHomeHref}
+                                onClick={() => setMobileMenuOpen(false)}
+                                className="py-3"
+                                iconClassName="h-5 w-5"
+                            />
+                        </div>
+                    )}
                     <div className="p-4 border-t mt-auto">
                         <div className="rounded-lg bg-muted p-3">
                             <p className="text-xs font-medium text-muted-foreground mb-1">Need help?</p>
@@ -131,9 +147,16 @@ export function AdminHeader({ user, profile, organization, isMasterAdmin }: Admi
                             <span className="sr-only">Open menu</span>
                         </Button>
 
-                        <Link href="/admin/dashboard" className="flex items-center gap-2">
+                        <Link href={logoHref} className="flex items-center gap-2">
                             <AppLogoStatic iconClassName="h-8 w-8 rounded-sm" textClassName="text-lg hidden lg:block" />
                         </Link>
+                        {journeyHomeHref && (
+                            <AdminBackToJourneyLink
+                                href={journeyHomeHref}
+                                className="lg:hidden px-2 py-1.5 gap-1.5 whitespace-nowrap"
+                                iconClassName="h-4 w-4"
+                            />
+                        )}
                         <div className="hidden lg:flex items-center gap-2 text-sm text-muted-foreground">
                             <span className="text-border">/</span>
                             {isMasterAdmin ? (
@@ -184,11 +207,11 @@ export function AdminHeader({ user, profile, organization, isMasterAdmin }: Admi
                                         Settings
                                     </Link>
                                 </DropdownMenuItem>
-                                {profile?.role === 'leader' && (
+                                {journeyHomeHref && (
                                     <DropdownMenuItem asChild>
-                                        <Link href="/dashboard" className="cursor-pointer">
-                                            <UserIcon className="mr-2 h-4 w-4" />
-                                            Go to Journey
+                                        <Link href={journeyHomeHref} className="cursor-pointer">
+                                            <ArrowLeft className="mr-2 h-4 w-4" />
+                                            {BACK_TO_JOURNEY_LABEL}
                                         </Link>
                                     </DropdownMenuItem>
                                 )}
