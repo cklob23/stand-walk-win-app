@@ -2,17 +2,34 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
     buildDailyPrayer,
+    clampPrayerBody,
+    countSentences,
+    countWords,
     extractJournalTopic,
+    extractScriptureRef,
     firstPrayerItem,
     formatPrayerChip,
     formatPrayerMessage,
     insertPartnerSentence,
     isShortGuidedPrayer,
+    MAX_PRAYER_SENTENCES,
+    MAX_PRAYER_WORDS,
+    MIN_PRAYER_SENTENCES,
+    pairScripture,
     PARTNER_MENTION_MODULUS,
+    retargetPartnerMention,
     sendPrayerButtonLabel,
     shouldMentionPartner,
+    singleVerseText,
+    stripDashSeparators,
     stripEmDashes,
 } from './daily-prayer-content.ts'
+
+const WEEK_2_GUIDED =
+    "Heavenly Father, I ask you to help guide me to pray without ceasing and to continuously pray with thanksgiving and praise to the One who is able to do exceedingly and abundantly above all I could ask or think. May your kingdom purposes come and be carried out in my life as I live in obedience to Your word and Your Holy Spirit promptings. Lead me not into temptations that distract me from Your design and deliver me from evil. Forgive me of my trespasses and missteps as I forgive those who do wrong to me. Just as I have been forgiven, I will walk in forgiveness toward others."
+
+const WEEK_2_SCRIPTURE =
+    '2 Corinthians 5:17 - "Therefore, if anyone is in Christ, he is a new creation. The old has passed away; behold, the new has come."'
 
 function dateKey(dayOfYear: number): string {
     const date = new Date(Date.UTC(2026, 0, 1 + dayOfYear))
@@ -159,6 +176,28 @@ describe('partner mention frequency', () => {
         assert.match(withPartner, /In Jesus' name I pray, Amen\.$/)
         assert.equal(withPartner.includes('—'), false)
     })
+
+    it('retargets a partner mention when the leader picks a different learner', () => {
+        const namedForAlex = insertPartnerSentence(
+            "Heavenly Father, thank You for this day. Teach me to listen. In Jesus' name I pray, Amen.",
+            'Alex Rivera',
+        )
+        const forSam = retargetPartnerMention(namedForAlex, 'Sam Miller')
+        assert.match(forSam, /Strengthen my friendship with Sam as we walk this journey/)
+        assert.equal(forSam.includes('Alex'), false)
+        assert.equal(retargetPartnerMention(namedForAlex, 'Alex Rivera'), namedForAlex)
+    })
+
+    it('neutralizes a partner mention when the chosen recipient has no name', () => {
+        const namedForAlex = insertPartnerSentence(
+            "Heavenly Father, thank You for this day. Teach me to listen. In Jesus' name I pray, Amen.",
+            'Alex Rivera',
+        )
+        const neutralized = retargetPartnerMention(namedForAlex, null)
+        assert.equal(neutralized.includes('Alex'), false)
+        assert.equal(neutralized.includes('Strengthen my friendship'), false)
+        assert.match(neutralized, /In Jesus' name I pray, Amen\.$/)
+    })
 })
 
 describe('role send labels', () => {
@@ -205,5 +244,126 @@ describe('copy constraints', () => {
         const sentences = prayer.body.split(/(?<=[.!?])\s+/).filter(Boolean)
         assert.ok(sentences.length >= 4)
         assert.ok(sentences.length <= 6)
+    })
+
+    it('caps every source at 4-6 sentences and keeps the Amen shape', () => {
+        const samples = [
+            buildDailyPrayer({ dateKey: '2026-10-23', prayerItems: '1. peace at work' }),
+            buildDailyPrayer({
+                dateKey: '2026-10-23',
+                weekNumber: 2,
+                weekTitle: 'The New Life',
+                weekScripture: WEEK_2_SCRIPTURE,
+                guidedPrayer: WEEK_2_GUIDED,
+            }),
+            buildDailyPrayer({
+                dateKey: '2026-10-23',
+                weekNumber: 3,
+                weekTitle: 'Walking with Jesus',
+                weekScripture: 'Ephesians 6:10-18',
+            }),
+            buildDailyPrayer({ dateKey: '2026-10-23' }),
+        ]
+        for (const prayer of samples) {
+            const sentences = countSentences(prayer.body)
+            assert.ok(sentences <= MAX_PRAYER_SENTENCES)
+            assert.ok(countWords(prayer.body) <= MAX_PRAYER_WORDS)
+            assert.match(prayer.body, /^Heavenly Father/)
+            assert.match(prayer.body, /In Jesus' name I pray, Amen\.$/)
+            assert.equal(prayer.body.includes(' - '), false)
+            assert.equal(prayer.scriptureText.includes(' - '), false)
+            assert.equal(prayer.scriptureRef.includes(' - '), false)
+        }
+        const journal = samples[0]
+        assert.ok(countSentences(journal.body) >= MIN_PRAYER_SENTENCES)
+    })
+
+    it('trims the long Week 2 guided prayer instead of using it verbatim', () => {
+        assert.ok(countSentences(WEEK_2_GUIDED) >= 5)
+        const prayer = buildDailyPrayer({
+            dateKey: '2026-10-23',
+            weekNumber: 2,
+            weekTitle: 'The New Life',
+            weekScripture: WEEK_2_SCRIPTURE,
+            guidedPrayer: WEEK_2_GUIDED,
+        })
+        assert.equal(prayer.source, 'week')
+        assert.ok(countSentences(prayer.body) <= 4)
+        assert.ok(countWords(WEEK_2_GUIDED) > 100)
+        assert.ok(countWords(prayer.body) <= MAX_PRAYER_WORDS)
+        assert.ok(prayer.body.includes('pray without ceasing'))
+        assert.equal(prayer.body.includes('Just as I have been forgiven'), false)
+        assert.match(prayer.body, /In Jesus' name I pray, Amen\.$/)
+        const clamped = clampPrayerBody(WEEK_2_GUIDED, 4)
+        assert.ok(clamped)
+        assert.ok(countSentences(clamped) <= 4)
+        assert.ok(countWords(clamped) <= MAX_PRAYER_WORDS)
+    })
+
+    it('shows a single verse and a clean reference for Week 2 scripture dumps', () => {
+        assert.equal(extractScriptureRef(WEEK_2_SCRIPTURE), '2 Corinthians 5:17')
+        assert.equal(
+            singleVerseText('Therefore, if anyone is in Christ, he is a new creation. The old has passed away; behold, the new has come.'),
+            'Therefore, if anyone is in Christ, he is a new creation.',
+        )
+        const prayer = buildDailyPrayer({
+            dateKey: '2026-10-23',
+            weekNumber: 2,
+            weekTitle: 'The New Life',
+            weekScripture: WEEK_2_SCRIPTURE,
+            guidedPrayer: WEEK_2_GUIDED,
+        })
+        assert.equal(prayer.scriptureRef, '2 Corinthians 5:17')
+        assert.equal(prayer.scriptureText, 'Therefore, if anyone is in Christ, he is a new creation.')
+        assert.equal(prayer.scriptureText.includes('Let me hear in the morning'), false)
+        assert.equal(prayer.scriptureText.includes('old has passed away'), false)
+        assert.equal(prayer.scriptureRef.includes(' - '), false)
+        assert.equal(stripDashSeparators(WEEK_2_SCRIPTURE).includes(' - '), false)
+        assert.equal(prayer.scriptureText.includes('Let me hear in the morning'), false)
+        assert.equal(prayer.scriptureRef.includes('Psalm'), false)
+    })
+
+    it('always pairs verse text with its own reference from the same source', () => {
+        const psalm = {
+            text: 'Let me hear in the morning of your steadfast love, for in you I trust. Make me know the way I should go, for to you I lift up my soul.',
+            ref: 'Psalm 143:8',
+        }
+        const fromDump = pairScripture({ raw: WEEK_2_SCRIPTURE, fallback: psalm })
+        assert.equal(fromDump.ref, '2 Corinthians 5:17')
+        assert.equal(fromDump.text, 'Therefore, if anyone is in Christ, he is a new creation.')
+        assert.equal(fromDump.text.includes('steadfast love'), false)
+
+        const unknown = pairScripture({ raw: 'Unknown 9:9', fallback: psalm })
+        assert.equal(unknown.ref, 'Psalm 143:8')
+        assert.match(unknown.text, /steadfast love/)
+        assert.equal(unknown.ref.includes('Corinthians'), false)
+
+        const prayer = buildDailyPrayer({
+            dateKey: '2026-10-23',
+            weekNumber: 2,
+            weekTitle: 'The New Life',
+            weekScripture: WEEK_2_SCRIPTURE,
+            guidedPrayer: WEEK_2_GUIDED,
+        })
+        const psalmText = prayer.scriptureText.includes('steadfast love')
+        const corRef = prayer.scriptureRef.includes('Corinthians')
+        assert.equal(psalmText && corRef, false)
+        assert.equal(prayer.scriptureRef, '2 Corinthians 5:17')
+        assert.equal(prayer.scriptureText.includes('2 Corinthians'), false)
+    })
+
+    it('caps Week 2 copy to about 60-70 words', () => {
+        assert.ok(countWords(WEEK_2_GUIDED) >= 100)
+        const prayer = buildDailyPrayer({
+            dateKey: '2026-10-23',
+            weekNumber: 2,
+            weekTitle: 'The New Life',
+            weekScripture: WEEK_2_SCRIPTURE,
+            guidedPrayer: WEEK_2_GUIDED,
+        })
+        const words = countWords(prayer.body)
+        assert.ok(words <= MAX_PRAYER_WORDS)
+        assert.ok(words >= 40)
+        assert.ok(countSentences(prayer.body) <= MAX_PRAYER_SENTENCES)
     })
 })

@@ -5,6 +5,7 @@ import { JournalPageClient } from '@/components/journal/journal-page-client'
 import { getTodayEntry } from '@/lib/journal-actions'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { getLocalDateCookie } from '@/lib/local-date'
+import { resolveLocalDateKey } from '@/lib/local-date-key'
 import { pickActivePairing, preferredPairingIds } from '@/lib/pairing-resolution'
 import { resolveDailyPrayerInput, type DailyPrayerPartner } from '@/lib/daily-prayer-content'
 
@@ -23,7 +24,10 @@ export default async function JournalPage({
     // Cookie avoids a first-render "New Reflection" flash when today's row
     // exists locally but the request used the UTC date.
     const cookieLocalDate = await getLocalDateCookie()
-    const localDate = params.localDate || cookieLocalDate || new Date().toISOString().split('T')[0]
+    const localDate = resolveLocalDateKey({
+        urlDate: params.localDate,
+        cookieDate: cookieLocalDate,
+    })
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/auth/login')

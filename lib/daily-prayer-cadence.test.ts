@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
     nextDailyPopup,
     journalAppliesToday,
+    prayerCloseTransition,
     claimDailyCadence,
     resetDailyCadenceClaimForTests,
 } from './daily-prayer-cadence.ts'
@@ -137,5 +138,16 @@ describe('daily prayer + journal cadence', () => {
         const first = claimDailyCadence()
         assert.ok(first)
         assert.equal(claimDailyCadence(), null)
+    })
+
+    it('closes prayer immediately, then opens journal after a delay when journal is due', () => {
+        assert.deepEqual(prayerCloseTransition(true), {
+            immediate: null,
+            followUp: 'journal',
+        })
+        assert.deepEqual(prayerCloseTransition(false), {
+            immediate: null,
+            followUp: null,
+        })
     })
 })

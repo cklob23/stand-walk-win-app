@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
     Dialog,
-    DialogContent,
     DialogDescription,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
+import { DailyPopupShell } from '@/components/journal/daily-popup-shell'
 import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
@@ -18,6 +18,7 @@ import { prayerDismiss } from '@/lib/daily-popup-dismiss'
 import {
     formatPrayerChip,
     formatPrayerDate,
+    retargetPartnerMention,
     sendPrayerButtonLabel,
     type DailyPrayerContent,
     type DailyPrayerPartner,
@@ -66,6 +67,10 @@ export function DailyPrayerPopup({
 
     const dateLabel = formatPrayerDate()
     const chip = formatPrayerChip(content)
+    const displayBody = useMemo(
+        () => retargetPartnerMention(content.body, selectedPartner?.name),
+        [content.body, selectedPartner?.name],
+    )
     const showPicker = viewerRole === 'leader' && partners.length > 1
     const sendLabel = sendPrayerButtonLabel(selectedPartner?.name || defaultPartner?.name)
     const confirmName = selectedPartner?.name?.split(' ')[0] || 'your partner'
@@ -104,9 +109,11 @@ export function DailyPrayerPopup({
         const result = await sendDailyPrayerToPartner({
             pairingId: selectedPartner.pairingId,
             partnerUserId: selectedPartner.userId,
-            prayerBody: content.body,
+            prayerBody: displayBody,
             scriptureText: content.scriptureText,
             scriptureRef: content.scriptureRef,
+            localDate: new Date().toLocaleDateString('en-CA'),
+            timezoneOffsetMinutes: new Date().getTimezoneOffset(),
         })
         setSending(false)
         if ('error' in result) {
@@ -121,21 +128,69 @@ export function DailyPrayerPopup({
 
     return (
         <Dialog open={open} onOpenChange={(next) => { if (!next) handleDismiss() }}>
-            <DialogContent className="sm:max-w-lg" data-prayer-popup>
-                <DialogHeader>
-                    <div className="flex items-start gap-2.5 pr-6">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                            <HandHeart className="h-5 w-5" />
-                        </span>
-                        <div className="min-w-0 text-left">
-                            <DialogTitle className="text-foreground">Today&apos;s prayer</DialogTitle>
-                            <DialogDescription className="mt-0.5">
-                                A short prayer for you today · {dateLabel}
-                            </DialogDescription>
+            <DailyPopupShell
+                data-prayer-popup
+                header={(
+                    <DialogHeader>
+                        <div className="flex items-start gap-2.5">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                                <HandHeart className="h-5 w-5" />
+                            </span>
+                            <div className="min-w-0 text-left">
+                                <DialogTitle className="text-foreground">Today&apos;s prayer</DialogTitle>
+                                <DialogDescription className="mt-0.5">
+                                    A short prayer for you today · {dateLabel}
+                                </DialogDescription>
+                            </div>
                         </div>
+                    </DialogHeader>
+                )}
+                footer={(
+                    <div className="flex flex-wrap items-center gap-2">
+                        {confirming ? (
+                            <>
+                                <Button variant="ghost" onClick={() => setConfirming(false)} disabled={sending}>
+                                    Cancel
+                                </Button>
+                                <Button className="ml-auto" onClick={handleConfirmSend} disabled={sending || !selectedPartner}>
+                                    {sending && <Loader2 className="h-4 w-4 animate-spin" />}
+                                    <Send className="h-4 w-4" />
+                                    Send
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Button variant="ghost" onClick={handleDismiss} className="text-muted-foreground">
+                                    Dismiss
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    aria-label={hearted ? 'Saved' : 'Heart'}
+                                    onClick={handleHeart}
+                                    className={cn(
+                                        hearted && 'border-rose-300 bg-rose-500/10 text-rose-600 hover:bg-rose-500/15 hover:text-rose-600 dark:border-rose-800 dark:text-rose-400',
+                                    )}
+                                >
+                                    <Heart className={cn('h-4 w-4', hearted && 'fill-current')} />
+                                </Button>
+                                {hearted && (
+                                    <span className="text-xs font-medium text-rose-600 dark:text-rose-400">Saved</span>
+                                )}
+                                <Button
+                                    className="ml-auto w-full sm:w-auto"
+                                    onClick={handleSendClick}
+                                    disabled={!selectedPartner}
+                                >
+                                    <Send className="h-4 w-4" />
+                                    {sendLabel}
+                                </Button>
+                            </>
+                        )}
                     </div>
-                </DialogHeader>
-
+                )}
+            >
                 <span className="inline-flex w-fit items-center rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground">
                     {content.contextTopic ? (
                         <>
@@ -157,7 +212,7 @@ export function DailyPrayerPopup({
                         </p>
                     </div>
                     <p className="font-serif text-[15px] sm:text-base leading-8 text-foreground">
-                        {content.body}
+                        {displayBody}
                     </p>
                     <p className="text-[11px] text-muted-foreground">Written for you today</p>
                 </div>
@@ -168,37 +223,6 @@ export function DailyPrayerPopup({
                         {content.scriptureRef}
                     </cite>
                 </p>
-
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <Button variant="ghost" onClick={handleDismiss} className="text-muted-foreground">
-                        Dismiss
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label={hearted ? 'Saved' : 'Heart'}
-                        onClick={handleHeart}
-                        className={cn(
-                            hearted && 'border-rose-300 bg-rose-500/10 text-rose-600 hover:bg-rose-500/15 hover:text-rose-600 dark:border-rose-800 dark:text-rose-400',
-                        )}
-                    >
-                        <Heart className={cn('h-4 w-4', hearted && 'fill-current')} />
-                    </Button>
-                    {hearted && (
-                        <span className="text-xs font-medium text-rose-600 dark:text-rose-400">Saved</span>
-                    )}
-                    {!confirming && (
-                        <Button
-                            className="ml-auto w-full sm:w-auto"
-                            onClick={handleSendClick}
-                            disabled={!selectedPartner}
-                        >
-                            <Send className="h-4 w-4" />
-                            {sendLabel}
-                        </Button>
-                    )}
-                </div>
 
                 {confirming && (
                     <div className="rounded-[10px] border border-border bg-muted/50 p-3.5 space-y-3">
@@ -227,19 +251,9 @@ export function DailyPrayerPopup({
                                 Send this prayer to <strong>{confirmName}</strong> in your partner chat?
                             </p>
                         )}
-                        <div className="flex justify-end gap-2">
-                            <Button variant="ghost" onClick={() => setConfirming(false)} disabled={sending}>
-                                Cancel
-                            </Button>
-                            <Button onClick={handleConfirmSend} disabled={sending || !selectedPartner}>
-                                {sending && <Loader2 className="h-4 w-4 animate-spin" />}
-                                <Send className="h-4 w-4" />
-                                Send
-                            </Button>
-                        </div>
                     </div>
                 )}
-            </DialogContent>
+            </DailyPopupShell>
         </Dialog>
     )
 }

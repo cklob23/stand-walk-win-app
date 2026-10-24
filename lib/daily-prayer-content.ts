@@ -153,11 +153,64 @@ export function shortenTopic(raw: string, max = 32): string {
     return cut.replace(/[.,;:]+$/, '')
 }
 
-export function countSentences(text: string): number {
+export const MAX_PRAYER_SENTENCES = 6
+export const MIN_PRAYER_SENTENCES = 4
+export const MAX_PRAYER_WORDS = 70
+const AMEN_LINE = "In Jesus' name I pray, Amen."
+
+export function splitSentences(text: string): string[] {
     return text
         .split(/(?<=[.!?])\s+/)
         .map((part) => part.trim())
-        .filter(Boolean).length
+        .filter(Boolean)
+}
+
+export function countSentences(text: string): number {
+    return splitSentences(text).length
+}
+
+export function countWords(text: string): number {
+    return text.trim().split(/\s+/).filter(Boolean).length
+}
+
+export function stripDashSeparators(text: string): string {
+    return text.replace(/\s+-\s+/g, ' ')
+}
+
+export function extractScriptureRef(raw: string | null | undefined): string | null {
+    if (!raw?.trim()) return null
+    const normalized = raw.replace(/[\u201C\u201D]/g, '"').trim()
+    const beforeDash = normalized.split(/\s+-\s+/)[0].trim().replace(/^["']|["']$/g, '')
+    const match = beforeDash.match(/^((?:[1-3]\s*)?[A-Za-z]+(?:\s+[A-Za-z]+)?)\s+(\d+:\d+(?:-\d+)?)/)
+    if (!match) return beforeDash || null
+    return `${match[1]} ${match[2]}`.replace(/\s+/g, ' ')
+}
+
+export function singleVerseText(text: string | null | undefined): string {
+    if (!text) return ''
+    const cleaned = stripDashSeparators(stripEmDashes(text)).replace(/^["\u201C]|["\u201D]$/g, '').trim()
+    return splitSentences(cleaned)[0] || cleaned
+}
+
+/** Keep Heavenly Father ... Amen, never more than `max` sentences or ~70 words. */
+export function clampPrayerBody(
+    body: string,
+    max = MAX_PRAYER_SENTENCES,
+    maxWords = MAX_PRAYER_WORDS,
+): string | null {
+    const cleaned = stripDashSeparators(stripEmDashes(body)).trim()
+    if (!/^Heavenly Father/i.test(cleaned)) return null
+    let sentences = splitSentences(cleaned)
+    if (sentences.length && /Amen\.?\s*$/i.test(sentences[sentences.length - 1])) {
+        sentences = sentences.slice(0, -1)
+    }
+    if (sentences.length === 0) return null
+    const room = Math.max(1, max - 1)
+    if (sentences.length > room) sentences = sentences.slice(0, room)
+    while (sentences.length > 1 && countWords(`${sentences.join(' ')} ${AMEN_LINE}`) > maxWords) {
+        sentences.pop()
+    }
+    return `${sentences.join(' ')} ${AMEN_LINE}`
 }
 
 export function isShortGuidedPrayer(text?: string | null): boolean {
@@ -166,6 +219,17 @@ export function isShortGuidedPrayer(text?: string | null): boolean {
     if (!/^Heavenly Father/i.test(trimmed)) return false
     const sentences = countSentences(trimmed)
     return sentences >= 3 && sentences <= 6
+}
+
+function bodyFromGuidedPrayer(guided: string | null | undefined, weekTitle: string): string {
+    const raw = guided?.trim()
+    if (!raw) return weekPrayer(weekTitle)
+    const sentences = splitSentences(raw)
+    const contentCount = sentences.length && /Amen\.?\s*$/i.test(sentences[sentences.length - 1])
+        ? sentences.length - 1
+        : sentences.length
+    const max = contentCount > 3 ? MIN_PRAYER_SENTENCES : MAX_PRAYER_SENTENCES
+    return clampPrayerBody(raw, max) || weekPrayer(weekTitle)
 }
 
 /**
@@ -216,9 +280,35 @@ function weekPrayer(weekTitle: string): string {
 }
 
 function resolveWeekScripture(weekScripture?: string | null): { text: string; ref: string } | null {
-    if (!weekScripture?.trim()) return null
-    const key = weekScripture.trim().toLowerCase()
-    return WEEK_SCRIPTURES[key] || null
+    const ref = extractScriptureRef(weekScripture)
+    if (!ref) return null
+    const mapped = WEEK_SCRIPTURES[ref.toLowerCase()]
+    if (mapped) return { text: singleVerseText(mapped.text), ref: mapped.ref }
+    return parseScriptureDump(weekScripture)
+}
+
+/** Pull a paired verse + ref from "Book N:N - \"verse text\"". Never mix two sources. */
+export function parseScriptureDump(raw?: string | null): { text: string; ref: string } | null {
+    if (!raw?.trim()) return null
+    const ref = extractScriptureRef(raw)
+    const quoted = raw.replace(/[\u201C\u201D]/g, '"').match(/-\s*"([^"]+)"/)
+    if (ref && quoted?.[1]) {
+        return { text: singleVerseText(quoted[1]), ref }
+    }
+    return null
+}
+
+/** Verse text and reference always come from one pair. Never mix Psalm text with a 2 Cor ref. */
+export function pairScripture(input: {
+    raw?: string | null
+    fallback: { text: string; ref: string }
+}): { text: string; ref: string } {
+    const mapped = resolveWeekScripture(input.raw)
+    if (mapped) return { text: singleVerseText(mapped.text), ref: mapped.ref }
+    return {
+        text: singleVerseText(input.fallback.text),
+        ref: extractScriptureRef(input.fallback.ref) || input.fallback.ref,
+    }
 }
 
 export function buildDailyPrayer(input: DailyPrayerInput): DailyPrayerContent {
@@ -242,12 +332,16 @@ export function buildDailyPrayer(input: DailyPrayerInput): DailyPrayerContent {
         contextTopic = topic
     } else if (weekNumber && weekTitle) {
         source = 'week'
-        body = isShortGuidedPrayer(input.guidedPrayer)
-            ? stripEmDashes(input.guidedPrayer!.trim())
-            : weekPrayer(weekTitle)
-        const weekScripture = resolveWeekScripture(input.weekScripture)
-        scriptureText = weekScripture?.text || ENCOURAGEMENT_PRAYERS[1].scriptureText
-        scriptureRef = weekScripture?.ref || input.weekScripture?.trim() || ENCOURAGEMENT_PRAYERS[1].scriptureRef
+        body = bodyFromGuidedPrayer(input.guidedPrayer, weekTitle)
+        const weekScripture = pairScripture({
+            raw: input.weekScripture,
+            fallback: {
+                text: ENCOURAGEMENT_PRAYERS[1].scriptureText,
+                ref: ENCOURAGEMENT_PRAYERS[1].scriptureRef,
+            },
+        })
+        scriptureText = weekScripture.text
+        scriptureRef = weekScripture.ref
         contextLabel = `Week ${weekNumber}`
         contextTopic = weekTitle
     } else {
@@ -266,16 +360,18 @@ export function buildDailyPrayer(input: DailyPrayerInput): DailyPrayerContent {
         partnerName: input.partnerName,
     })
     if (mentionsPartner && input.partnerName) {
-        body = insertPartnerSentence(body, input.partnerName)
+        const reserved = clampPrayerBody(body, MAX_PRAYER_SENTENCES - 1) || body
+        body = insertPartnerSentence(reserved, input.partnerName)
     }
+    body = clampPrayerBody(body, MAX_PRAYER_SENTENCES) || body
 
     return {
-        body: stripEmDashes(body),
-        scriptureText: stripEmDashes(scriptureText),
-        scriptureRef: stripEmDashes(scriptureRef),
+        body: stripDashSeparators(stripEmDashes(body)),
+        scriptureText: singleVerseText(scriptureText),
+        scriptureRef: extractScriptureRef(scriptureRef) || scriptureRef,
         source,
         contextLabel,
-        contextTopic: contextTopic ? stripEmDashes(contextTopic) : null,
+        contextTopic: contextTopic ? stripDashSeparators(stripEmDashes(contextTopic)) : null,
         mentionsPartner,
     }
 }
@@ -298,10 +394,27 @@ export function formatPrayerDate(now: Date = new Date()): string {
     })
 }
 
+export const DAILY_PRAYER_MESSAGE_PREFIX = "Today's prayer"
+
+export const PARTNER_MENTION_SENTENCE =
+    /Strengthen my friendship with ([^\s.]+) as we walk this journey\./
+
 export function formatPrayerMessage(
     content: Pick<DailyPrayerContent, 'body' | 'scriptureText' | 'scriptureRef'>,
 ): string {
-    return `Today's prayer\n\n${content.body}\n\n${content.scriptureText} ${content.scriptureRef}`
+    return `${DAILY_PRAYER_MESSAGE_PREFIX}\n\n${content.body}\n\n${content.scriptureText} ${content.scriptureRef}`
+}
+
+/** Swap the named partner, or drop the sentence if the recipient has no name. */
+export function retargetPartnerMention(body: string, recipientName: string | null | undefined): string {
+    const match = body.match(PARTNER_MENTION_SENTENCE)
+    if (!match) return body
+    const recipientFirst = firstName(recipientName)
+    if (!recipientFirst) {
+        return body.replace(/\s*Strengthen my friendship with [^.]+ as we walk this journey\./, '').trim()
+    }
+    if (match[1] === recipientFirst) return body
+    return body.replace(match[0], `Strengthen my friendship with ${recipientFirst} as we walk this journey.`)
 }
 
 export function dailyReflectionText(godSpeaking?: string | null): string | null {

@@ -3,12 +3,11 @@
 import { useState, useEffect, useRef } from 'react'
 import {
     Dialog,
-    DialogContent,
     DialogDescription,
-    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
+import { DailyPopupShell } from '@/components/journal/daily-popup-shell'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -187,18 +186,32 @@ export function DailyJournalPopup({
 
     return (
         <Dialog open={open} onOpenChange={(o) => { if (!o) handleDismiss() }}>
-            <DialogContent className="sm:max-w-lg" data-journal-popup>
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2 text-foreground">
-                        <BookHeart className="h-5 w-5 text-primary" />
-                        Daily Prayer Journal
-                    </DialogTitle>
-                    <DialogDescription>
-                        Take a moment to reflect on your prayer life today.
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-5 py-2">
+            <DailyPopupShell
+                data-journal-popup
+                header={(
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-foreground">
+                            <BookHeart className="h-5 w-5 text-primary" />
+                            Daily Prayer Journal
+                        </DialogTitle>
+                        <DialogDescription>
+                            Take a moment to reflect on your prayer life today.
+                        </DialogDescription>
+                    </DialogHeader>
+                )}
+                footer={(
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        <Button variant="ghost" onClick={handleDismiss} disabled={isSaving}>
+                            Skip for now
+                        </Button>
+                        <Button onClick={handleSave} disabled={isSaving}>
+                            {isSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                            Save Entry
+                        </Button>
+                    </div>
+                )}
+            >
+                <div className="space-y-5">
                     {/* Question 1 */}
                     <div className="space-y-2">
                         <Label className="text-sm font-medium text-foreground">
@@ -299,17 +312,7 @@ export function DailyJournalPopup({
                         />
                     </div>
                 </div>
-
-                <DialogFooter className="gap-2 sm:gap-1">
-                    <Button variant="ghost" onClick={handleDismiss} disabled={isSaving}>
-                        Skip for now
-                    </Button>
-                    <Button onClick={handleSave} disabled={isSaving}>
-                        {isSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                        Save Entry
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
+            </DailyPopupShell>
         </Dialog>
     )
 }
