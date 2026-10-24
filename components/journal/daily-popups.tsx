@@ -7,6 +7,7 @@ import {
     claimDailyCadence,
     journalAppliesToday,
     nextDailyPopup,
+    prayerCloseTransition,
     releaseDailyCadence,
 } from '@/lib/daily-prayer-cadence'
 import {
@@ -91,13 +92,14 @@ export function DailyPopups({
     const handlePrayerOpenChange = (open: boolean) => {
         if (open) return
         prayerDismiss.markDismissedToday()
-        if (journalAppliesToday({
+        const journalDue = journalAppliesToday({
             journalHasEntryToday: hasJournalEntryToday,
             journalDismissedToday: journalDismiss.isDismissedToday(),
-        })) {
-            setTimeout(() => setActive('journal'), 400)
-        } else {
-            setActive(null)
+        })
+        const { immediate, followUp } = prayerCloseTransition(journalDue)
+        setActive(immediate)
+        if (followUp) {
+            setTimeout(() => setActive(followUp), 400)
         }
     }
 

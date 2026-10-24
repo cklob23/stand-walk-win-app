@@ -18,6 +18,7 @@ import { prayerDismiss } from '@/lib/daily-popup-dismiss'
 import {
     formatPrayerChip,
     formatPrayerDate,
+    retargetPartnerMention,
     sendPrayerButtonLabel,
     type DailyPrayerContent,
     type DailyPrayerPartner,
@@ -66,6 +67,10 @@ export function DailyPrayerPopup({
 
     const dateLabel = formatPrayerDate()
     const chip = formatPrayerChip(content)
+    const displayBody = useMemo(
+        () => retargetPartnerMention(content.body, selectedPartner?.name),
+        [content.body, selectedPartner?.name],
+    )
     const showPicker = viewerRole === 'leader' && partners.length > 1
     const sendLabel = sendPrayerButtonLabel(selectedPartner?.name || defaultPartner?.name)
     const confirmName = selectedPartner?.name?.split(' ')[0] || 'your partner'
@@ -104,9 +109,11 @@ export function DailyPrayerPopup({
         const result = await sendDailyPrayerToPartner({
             pairingId: selectedPartner.pairingId,
             partnerUserId: selectedPartner.userId,
-            prayerBody: content.body,
+            prayerBody: displayBody,
             scriptureText: content.scriptureText,
             scriptureRef: content.scriptureRef,
+            localDate: new Date().toLocaleDateString('en-CA'),
+            timezoneOffsetMinutes: new Date().getTimezoneOffset(),
         })
         setSending(false)
         if ('error' in result) {
@@ -157,7 +164,7 @@ export function DailyPrayerPopup({
                         </p>
                     </div>
                     <p className="font-serif text-[15px] sm:text-base leading-8 text-foreground">
-                        {content.body}
+                        {displayBody}
                     </p>
                     <p className="text-[11px] text-muted-foreground">Written for you today</p>
                 </div>

@@ -298,10 +298,27 @@ export function formatPrayerDate(now: Date = new Date()): string {
     })
 }
 
+export const DAILY_PRAYER_MESSAGE_PREFIX = "Today's prayer"
+
+export const PARTNER_MENTION_SENTENCE =
+    /Strengthen my friendship with ([^\s.]+) as we walk this journey\./
+
 export function formatPrayerMessage(
     content: Pick<DailyPrayerContent, 'body' | 'scriptureText' | 'scriptureRef'>,
 ): string {
-    return `Today's prayer\n\n${content.body}\n\n${content.scriptureText} ${content.scriptureRef}`
+    return `${DAILY_PRAYER_MESSAGE_PREFIX}\n\n${content.body}\n\n${content.scriptureText} ${content.scriptureRef}`
+}
+
+/** Swap the named partner, or drop the sentence if the recipient has no name. */
+export function retargetPartnerMention(body: string, recipientName: string | null | undefined): string {
+    const match = body.match(PARTNER_MENTION_SENTENCE)
+    if (!match) return body
+    const recipientFirst = firstName(recipientName)
+    if (!recipientFirst) {
+        return body.replace(/\s*Strengthen my friendship with [^.]+ as we walk this journey\./, '').trim()
+    }
+    if (match[1] === recipientFirst) return body
+    return body.replace(match[0], `Strengthen my friendship with ${recipientFirst} as we walk this journey.`)
 }
 
 export function dailyReflectionText(godSpeaking?: string | null): string | null {

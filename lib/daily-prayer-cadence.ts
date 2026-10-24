@@ -34,6 +34,20 @@ export function journalAppliesToday(input: {
     return !input.journalHasEntryToday && !input.journalDismissedToday
 }
 
+/**
+ * Prayer must close immediately. Journal may open after a short delay.
+ * Never leave prayer open while waiting, or Send can be clicked again.
+ */
+export function prayerCloseTransition(journalDue: boolean): {
+    immediate: DailyPopupKind
+    followUp: DailyPopupKind
+} {
+    return {
+        immediate: null,
+        followUp: journalDue ? 'journal' : null,
+    }
+}
+
 /** First caller wins so split-screen remounts cannot stack two copies. */
 let cadenceOwner: symbol | null = null
 

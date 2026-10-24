@@ -9,6 +9,7 @@ import {
     insertPartnerSentence,
     isShortGuidedPrayer,
     PARTNER_MENTION_MODULUS,
+    retargetPartnerMention,
     sendPrayerButtonLabel,
     shouldMentionPartner,
     stripEmDashes,
@@ -158,6 +159,28 @@ describe('partner mention frequency', () => {
         assert.match(withPartner, /Strengthen my friendship with Alex as we walk this journey/)
         assert.match(withPartner, /In Jesus' name I pray, Amen\.$/)
         assert.equal(withPartner.includes('—'), false)
+    })
+
+    it('retargets a partner mention when the leader picks a different learner', () => {
+        const namedForAlex = insertPartnerSentence(
+            "Heavenly Father, thank You for this day. Teach me to listen. In Jesus' name I pray, Amen.",
+            'Alex Rivera',
+        )
+        const forSam = retargetPartnerMention(namedForAlex, 'Sam Miller')
+        assert.match(forSam, /Strengthen my friendship with Sam as we walk this journey/)
+        assert.equal(forSam.includes('Alex'), false)
+        assert.equal(retargetPartnerMention(namedForAlex, 'Alex Rivera'), namedForAlex)
+    })
+
+    it('neutralizes a partner mention when the chosen recipient has no name', () => {
+        const namedForAlex = insertPartnerSentence(
+            "Heavenly Father, thank You for this day. Teach me to listen. In Jesus' name I pray, Amen.",
+            'Alex Rivera',
+        )
+        const neutralized = retargetPartnerMention(namedForAlex, null)
+        assert.equal(neutralized.includes('Alex'), false)
+        assert.equal(neutralized.includes('Strengthen my friendship'), false)
+        assert.match(neutralized, /In Jesus' name I pray, Amen\.$/)
     })
 })
 

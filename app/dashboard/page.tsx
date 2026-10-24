@@ -17,6 +17,8 @@ import { ensureCompletedMeetingProgress } from '@/lib/meeting-progress'
 import { notifyLeaderOfJourneyComplete } from '@/lib/notifications'
 import { advancePairingWeek, markPairingJourneyCompleted } from '@/lib/pairing-writes'
 import { resolveDailyPrayerInput } from '@/lib/daily-prayer-content'
+import { getLocalDateCookie } from '@/lib/local-date'
+import { resolveLocalDateKey } from '@/lib/local-date-key'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -432,12 +434,11 @@ export default async function DashboardPage({
     hasWeeklyMeeting = (count ?? 0) >= effectiveCurrentWeek
   }
 
-  // Check if user has journal entry for today
-  // Note: this uses UTC date on the server; the DailyJournalPopup also checks
-  // via localStorage with the client's local date for accurate dismissal
+  // Check if user has journal entry for today (device local date, same as popups).
+  // Cookie is set on first client paint by SyncLocalDate; UTC is first-visit fallback.
   let hasJournalEntryToday = false
   if (pairing) {
-    const today = new Date().toISOString().split('T')[0]
+    const today = resolveLocalDateKey({ cookieDate: await getLocalDateCookie() })
     const { data: journalEntry } = await supabase
       .from('prayer_journal')
       .select('id')
