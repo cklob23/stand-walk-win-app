@@ -42,7 +42,7 @@ const AMEN_TAIL = /In Jesus['\u2019] name I pray,?\s*Amen\.?\s*$/i
 const ENCOURAGEMENT_PRAYERS: { body: string; scriptureText: string; scriptureRef: string }[] = [
     {
         body: "Heavenly Father, thank You for meeting me in the middle of my workday. Give me Your peace where anxiety has been loud, and help me trust You with the conversations on my heart. Teach me to slow down and listen for Your voice today. In Jesus' name I pray, Amen.",
-        scriptureText: 'Do not be anxious about anything, but in everything by prayer and petition, with thanksgiving, present your requests to God. And the peace of God, which surpasses all understanding, will guard your hearts and your minds in Christ Jesus.',
+        scriptureText: 'Do not be anxious about anything, but in everything by prayer and supplication with thanksgiving let your requests be made known to God. And the peace of God, which surpasses all understanding, will guard your hearts and your minds in Christ Jesus.',
         scriptureRef: 'Philippians 4:6-7',
     },
     {
@@ -57,7 +57,7 @@ const ENCOURAGEMENT_PRAYERS: { body: string; scriptureText: string; scriptureRef
     },
     {
         body: "Heavenly Father, thank You that I do not walk today in my own strength. Hold me when I feel weak, and remind me that You are with me. Help me speak with grace and rest in Your care. In Jesus' name I pray, Amen.",
-        scriptureText: 'Fear not, for I am with you; be not dismayed, for I am your God. I will strengthen you, I will help you, I will uphold you with my righteous right hand.',
+        scriptureText: 'Fear not, for I am with you; be not dismayed, for I am your God; I will strengthen you, I will help you, I will uphold you with my righteous right hand.',
         scriptureRef: 'Isaiah 41:10',
     },
 ]
@@ -80,12 +80,16 @@ const WEEK_SCRIPTURES: Record<string, { text: string; ref: string }> = {
         ref: 'Colossians 2:6-7',
     },
     '1 john 5:4-5': {
-        text: 'For everyone who has been born of God overcomes the world. And this is the victory that has overcome the world: our faith.',
+        text: 'For everyone who has been born of God overcomes the world. And this is the victory that has overcome the world, our faith.',
         ref: '1 John 5:4',
     },
     '1 peter 3:15': {
-        text: 'In your hearts honor Christ the Lord as holy, always being prepared to make a defense to anyone who asks you for a reason for the hope that is in you, yet do it with gentleness and respect.',
+        text: 'But in your hearts honor Christ the Lord as holy, always being prepared to make a defense to anyone who asks you for a reason for the hope that is in you; yet do it with gentleness and respect.',
         ref: '1 Peter 3:15',
+    },
+    'philippians 4:6-7': {
+        text: 'Do not be anxious about anything, but in everything by prayer and supplication with thanksgiving let your requests be made known to God. And the peace of God, which surpasses all understanding, will guard your hearts and your minds in Christ Jesus.',
+        ref: 'Philippians 4:6-7',
     },
 }
 
@@ -100,6 +104,37 @@ export function listDailyPrayerVerses(): { text: string; ref: string }[] {
     ]
 }
 
+function normalizeVerseRef(ref: string): string {
+    return ref.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+export function lookupCatalogVerse(ref: string | null | undefined): { text: string; ref: string } | null {
+    if (!ref) return null
+    const key = normalizeVerseRef(ref)
+    if (WEEK_SCRIPTURES[key]) return WEEK_SCRIPTURES[key]
+    for (const entry of listDailyPrayerVerses()) {
+        if (normalizeVerseRef(entry.ref) === key) return entry
+    }
+    return null
+}
+
+export function verseHasEllipsis(text: string | null | undefined): boolean {
+    return /\.\.\.|\u2026/.test(text || '')
+}
+
+/**
+ * DB dumps can be truncated. Prefer the ESV catalog; if we have no catalog
+ * match, drop the quote and keep the reference only.
+ */
+export function sanitizeVersePair(input: { text: string; ref: string }): { text: string; ref: string } {
+    const ref = extractScriptureRef(input.ref) || input.ref
+    const text = scriptureDisplayText(input.text)
+    if (!verseHasEllipsis(text)) return { text, ref }
+    const catalog = lookupCatalogVerse(ref)
+    if (catalog) return { text: scriptureDisplayText(catalog.text), ref: catalog.ref }
+    return { text: '', ref }
+}
+
 export function hashString(value: string): number {
     let hash = 0
     for (let i = 0; i < value.length; i++) {
@@ -108,7 +143,7 @@ export function hashString(value: string): number {
     return hash
 }
 
-const HONORIFIC_RE = /^(?:dr|mr|mrs|ms|miss|pastor|rev|reverend|fr|father|prof|professor)\.?$/i
+const HONORIFIC_RE = /^(?:dr|mr|mrs|ms|miss|st|pastor|rev|reverend|fr|father|prof|professor)\.?$/i
 
 /** Given name after Dr./Mr./Mrs./Ms./Pastor, so "Dr. Bob" does not become "Dr." */
 export function firstName(fullName: string | null | undefined): string {
@@ -348,8 +383,8 @@ function weekPrayer(weekTitle: string): string {
 function resolveWeekScripture(weekScripture?: string | null): { text: string; ref: string } | null {
     const ref = extractScriptureRef(weekScripture)
     if (!ref) return null
-    const mapped = WEEK_SCRIPTURES[ref.toLowerCase()]
-    if (mapped) return { text: scriptureDisplayText(mapped.text), ref: mapped.ref }
+    const catalog = lookupCatalogVerse(ref)
+    if (catalog) return { text: scriptureDisplayText(catalog.text), ref: catalog.ref }
     return parseScriptureDump(weekScripture)
 }
 
@@ -359,7 +394,7 @@ export function parseScriptureDump(raw?: string | null): { text: string; ref: st
     const ref = extractScriptureRef(raw)
     const quoted = raw.replace(/[\u201C\u201D]/g, '"').match(/-\s*"([^"]+)"/)
     if (ref && quoted?.[1]) {
-        return { text: scriptureDisplayText(quoted[1]), ref }
+        return sanitizeVersePair({ text: quoted[1], ref })
     }
     return null
 }
@@ -370,11 +405,11 @@ export function pairScripture(input: {
     fallback: { text: string; ref: string }
 }): { text: string; ref: string } {
     const mapped = resolveWeekScripture(input.raw)
-    if (mapped) return { text: scriptureDisplayText(mapped.text), ref: mapped.ref }
-    return {
-        text: scriptureDisplayText(input.fallback.text),
+    if (mapped) return sanitizeVersePair(mapped)
+    return sanitizeVersePair({
+        text: input.fallback.text,
         ref: extractScriptureRef(input.fallback.ref) || input.fallback.ref,
-    }
+    })
 }
 
 export function buildDailyPrayer(input: DailyPrayerInput): DailyPrayerContent {
@@ -436,11 +471,12 @@ export function buildDailyPrayer(input: DailyPrayerInput): DailyPrayerContent {
     }
     body = clampPrayerBody(body, MAX_PRAYER_SENTENCES, MAX_PRAYER_WORDS, PARTNER_MENTION_SENTENCE) || body
     mentionsPartner = PARTNER_MENTION_SENTENCE.test(body)
+    const verse = sanitizeVersePair({ text: scriptureText, ref: scriptureRef })
 
     return {
         body: stripDashSeparators(stripEmDashes(body)),
-        scriptureText: scriptureDisplayText(scriptureText),
-        scriptureRef: extractScriptureRef(scriptureRef) || scriptureRef,
+        scriptureText: verse.text,
+        scriptureRef: verse.ref,
         source,
         contextLabel,
         contextTopic: contextTopic ? stripDashSeparators(stripEmDashes(contextTopic)) : null,
@@ -475,7 +511,9 @@ export const PARTNER_MENTION_SENTENCE =
 export const SCRIPTURE_LINE_SEPARATOR = ' '
 
 export function formatScriptureLine(text: string, ref: string): string {
-    return `${text}${SCRIPTURE_LINE_SEPARATOR}${ref}`
+    const verse = text.trim()
+    if (!verse) return ref
+    return `${verse}${SCRIPTURE_LINE_SEPARATOR}${ref}`
 }
 
 export function formatPrayerMessage(
