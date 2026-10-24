@@ -10,6 +10,7 @@ import {
     firstPrayerItem,
     formatPrayerChip,
     formatPrayerMessage,
+    formatScriptureLine,
     insertPartnerSentence,
     isShortGuidedPrayer,
     MAX_PRAYER_SENTENCES,
@@ -374,6 +375,37 @@ describe('copy constraints', () => {
         assert.equal(prayer.scriptureRef.includes(' - '), false)
         assert.equal(stripDashSeparators(WEEK_2_SCRIPTURE).includes(' - '), false)
         assert.equal(prayer.scriptureRef.includes('Psalm'), false)
+        const line = formatScriptureLine(prayer.scriptureText, prayer.scriptureRef)
+        assert.match(line, /\. 2 Corinthians 5:17$/)
+        assert.equal(line.includes('creation.2'), false)
+        assert.equal(line.includes(' - '), false)
+        assert.equal(formatPrayerMessage(prayer).includes('creation.2 Corinthians'), false)
+    })
+
+    it('puts a space, not a dash, between the verse period and the reference', () => {
+        const samples = [
+            buildDailyPrayer({
+                dateKey: '2026-10-23',
+                weekNumber: 2,
+                weekTitle: 'The New Life',
+                weekScripture: WEEK_2_SCRIPTURE,
+                guidedPrayer: WEEK_2_GUIDED,
+            }),
+            buildDailyPrayer({
+                dateKey: '2026-10-23',
+                weekNumber: 3,
+                weekTitle: 'The New Stand',
+                weekScripture: 'Ephesians 6:10-18',
+            }),
+            buildDailyPrayer({ dateKey: '2026-10-24', prayerItems: '1. peace at work' }),
+        ]
+        for (const prayer of samples) {
+            const line = formatScriptureLine(prayer.scriptureText, prayer.scriptureRef)
+            assert.equal(line, `${prayer.scriptureText} ${prayer.scriptureRef}`)
+            assert.equal(line.includes(`${prayer.scriptureText}${prayer.scriptureRef}`), false)
+            assert.match(line, /\. /)
+            assert.equal(line.includes(' - '), false)
+        }
     })
 
     it('shows the full range text under Ephesians 6:10-11 and Philippians 4:6-7', () => {

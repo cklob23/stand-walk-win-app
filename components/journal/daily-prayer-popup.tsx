@@ -20,6 +20,7 @@ import {
     formatPrayerChip,
     formatPrayerDate,
     retargetPartnerMention,
+    SCRIPTURE_LINE_SEPARATOR,
     sendPrayerButtonLabel,
     type DailyPrayerContent,
     type DailyPrayerPartner,
@@ -228,7 +229,8 @@ export function DailyPrayerPopup({
 
                 <p className="font-serif italic text-[13px] leading-relaxed text-muted-foreground px-0.5">
                     {content.scriptureText}
-                    <cite className="not-italic font-sans font-medium text-xs ml-1.5">
+                    {SCRIPTURE_LINE_SEPARATOR}
+                    <cite className="not-italic font-sans font-medium text-xs">
                         {content.scriptureRef}
                     </cite>
                 </p>

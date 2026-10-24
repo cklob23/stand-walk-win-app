@@ -437,10 +437,17 @@ export const DAILY_PRAYER_MESSAGE_PREFIX = "Today's prayer"
 export const PARTNER_MENTION_SENTENCE =
     /Strengthen my friendship with (\S+) as we walk this journey\./
 
+/** Visible + textual gap between verse and reference. Not a dash. */
+export const SCRIPTURE_LINE_SEPARATOR = ' '
+
+export function formatScriptureLine(text: string, ref: string): string {
+    return `${text}${SCRIPTURE_LINE_SEPARATOR}${ref}`
+}
+
 export function formatPrayerMessage(
     content: Pick<DailyPrayerContent, 'body' | 'scriptureText' | 'scriptureRef'>,
 ): string {
-    return `${DAILY_PRAYER_MESSAGE_PREFIX}\n\n${content.body}\n\n${content.scriptureText} ${content.scriptureRef}`
+    return `${DAILY_PRAYER_MESSAGE_PREFIX}\n\n${content.body}\n\n${formatScriptureLine(content.scriptureText, content.scriptureRef)}`
 }
 
 /** Swap the named partner, or drop the sentence if the recipient has no name. */
