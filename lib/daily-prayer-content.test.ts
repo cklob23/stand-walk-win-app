@@ -7,6 +7,7 @@ import {
     countWords,
     extractJournalTopic,
     extractScriptureRef,
+    firstName,
     firstPrayerItem,
     formatPrayerChip,
     formatPrayerMessage,
@@ -16,8 +17,10 @@ import {
     MAX_PRAYER_SENTENCES,
     MAX_PRAYER_WORDS,
     MIN_PRAYER_SENTENCES,
+    listDailyPrayerVerses,
     pairScripture,
     PARTNER_MENTION_MODULUS,
+    PARTNER_MENTION_SENTENCE,
     retargetPartnerMention,
     sendPrayerButtonLabel,
     shouldMentionPartner,
@@ -266,6 +269,23 @@ describe('role send labels', () => {
     it('falls back when a partner name is missing', () => {
         assert.equal(sendPrayerButtonLabel(null), 'Send to partner')
     })
+
+    it('uses the given name after an honorific, not Dr. or Pastor', () => {
+        assert.equal(firstName('Dr. Bob Smith'), 'Bob')
+        assert.equal(firstName('Dr. Bob'), 'Bob')
+        assert.equal(sendPrayerButtonLabel('Dr. Bob Smith'), 'Send to Bob')
+        assert.equal(firstName('Pastor Alex Rivera'), 'Alex')
+        assert.equal(firstName('Mrs. Sam Miller'), 'Sam')
+        assert.equal(firstName('Ms. Jordan Lee'), 'Jordan')
+        assert.equal(firstName('Mr. J.R. Smith'), 'J.R.')
+        assert.equal(firstName('Alex Rivera'), 'Alex')
+        const named = insertPartnerSentence(
+            "Heavenly Father, thank You for this day. Teach me to listen. In Jesus' name I pray, Amen.",
+            'Dr. Bob Smith',
+        )
+        assert.match(named, /Strengthen my friendship with Bob as we walk this journey/)
+        assert.equal(named.includes('Dr.'), false)
+    })
 })
 
 describe('copy constraints', () => {
@@ -417,7 +437,8 @@ describe('copy constraints', () => {
         })
         assert.equal(week.scriptureRef, 'Ephesians 6:10-11')
         assert.match(week.scriptureText, /be strong in the Lord/)
-        assert.match(week.scriptureText, /whole armor of God/)
+        assert.match(week.scriptureText, /whole armor of God, that you may be able to stand against the schemes of the devil/)
+        assert.equal(week.scriptureText.includes('...'), false)
         assert.ok(countSentences(week.scriptureText) >= 2)
 
         const journal = buildDailyPrayer({
@@ -426,8 +447,30 @@ describe('copy constraints', () => {
         })
         assert.equal(journal.scriptureRef, 'Philippians 4:6-7')
         assert.match(journal.scriptureText, /Do not be anxious/)
-        assert.match(journal.scriptureText, /peace of God/)
+        assert.match(journal.scriptureText, /which surpasses all understanding/)
+        assert.match(journal.scriptureText, /your minds in Christ Jesus/)
+        assert.equal(journal.scriptureText.includes('...'), false)
         assert.ok(countSentences(journal.scriptureText) >= 2)
+
+        const col = buildDailyPrayer({
+            dateKey: '2026-10-23',
+            weekNumber: 4,
+            weekTitle: 'Walk in Him',
+            weekScripture: 'Colossians 2:6-7',
+        })
+        assert.equal(col.scriptureRef, 'Colossians 2:6-7')
+        assert.match(col.scriptureText, /just as you were taught, abounding in thanksgiving/)
+    })
+
+    it('rejects ellipses or truncation marks in every catalog verse', () => {
+        const verses = listDailyPrayerVerses()
+        assert.ok(verses.length >= 8)
+        for (const verse of verses) {
+            assert.equal(verse.text.includes('...'), false, `${verse.ref} has ...`)
+            assert.equal(verse.text.includes('\u2026'), false, `${verse.ref} has an ellipsis`)
+            assert.ok(verse.text.trim().length > 20, `${verse.ref} looks empty`)
+            assert.ok(verse.ref.trim().length > 0)
+        }
     })
 
     it('trims even when the first sentence alone exceeds the word cap', () => {
@@ -439,6 +482,17 @@ describe('copy constraints', () => {
         assert.match(clamped, /^Heavenly Father/)
         assert.match(clamped, /In Jesus' name I pray, Amen\.$/)
         assert.ok(countSentences(clamped) <= 2)
+    })
+
+    it('never drops the Heavenly Father opening when trimming a long first sentence plus a partner line', () => {
+        const longFirst = `Heavenly Father, ${Array.from({ length: 80 }, (_, i) => `word${i}`).join(' ')} today.`
+        const withPartner = `${longFirst} Strengthen my friendship with Alex as we walk this journey.`
+        const clamped = clampPrayerBody(withPartner, MAX_PRAYER_SENTENCES, MAX_PRAYER_WORDS, PARTNER_MENTION_SENTENCE)
+        assert.ok(clamped)
+        assert.match(clamped, /^Heavenly Father/)
+        assert.match(clamped, /In Jesus' name I pray, Amen\.$/)
+        assert.ok(countWords(clamped) <= MAX_PRAYER_WORDS)
+        assert.equal(clamped.startsWith('Strengthen my friendship'), false)
     })
 
     it('always pairs verse text with its own reference from the same source', () => {
