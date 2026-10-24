@@ -4,7 +4,11 @@ import { Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { DailyPrayerPopup } from '@/components/journal/daily-prayer-popup'
+import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
 import { buildDailyPrayer, type DailyPrayerContent, type DailyPrayerPartner } from '@/lib/daily-prayer-content'
+
+const WEEK_2_GUIDED =
+    "Heavenly Father, I ask you to help guide me to pray without ceasing and to continuously pray with thanksgiving and praise to the One who is able to do exceedingly and abundantly above all I could ask or think. May your kingdom purposes come and be carried out in my life as I live in obedience to Your word and Your Holy Spirit promptings. Lead me not into temptations that distract me from Your design and deliver me from evil. Forgive me of my trespasses and missteps as I forgive those who do wrong to me. Just as I have been forgiven, I will walk in forgiveness toward others."
 
 const specPrayer: DailyPrayerContent = {
     body: "Heavenly Father, thank You for meeting me in the middle of my workday. Give me Your peace where anxiety has been loud, and help me trust You with the conversations on my heart. Teach me to slow down and listen for Your voice today. In Jesus' name I pray, Amen.",
@@ -21,6 +25,14 @@ const coldPrayer = buildDailyPrayer({
     weekNumber: 3,
     weekTitle: 'Walking with Jesus',
     weekScripture: 'Psalm 143:8',
+})
+
+const week2Prayer = buildDailyPrayer({
+    dateKey: '2026-10-24',
+    weekNumber: 2,
+    weekTitle: 'The New Life',
+    weekScripture: '2 Corinthians 5:17 - "Therefore, if anyone is in Christ, he is a new creation. The old has passed away; behold, the new has come."',
+    guidedPrayer: WEEK_2_GUIDED,
 })
 
 const alex: DailyPrayerPartner = {
@@ -49,7 +61,13 @@ function PreviewInner() {
     const isLeaderPicker = state === 'picker'
     const isHearted = state === 'hearted'
     const isCold = state === 'cold'
-    const content = isCold ? { ...coldPrayer, mentionsPartner: false } : specPrayer
+    const isWeek2 = state === 'week2'
+    const isJournal = state === 'journal'
+    const content = isWeek2
+        ? week2Prayer
+        : isCold
+            ? { ...coldPrayer, mentionsPartner: false }
+            : specPrayer
     const partners = isLeaderPicker ? [alex, jordan] : [alex]
 
     return (
@@ -73,16 +91,26 @@ function PreviewInner() {
                     </p>
                 </div>
             </main>
-            <DailyPrayerPopup
-                open
-                onOpenChange={() => undefined}
-                viewerRole={isLeaderPicker ? 'leader' : 'learner'}
-                partners={partners}
-                content={content}
-                preview
-                initiallyHearted={isHearted}
-                initiallyConfirming={isLeaderPicker || state === 'send'}
-            />
+            {isJournal ? (
+                <DailyJournalPopup
+                    pairingId="pairing-alex"
+                    hasEntryToday={false}
+                    leaderName="Alex"
+                    open
+                    onOpenChange={() => undefined}
+                />
+            ) : (
+                <DailyPrayerPopup
+                    open
+                    onOpenChange={() => undefined}
+                    viewerRole={isLeaderPicker ? 'leader' : 'learner'}
+                    partners={partners}
+                    content={content}
+                    preview
+                    initiallyHearted={isHearted}
+                    initiallyConfirming={isLeaderPicker || state === 'send'}
+                />
+            )}
         </div>
     )
 }

@@ -153,11 +153,51 @@ export function shortenTopic(raw: string, max = 32): string {
     return cut.replace(/[.,;:]+$/, '')
 }
 
-export function countSentences(text: string): number {
+export const MAX_PRAYER_SENTENCES = 6
+export const MIN_PRAYER_SENTENCES = 4
+const AMEN_LINE = "In Jesus' name I pray, Amen."
+
+export function splitSentences(text: string): string[] {
     return text
         .split(/(?<=[.!?])\s+/)
         .map((part) => part.trim())
-        .filter(Boolean).length
+        .filter(Boolean)
+}
+
+export function countSentences(text: string): number {
+    return splitSentences(text).length
+}
+
+export function stripDashSeparators(text: string): string {
+    return text.replace(/\s+-\s+/g, ' ')
+}
+
+export function extractScriptureRef(raw: string | null | undefined): string | null {
+    if (!raw?.trim()) return null
+    const normalized = raw.replace(/[\u201C\u201D]/g, '"').trim()
+    const beforeDash = normalized.split(/\s+-\s+/)[0].trim().replace(/^["']|["']$/g, '')
+    const match = beforeDash.match(/^((?:[1-3]\s*)?[A-Za-z]+(?:\s+[A-Za-z]+)?)\s+(\d+:\d+(?:-\d+)?)/)
+    if (!match) return beforeDash || null
+    return `${match[1]} ${match[2]}`.replace(/\s+/g, ' ')
+}
+
+export function singleVerseText(text: string): string {
+    const cleaned = stripDashSeparators(stripEmDashes(text)).replace(/^["\u201C]|["\u201D]$/g, '').trim()
+    return splitSentences(cleaned)[0] || cleaned
+}
+
+/** Keep Heavenly Father ... Amen, and never more than `max` sentences. */
+export function clampPrayerBody(body: string, max = MAX_PRAYER_SENTENCES): string | null {
+    const cleaned = stripDashSeparators(stripEmDashes(body)).trim()
+    if (!/^Heavenly Father/i.test(cleaned)) return null
+    let sentences = splitSentences(cleaned)
+    if (sentences.length && /Amen\.?\s*$/i.test(sentences[sentences.length - 1])) {
+        sentences = sentences.slice(0, -1)
+    }
+    if (sentences.length === 0) return null
+    const room = Math.max(1, max - 1)
+    if (sentences.length > room) sentences = sentences.slice(0, room)
+    return `${sentences.join(' ')} ${AMEN_LINE}`
 }
 
 export function isShortGuidedPrayer(text?: string | null): boolean {
@@ -166,6 +206,17 @@ export function isShortGuidedPrayer(text?: string | null): boolean {
     if (!/^Heavenly Father/i.test(trimmed)) return false
     const sentences = countSentences(trimmed)
     return sentences >= 3 && sentences <= 6
+}
+
+function bodyFromGuidedPrayer(guided: string | null | undefined, weekTitle: string): string {
+    const raw = guided?.trim()
+    if (!raw) return weekPrayer(weekTitle)
+    const sentences = splitSentences(raw)
+    const contentCount = sentences.length && /Amen\.?\s*$/i.test(sentences[sentences.length - 1])
+        ? sentences.length - 1
+        : sentences.length
+    const max = contentCount > 3 ? MIN_PRAYER_SENTENCES : MAX_PRAYER_SENTENCES
+    return clampPrayerBody(raw, max) || weekPrayer(weekTitle)
 }
 
 /**
@@ -216,9 +267,11 @@ function weekPrayer(weekTitle: string): string {
 }
 
 function resolveWeekScripture(weekScripture?: string | null): { text: string; ref: string } | null {
-    if (!weekScripture?.trim()) return null
-    const key = weekScripture.trim().toLowerCase()
-    return WEEK_SCRIPTURES[key] || null
+    const ref = extractScriptureRef(weekScripture)
+    if (!ref) return null
+    const mapped = WEEK_SCRIPTURES[ref.toLowerCase()]
+    if (mapped) return { text: singleVerseText(mapped.text), ref: mapped.ref }
+    return null
 }
 
 export function buildDailyPrayer(input: DailyPrayerInput): DailyPrayerContent {
@@ -242,12 +295,10 @@ export function buildDailyPrayer(input: DailyPrayerInput): DailyPrayerContent {
         contextTopic = topic
     } else if (weekNumber && weekTitle) {
         source = 'week'
-        body = isShortGuidedPrayer(input.guidedPrayer)
-            ? stripEmDashes(input.guidedPrayer!.trim())
-            : weekPrayer(weekTitle)
+        body = bodyFromGuidedPrayer(input.guidedPrayer, weekTitle)
         const weekScripture = resolveWeekScripture(input.weekScripture)
         scriptureText = weekScripture?.text || ENCOURAGEMENT_PRAYERS[1].scriptureText
-        scriptureRef = weekScripture?.ref || input.weekScripture?.trim() || ENCOURAGEMENT_PRAYERS[1].scriptureRef
+        scriptureRef = weekScripture?.ref || ENCOURAGEMENT_PRAYERS[1].scriptureRef
         contextLabel = `Week ${weekNumber}`
         contextTopic = weekTitle
     } else {
@@ -266,16 +317,18 @@ export function buildDailyPrayer(input: DailyPrayerInput): DailyPrayerContent {
         partnerName: input.partnerName,
     })
     if (mentionsPartner && input.partnerName) {
-        body = insertPartnerSentence(body, input.partnerName)
+        const reserved = clampPrayerBody(body, MAX_PRAYER_SENTENCES - 1) || body
+        body = insertPartnerSentence(reserved, input.partnerName)
     }
+    body = clampPrayerBody(body, MAX_PRAYER_SENTENCES) || body
 
     return {
-        body: stripEmDashes(body),
-        scriptureText: stripEmDashes(scriptureText),
-        scriptureRef: stripEmDashes(scriptureRef),
+        body: stripDashSeparators(stripEmDashes(body)),
+        scriptureText: singleVerseText(scriptureText),
+        scriptureRef: extractScriptureRef(scriptureRef) || stripDashSeparators(stripEmDashes(scriptureRef)),
         source,
         contextLabel,
-        contextTopic: contextTopic ? stripEmDashes(contextTopic) : null,
+        contextTopic: contextTopic ? stripDashSeparators(stripEmDashes(contextTopic)) : null,
         mentionsPartner,
     }
 }

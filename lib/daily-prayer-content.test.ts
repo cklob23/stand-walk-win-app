@@ -2,18 +2,31 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
     buildDailyPrayer,
+    clampPrayerBody,
+    countSentences,
     extractJournalTopic,
+    extractScriptureRef,
     firstPrayerItem,
     formatPrayerChip,
     formatPrayerMessage,
     insertPartnerSentence,
     isShortGuidedPrayer,
+    MAX_PRAYER_SENTENCES,
+    MIN_PRAYER_SENTENCES,
     PARTNER_MENTION_MODULUS,
     retargetPartnerMention,
     sendPrayerButtonLabel,
     shouldMentionPartner,
+    singleVerseText,
+    stripDashSeparators,
     stripEmDashes,
 } from './daily-prayer-content.ts'
+
+const WEEK_2_GUIDED =
+    "Heavenly Father, I ask you to help guide me to pray without ceasing and to continuously pray with thanksgiving and praise to the One who is able to do exceedingly and abundantly above all I could ask or think. May your kingdom purposes come and be carried out in my life as I live in obedience to Your word and Your Holy Spirit promptings. Lead me not into temptations that distract me from Your design and deliver me from evil. Forgive me of my trespasses and missteps as I forgive those who do wrong to me. Just as I have been forgiven, I will walk in forgiveness toward others."
+
+const WEEK_2_SCRIPTURE =
+    '2 Corinthians 5:17 - "Therefore, if anyone is in Christ, he is a new creation. The old has passed away; behold, the new has come."'
 
 function dateKey(dayOfYear: number): string {
     const date = new Date(Date.UTC(2026, 0, 1 + dayOfYear))
@@ -228,5 +241,75 @@ describe('copy constraints', () => {
         const sentences = prayer.body.split(/(?<=[.!?])\s+/).filter(Boolean)
         assert.ok(sentences.length >= 4)
         assert.ok(sentences.length <= 6)
+    })
+
+    it('caps every source at 4-6 sentences and keeps the Amen shape', () => {
+        const samples = [
+            buildDailyPrayer({ dateKey: '2026-10-23', prayerItems: '1. peace at work' }),
+            buildDailyPrayer({
+                dateKey: '2026-10-23',
+                weekNumber: 2,
+                weekTitle: 'The New Life',
+                weekScripture: WEEK_2_SCRIPTURE,
+                guidedPrayer: WEEK_2_GUIDED,
+            }),
+            buildDailyPrayer({
+                dateKey: '2026-10-23',
+                weekNumber: 3,
+                weekTitle: 'Walking with Jesus',
+                weekScripture: 'Ephesians 6:10-18',
+            }),
+            buildDailyPrayer({ dateKey: '2026-10-23' }),
+        ]
+        for (const prayer of samples) {
+            const sentences = countSentences(prayer.body)
+            assert.ok(sentences >= MIN_PRAYER_SENTENCES)
+            assert.ok(sentences <= MAX_PRAYER_SENTENCES)
+            assert.match(prayer.body, /^Heavenly Father/)
+            assert.match(prayer.body, /In Jesus' name I pray, Amen\.$/)
+            assert.equal(prayer.body.includes(' - '), false)
+            assert.equal(prayer.scriptureText.includes(' - '), false)
+            assert.equal(prayer.scriptureRef.includes(' - '), false)
+        }
+    })
+
+    it('trims the long Week 2 guided prayer instead of using it verbatim', () => {
+        assert.ok(countSentences(WEEK_2_GUIDED) >= 5)
+        const prayer = buildDailyPrayer({
+            dateKey: '2026-10-23',
+            weekNumber: 2,
+            weekTitle: 'The New Life',
+            weekScripture: WEEK_2_SCRIPTURE,
+            guidedPrayer: WEEK_2_GUIDED,
+        })
+        assert.equal(prayer.source, 'week')
+        assert.ok(countSentences(prayer.body) <= 4)
+        assert.ok(prayer.body.includes('pray without ceasing'))
+        assert.equal(prayer.body.includes('Just as I have been forgiven'), false)
+        assert.match(prayer.body, /In Jesus' name I pray, Amen\.$/)
+        const clamped = clampPrayerBody(WEEK_2_GUIDED, 4)
+        assert.ok(clamped)
+        assert.ok(countSentences(clamped) <= 4)
+    })
+
+    it('shows a single verse and a clean reference for Week 2 scripture dumps', () => {
+        assert.equal(extractScriptureRef(WEEK_2_SCRIPTURE), '2 Corinthians 5:17')
+        assert.equal(
+            singleVerseText('Therefore, if anyone is in Christ, he is a new creation. The old has passed away; behold, the new has come.'),
+            'Therefore, if anyone is in Christ, he is a new creation.',
+        )
+        const prayer = buildDailyPrayer({
+            dateKey: '2026-10-23',
+            weekNumber: 2,
+            weekTitle: 'The New Life',
+            weekScripture: WEEK_2_SCRIPTURE,
+            guidedPrayer: WEEK_2_GUIDED,
+        })
+        assert.equal(prayer.scriptureRef, '2 Corinthians 5:17')
+        assert.equal(prayer.scriptureText, 'Therefore, if anyone is in Christ, he is a new creation.')
+        assert.equal(prayer.scriptureText.includes('Let me hear in the morning'), false)
+        assert.equal(prayer.scriptureText.includes('old has passed away'), false)
+        assert.equal(prayer.scriptureRef.includes(' - '), false)
+        assert.equal(stripDashSeparators(WEEK_2_SCRIPTURE).includes(' - '), false)
     })
 })
