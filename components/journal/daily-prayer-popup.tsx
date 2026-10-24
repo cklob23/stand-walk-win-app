@@ -14,11 +14,13 @@ import { Label } from '@/components/ui/label'
 import { HandHeart, Heart, Loader2, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { sendDailyPrayerToPartner } from '@/lib/daily-prayer-actions'
+import { prayerSendFeedback } from '@/lib/daily-prayer-send'
 import { prayerDismiss } from '@/lib/daily-popup-dismiss'
 import {
     formatPrayerChip,
     formatPrayerDate,
     retargetPartnerMention,
+    SCRIPTURE_LINE_SEPARATOR,
     sendPrayerButtonLabel,
     type DailyPrayerContent,
     type DailyPrayerPartner,
@@ -116,11 +118,19 @@ export function DailyPrayerPopup({
             timezoneOffsetMinutes: new Date().getTimezoneOffset(),
         })
         setSending(false)
-        if ('error' in result) {
-            toast.error(result.error)
+        const feedback = prayerSendFeedback(result, confirmName)
+        if (feedback.tone === 'error') {
+            toast.error(feedback.message)
             return
         }
-        toast.success(`Prayer sent to ${confirmName}`)
+        if (feedback.tone === 'info') {
+            toast.info(feedback.message)
+            dismissForToday()
+            setConfirming(false)
+            onOpenChange(false)
+            return
+        }
+        toast.success(feedback.message)
         dismissForToday()
         setConfirming(false)
         onOpenChange(false)
@@ -219,7 +229,8 @@ export function DailyPrayerPopup({
 
                 <p className="font-serif italic text-[13px] leading-relaxed text-muted-foreground px-0.5">
                     {content.scriptureText}
-                    <cite className="not-italic font-sans font-medium text-xs ml-1.5">
+                    {SCRIPTURE_LINE_SEPARATOR}
+                    <cite className="not-italic font-sans font-medium text-xs">
                         {content.scriptureRef}
                     </cite>
                 </p>

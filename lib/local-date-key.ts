@@ -24,3 +24,27 @@ export function resolveLocalDateKey(input: {
     if (isLocalDateKey(input.cookieDate)) return input.cookieDate
     return utcDateKey(input.now)
 }
+
+/** True when the device local date is ahead of (or missing) the cookie. */
+export function shouldRefreshForLocalDate(
+    cookieDate: string | null | undefined,
+    deviceDate: string,
+): boolean {
+    return isLocalDateKey(deviceDate) && cookieDate !== deviceDate
+}
+
+/**
+ * Journal-today must follow the device date, not a stale cookie or UTC.
+ * If the server queried a different day, that entry is not "today".
+ */
+export function resolveJournalHasEntryToday(input: {
+    queriedDate?: string | null
+    hasEntryOnQueriedDate: boolean
+    deviceDate: string
+}): boolean {
+    if (!isLocalDateKey(input.deviceDate) || !isLocalDateKey(input.queriedDate)) {
+        return false
+    }
+    if (input.queriedDate !== input.deviceDate) return false
+    return input.hasEntryOnQueriedDate
+}

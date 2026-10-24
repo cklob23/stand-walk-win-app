@@ -1,6 +1,12 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { isLocalDateKey, resolveLocalDateKey, utcDateKey } from './local-date-key.ts'
+import {
+    isLocalDateKey,
+    resolveJournalHasEntryToday,
+    resolveLocalDateKey,
+    shouldRefreshForLocalDate,
+    utcDateKey,
+} from './local-date-key.ts'
 
 describe('local date key', () => {
     it('accepts yyyy-MM-dd and rejects anything else', () => {
@@ -36,6 +42,48 @@ describe('local date key', () => {
         assert.notEqual(
             resolveLocalDateKey({ cookieDate: '2026-10-23', now }),
             utcDateKey(now),
+        )
+    })
+
+    it('refreshes when the cookie is missing or still yesterday', () => {
+        assert.equal(shouldRefreshForLocalDate(null, '2026-10-24'), true)
+        assert.equal(shouldRefreshForLocalDate('2026-10-23', '2026-10-24'), true)
+        assert.equal(shouldRefreshForLocalDate('2026-10-24', '2026-10-24'), false)
+        assert.equal(shouldRefreshForLocalDate('2026-10-24', 'not-a-date'), false)
+    })
+
+    it('does not treat yesterday\'s journal entry as today on first load', () => {
+        assert.equal(
+            resolveJournalHasEntryToday({
+                queriedDate: '2026-10-23',
+                hasEntryOnQueriedDate: true,
+                deviceDate: '2026-10-24',
+            }),
+            false,
+        )
+        assert.equal(
+            resolveJournalHasEntryToday({
+                queriedDate: '2026-10-24',
+                hasEntryOnQueriedDate: true,
+                deviceDate: '2026-10-24',
+            }),
+            true,
+        )
+        assert.equal(
+            resolveJournalHasEntryToday({
+                queriedDate: '2026-10-24',
+                hasEntryOnQueriedDate: false,
+                deviceDate: '2026-10-24',
+            }),
+            false,
+        )
+        assert.equal(
+            resolveJournalHasEntryToday({
+                queriedDate: null,
+                hasEntryOnQueriedDate: true,
+                deviceDate: '2026-10-24',
+            }),
+            false,
         )
     })
 })

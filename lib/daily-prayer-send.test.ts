@@ -5,6 +5,9 @@ import {
     alreadySentDailyPrayerToday,
     dailyPrayerSendKey,
     forgetDailyPrayerSend,
+    ALREADY_SENT_TODAY_MESSAGE,
+    classifyPrayerSendWriteError,
+    prayerSendFeedback,
     rememberDailyPrayerSend,
     resetDailyPrayerSendsForTests,
     resolveClientLocalDate,
@@ -97,5 +100,39 @@ describe('daily prayer send idempotency', () => {
             now: new Date('2026-10-24T00:30:00.000Z'),
         })
         assert.equal(resolved.localDate, '2026-10-23')
+    })
+
+    it('classifies unique conflicts vs a missing prayer_sends table', () => {
+        assert.equal(classifyPrayerSendWriteError({ code: '23505' }), 'duplicate')
+        assert.equal(classifyPrayerSendWriteError({ code: '42P01' }), 'unavailable')
+        assert.equal(classifyPrayerSendWriteError({ code: 'PGRST205' }), 'unavailable')
+        assert.equal(
+            classifyPrayerSendWriteError({
+                message: 'Could not find the table \'public.prayer_sends\' in the schema cache',
+            }),
+            'unavailable',
+        )
+        assert.equal(classifyPrayerSendWriteError({ code: '42501', message: 'permission denied' }), 'other')
+        assert.equal(classifyPrayerSendWriteError(null), 'other')
+    })
+
+    it('toasts Already sent today for a blocked repeat, not Prayer sent', () => {
+        assert.equal(ALREADY_SENT_TODAY_MESSAGE, 'Already sent today')
+        assert.deepEqual(
+            prayerSendFeedback({ alreadySent: true }, 'Alex'),
+            { tone: 'info', message: 'Already sent today' },
+        )
+        assert.deepEqual(
+            prayerSendFeedback({ success: true }, 'Alex'),
+            { tone: 'success', message: 'Prayer sent to Alex' },
+        )
+        assert.notEqual(
+            prayerSendFeedback({ alreadySent: true }, 'Alex').message,
+            prayerSendFeedback({ success: true }, 'Alex').message,
+        )
+        assert.deepEqual(
+            prayerSendFeedback({ error: 'Not authenticated' }),
+            { tone: 'error', message: 'Not authenticated' },
+        )
     })
 })

@@ -436,14 +436,16 @@ export default async function DashboardPage({
 
   // Check if user has journal entry for today (device local date, same as popups).
   // Cookie is set on first client paint by SyncLocalDate; UTC is first-visit fallback.
+  // DailyPopups also compares this queried date to the device date so a stale
+  // cookie (first load of a new day) cannot skip the journal popup.
+  const journalTodayKey = resolveLocalDateKey({ cookieDate: await getLocalDateCookie() })
   let hasJournalEntryToday = false
   if (pairing) {
-    const today = resolveLocalDateKey({ cookieDate: await getLocalDateCookie() })
     const { data: journalEntry } = await supabase
       .from('prayer_journal')
       .select('id')
       .eq('user_id', user.id)
-      .eq('journal_date', today)
+      .eq('journal_date', journalTodayKey)
       .limit(1)
 
     hasJournalEntryToday = (journalEntry?.length ?? 0) > 0
@@ -569,6 +571,7 @@ export default async function DashboardPage({
         assignmentReactions={assignmentReactions}
         sharedJournalEntries={sharedJournalEntries}
         hasJournalEntryToday={hasJournalEntryToday}
+        journalTodayKey={journalTodayKey}
         expandedAssignmentId={params.assignmentId}
         allLearners={allLearners}
         maxLearners={(profile.subscription_tier as { max_learners?: number })?.max_learners || 1}
@@ -583,6 +586,7 @@ export default async function DashboardPage({
       key={pairing.id}
       {...dashboardProps}
       hasJournalEntryToday={hasJournalEntryToday}
+      journalTodayKey={journalTodayKey}
       celebrationWeek={celebrationWeek}
       celebrationWeekTitle={celebrationWeekTitle}
       dailyPrayerPartners={dailyPrayerPartners}

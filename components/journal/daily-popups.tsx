@@ -15,12 +15,15 @@ import {
     type DailyPrayerInput,
     type DailyPrayerPartner,
 } from '@/lib/daily-prayer-content'
+import { resolveJournalHasEntryToday } from '@/lib/local-date-key'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
 import { DailyPrayerPopup } from '@/components/journal/daily-prayer-popup'
 
 export interface DailyPopupsProps {
     pairingId: string
     hasJournalEntryToday: boolean
+    /** Date the server used for hasJournalEntryToday (yyyy-MM-dd). */
+    journalTodayKey?: string | null
     journalShareName: string
     viewerRole: 'leader' | 'learner'
     partners: DailyPrayerPartner[]
@@ -30,25 +33,38 @@ export interface DailyPopupsProps {
 export function DailyPopups({
     pairingId,
     hasJournalEntryToday,
+    journalTodayKey,
     journalShareName,
     viewerRole,
     partners,
     prayerInput,
 }: DailyPopupsProps) {
     const [active, setActive] = useState<'prayer' | 'journal' | null>(null)
+    const [deviceDate, setDeviceDate] = useState('')
     const claimRef = useRef<symbol | null>(null)
 
+    useEffect(() => {
+        setDeviceDate(new Date().toLocaleDateString('en-CA'))
+    }, [])
+
+    const journalHasEntryOnDeviceToday = resolveJournalHasEntryToday({
+        queriedDate: journalTodayKey,
+        hasEntryOnQueriedDate: hasJournalEntryToday,
+        deviceDate,
+    })
+
     const content = useMemo(() => {
-        const dateKey = new Date().toLocaleDateString('en-CA')
+        const dateKey = deviceDate || new Date().toLocaleDateString('en-CA')
         const currentPartner = partners.find((partner) => partner.pairingId === pairingId) || partners[0]
         return buildDailyPrayer({
             ...prayerInput,
             dateKey,
             partnerName: currentPartner?.name || null,
         })
-    }, [pairingId, partners, prayerInput])
+    }, [deviceDate, pairingId, partners, prayerInput])
 
     useEffect(() => {
+        if (!deviceDate) return
         let unsub: (() => void) | null = null
         let delayTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -61,7 +77,7 @@ export function DailyPopups({
                 prayerDismissedToday: prayerDismiss.isDismissedToday(),
                 prayerSettledThisSession: prayerDismiss.isDismissedToday(),
                 journalDismissedToday: journalDismiss.isDismissedToday(),
-                journalHasEntryToday: hasJournalEntryToday,
+                journalHasEntryToday: journalHasEntryOnDeviceToday,
             })
             setActive(next)
         }
@@ -87,13 +103,13 @@ export function DailyPopups({
             releaseDailyCadence(claimRef.current)
             claimRef.current = null
         }
-    }, [hasJournalEntryToday])
+    }, [deviceDate, hasJournalEntryToday, journalHasEntryOnDeviceToday, journalTodayKey])
 
     const handlePrayerOpenChange = (open: boolean) => {
         if (open) return
         prayerDismiss.markDismissedToday()
         const journalDue = journalAppliesToday({
-            journalHasEntryToday: hasJournalEntryToday,
+            journalHasEntryToday: journalHasEntryOnDeviceToday,
             journalDismissedToday: journalDismiss.isDismissedToday(),
         })
         const { immediate, followUp } = prayerCloseTransition(journalDue)
@@ -114,7 +130,7 @@ export function DailyPopups({
             />
             <DailyJournalPopup
                 pairingId={pairingId}
-                hasEntryToday={hasJournalEntryToday}
+                hasEntryToday={journalHasEntryOnDeviceToday}
                 leaderName={journalShareName}
                 open={active === 'journal'}
                 onOpenChange={(open) => {

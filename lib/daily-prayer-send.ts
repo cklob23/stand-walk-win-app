@@ -76,3 +76,37 @@ export function wasDailyPrayerSendRemembered(
 export function resetDailyPrayerSendsForTests(): void {
     recentPrayerSends.clear()
 }
+
+export const ALREADY_SENT_TODAY_MESSAGE = 'Already sent today'
+
+export function prayerSendFeedback(
+    result: { alreadySent?: boolean; error?: string; success?: boolean },
+    partnerFirstName?: string,
+): { tone: 'info' | 'success' | 'error'; message: string } {
+    if (result.error) return { tone: 'error', message: result.error }
+    if (result.alreadySent) return { tone: 'info', message: ALREADY_SENT_TODAY_MESSAGE }
+    return { tone: 'success', message: `Prayer sent to ${partnerFirstName || 'your partner'}` }
+}
+
+export type PrayerSendWriteClass = 'duplicate' | 'unavailable' | 'other'
+
+/** Unique conflict vs "table not applied yet" so the app can degrade. */
+export function classifyPrayerSendWriteError(
+    error: { code?: string | null; message?: string | null } | null | undefined,
+): PrayerSendWriteClass {
+    if (!error) return 'other'
+    if (error.code === '23505') return 'duplicate'
+    const message = (error.message || '').toLowerCase()
+    if (
+        error.code === '42P01'
+        || error.code === 'PGRST205'
+        || (message.includes('prayer_sends') && (
+            message.includes('does not exist')
+            || message.includes('could not find')
+            || message.includes('schema cache')
+        ))
+    ) {
+        return 'unavailable'
+    }
+    return 'other'
+}
