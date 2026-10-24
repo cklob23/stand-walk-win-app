@@ -228,8 +228,12 @@ export function DailyPrayerPopup({
                 </div>
 
                 <p className="font-serif italic text-[13px] leading-relaxed text-muted-foreground px-0.5">
-                    {content.scriptureText}
-                    {SCRIPTURE_LINE_SEPARATOR}
+                    {content.scriptureText ? (
+                        <>
+                            {content.scriptureText}
+                            {SCRIPTURE_LINE_SEPARATOR}
+                        </>
+                    ) : null}
                     <cite className="not-italic font-sans font-medium text-xs">
                         {content.scriptureRef}
                     </cite>

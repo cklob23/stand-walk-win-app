@@ -19,11 +19,13 @@ import {
     MIN_PRAYER_SENTENCES,
     listDailyPrayerVerses,
     pairScripture,
+    parseScriptureDump,
     PARTNER_MENTION_MODULUS,
     PARTNER_MENTION_SENTENCE,
     retargetPartnerMention,
     sendPrayerButtonLabel,
     shouldMentionPartner,
+    sanitizeVersePair,
     scriptureDisplayText,
     singleVerseText,
     stripDashSeparators,
@@ -278,6 +280,8 @@ describe('role send labels', () => {
         assert.equal(firstName('Mrs. Sam Miller'), 'Sam')
         assert.equal(firstName('Ms. Jordan Lee'), 'Jordan')
         assert.equal(firstName('Mr. J.R. Smith'), 'J.R.')
+        assert.equal(firstName('St. John Rivera'), 'John')
+        assert.equal(firstName('St. Mary Lee'), 'Mary')
         assert.equal(firstName('Alex Rivera'), 'Alex')
         const named = insertPartnerSentence(
             "Heavenly Father, thank You for this day. Teach me to listen. In Jesus' name I pray, Amen.",
@@ -446,9 +450,11 @@ describe('copy constraints', () => {
             prayerItems: '1. peace at work',
         })
         assert.equal(journal.scriptureRef, 'Philippians 4:6-7')
-        assert.match(journal.scriptureText, /Do not be anxious/)
+        assert.match(journal.scriptureText, /Do not be anxious about anything, but in everything by prayer and supplication with thanksgiving let your requests be made known to God/)
         assert.match(journal.scriptureText, /which surpasses all understanding/)
         assert.match(journal.scriptureText, /your minds in Christ Jesus/)
+        assert.equal(journal.scriptureText.includes('petition'), false)
+        assert.equal(journal.scriptureText.includes('present your requests'), false)
         assert.equal(journal.scriptureText.includes('...'), false)
         assert.ok(countSentences(journal.scriptureText) >= 2)
 
@@ -460,6 +466,39 @@ describe('copy constraints', () => {
         })
         assert.equal(col.scriptureRef, 'Colossians 2:6-7')
         assert.match(col.scriptureText, /just as you were taught, abounding in thanksgiving/)
+    })
+
+    it('replaces DB ellipses with catalog ESV, or drops the quote', () => {
+        const fromCatalog = sanitizeVersePair({
+            text: 'Do not be anxious about anything... will guard your hearts.',
+            ref: 'Philippians 4:6-7',
+        })
+        assert.match(fromCatalog.text, /supplication with thanksgiving/)
+        assert.equal(fromCatalog.text.includes('...'), false)
+        assert.equal(fromCatalog.ref, 'Philippians 4:6-7')
+
+        const dumped = parseScriptureDump(
+            'Philippians 4:6-7 - "Do not be anxious about anything\u2026 will guard your hearts."',
+        )
+        assert.ok(dumped)
+        assert.match(dumped.text, /let your requests be made known to God/)
+        assert.equal(dumped.text.includes('\u2026'), false)
+
+        const unknown = sanitizeVersePair({
+            text: 'Some truncated quote... that we do not catalog.',
+            ref: 'Obadiah 1:4',
+        })
+        assert.equal(unknown.text, '')
+        assert.equal(unknown.ref, 'Obadiah 1:4')
+        assert.equal(formatScriptureLine(unknown.text, unknown.ref), 'Obadiah 1:4')
+
+        const weekDump = pairScripture({
+            raw: 'Philippians 4:6-7 - "Do not be anxious... peace of God."',
+            fallback: { text: 'Let me hear in the morning of your steadfast love.', ref: 'Psalm 143:8' },
+        })
+        assert.equal(weekDump.ref, 'Philippians 4:6-7')
+        assert.match(weekDump.text, /supplication/)
+        assert.equal(weekDump.text.includes('steadfast love'), false)
     })
 
     it('rejects ellipses or truncation marks in every catalog verse', () => {
