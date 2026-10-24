@@ -18,44 +18,33 @@ import { saveJournalEntry } from '@/lib/journal-actions'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { isAnyTourActive, onTourStateChange } from '@/hooks/use-feature-tour'
+import { journalDismiss } from '@/lib/daily-popup-dismiss'
 
 interface DailyJournalPopupProps {
     pairingId: string
     hasEntryToday: boolean
     leaderName: string
+    /** When provided, the daily-prayer cadence owns open timing. */
+    open?: boolean
+    onOpenChange?: (open: boolean) => void
 }
 
-const LS_KEY = 'swr-journal-dismissed'
-const SS_KEY = 'swr-journal-dismissed-session'
-
-// In-memory flag so a remount in the same tab (localDate URL rewrite, RSC
-// refresh) cannot show the popup again even if storage is unavailable.
-let dismissedThisSession = false
-
-function getDismissedDate(): string | null {
-    if (typeof window === 'undefined') return null
-    try {
-        return localStorage.getItem(LS_KEY) || sessionStorage.getItem(SS_KEY)
-    } catch {
-        return null
-    }
-}
-
-function setDismissedToday(): void {
-    const today = new Date().toLocaleDateString('en-CA') // local yyyy-MM-dd
-    dismissedThisSession = true
-    try {
-        localStorage.setItem(LS_KEY, today)
-        sessionStorage.setItem(SS_KEY, today)
-    } catch {
-        // private mode / blocked storage — in-memory flag still holds for the tab
-    }
-}
-
-export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: DailyJournalPopupProps) {
+export function DailyJournalPopup({
+    pairingId,
+    hasEntryToday,
+    leaderName,
+    open: controlledOpen,
+    onOpenChange,
+}: DailyJournalPopupProps) {
     const router = useRouter()
     const fileInputRef = useRef<HTMLInputElement>(null)
-    const [open, setOpen] = useState(false)
+    const isControlled = controlledOpen !== undefined
+    const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+    const open = isControlled ? controlledOpen : uncontrolledOpen
+    const setOpen = (next: boolean) => {
+        if (!isControlled) setUncontrolledOpen(next)
+        onOpenChange?.(next)
+    }
     const [prayerItems, setPrayerItems] = useState('')
     const [godSaying, setGodSaying] = useState('')
     const [shareWithLeader, setShareWithLeader] = useState(false)
@@ -115,16 +104,11 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
     }
 
     useEffect(() => {
+        // Cadence-controlled mounts skip self-open so prayer can go first.
+        if (isControlled) return
         // Only show if learner hasn't already written today and hasn't dismissed today
         if (hasEntryToday) return
-        if (dismissedThisSession) return
-
-        const today = new Date().toLocaleDateString('en-CA')
-        const dismissed = getDismissedDate()
-        if (dismissed === today) {
-            dismissedThisSession = true
-            return
-        }
+        if (journalDismiss.isDismissedToday()) return
 
         let unsub: (() => void) | null = null
         let delayTimer: ReturnType<typeof setTimeout> | null = null
@@ -156,10 +140,10 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
             if (delayTimer) clearTimeout(delayTimer)
             unsub?.()
         }
-    }, [hasEntryToday])
+    }, [hasEntryToday, isControlled])
 
     const handleDismiss = () => {
-        setDismissedToday()
+        journalDismiss.markDismissedToday()
         setOpen(false)
     }
 
@@ -193,7 +177,7 @@ export function DailyJournalPopup({ pairingId, hasEntryToday, leaderName }: Dail
                 await uploadFiles(result.entryId)
             }
             toast.success('Journal entry saved!')
-            setDismissedToday()
+            journalDismiss.markDismissedToday()
             setPendingFiles([])
             setOpen(false)
             router.refresh()

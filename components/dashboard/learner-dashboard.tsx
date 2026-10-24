@@ -29,7 +29,8 @@ import { Video, Phone, MapPin, Monitor } from 'lucide-react'
 import { WeeklyTimeline } from './weekly-timeline'
 import { QuickChat } from './quick-chat'
 import { AddToCalendarButton } from '@/components/add-to-calendar-button'
-import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
+import { DailyPopups } from '@/components/journal/daily-popups'
+import type { DailyPrayerPartner, DailyPrayerInput } from '@/lib/daily-prayer-content'
 import { formatLocalDateKey } from '@/lib/local-datetime'
 import { resolveBibleTranslation, scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
@@ -58,6 +59,8 @@ interface LearnerDashboardProps {
   hasWeeklyMeeting: boolean
   completedMeetingsCount?: number
   hasJournalEntryToday: boolean
+  dailyPrayerPartners?: DailyPrayerPartner[]
+  dailyPrayerInput?: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
   // Celebration data from server
   celebrationWeek?: number | null
   celebrationWeekTitle?: string | null
@@ -76,6 +79,8 @@ export function LearnerDashboard({
   hasWeeklyMeeting,
   completedMeetingsCount = 0,
   hasJournalEntryToday,
+  dailyPrayerPartners = [],
+  dailyPrayerInput,
   celebrationWeek,
   celebrationWeekTitle,
 }: LearnerDashboardProps) {
@@ -592,11 +597,17 @@ export function LearnerDashboard({
         celebrationWeekTitle={celebrationWeekTitle || null}
       />
 
-      {/* Daily Journal Popup */}
-      <DailyJournalPopup
+      <DailyPopups
         pairingId={pairing.id}
-        hasEntryToday={hasJournalEntryToday}
-        leaderName={partner?.full_name || 'your leader'}
+        hasJournalEntryToday={hasJournalEntryToday}
+        journalShareName={partner?.full_name || 'your leader'}
+        viewerRole="learner"
+        partners={dailyPrayerPartners.length > 0
+          ? dailyPrayerPartners
+          : partner
+            ? [{ pairingId: pairing.id, userId: partner.id, name: partner.full_name || 'your leader' }]
+            : []}
+        prayerInput={dailyPrayerInput || {}}
       />
 
       {/* Onboarding Tour */}

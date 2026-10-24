@@ -6,6 +6,7 @@ import { getTodayEntry } from '@/lib/journal-actions'
 import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { getLocalDateCookie } from '@/lib/local-date'
 import { pickActivePairing, preferredPairingIds } from '@/lib/pairing-resolution'
+import { resolveDailyPrayerInput, type DailyPrayerPartner } from '@/lib/daily-prayer-content'
 
 export const metadata = {
     title: 'Prayer Journal - Stand Walk Run',
@@ -39,7 +40,17 @@ export default async function JournalPage({
     const cookiePairingId = await getSelectedPairingId()
 
     // Get pairing(s) based on role
-    let pairing = null
+    let pairing: {
+        id: string
+        leader_id: string
+        learner_id: string | null
+        status?: string | null
+        current_week?: number | null
+        journey_id?: string | null
+        leader?: unknown
+        learner?: unknown
+    } | null = null
+    let dailyPrayerPartners: DailyPrayerPartner[] = []
 
     if (profile.role === 'leader') {
         // Leaders can have multiple learners - fetch all pairings
@@ -50,14 +61,32 @@ export default async function JournalPage({
         leader_id,
         learner_id,
         status,
-        leader:profiles!pairings_leader_id_fkey(full_name),
-        learner:profiles!pairings_learner_id_fkey(full_name)
+        current_week,
+        journey_id,
+        leader:profiles!pairings_leader_id_fkey(id, full_name),
+        learner:profiles!pairings_learner_id_fkey(id, full_name)
       `)
             .eq('leader_id', user.id)
             .order('created_at', { ascending: false })
 
         if (allPairings && allPairings.length > 0) {
             pairing = pickActivePairing(allPairings, 'leader', preferredPairingIds(params.pairing, cookiePairingId))
+            dailyPrayerPartners = allPairings
+                .filter((row) => row.learner_id && (row.status === 'active' || row.status === 'pending'))
+                .map((row) => {
+                    const learner = row.learner as unknown as { id: string; full_name: string | null }
+                    return {
+                        pairingId: row.id,
+                        userId: row.learner_id as string,
+                        name: learner?.full_name || 'Learner',
+                    }
+                })
+            if (pairing) {
+                const selectedPairingId = pairing.id
+                dailyPrayerPartners.sort((a, b) => (
+                    a.pairingId === selectedPairingId ? -1 : b.pairingId === selectedPairingId ? 1 : 0
+                ))
+            }
         }
     } else {
         // Learners have one pairing
@@ -67,8 +96,10 @@ export default async function JournalPage({
         id,
         leader_id,
         learner_id,
-        leader:profiles!pairings_leader_id_fkey(full_name),
-        learner:profiles!pairings_learner_id_fkey(full_name)
+        current_week,
+        journey_id,
+        leader:profiles!pairings_leader_id_fkey(id, full_name),
+        learner:profiles!pairings_learner_id_fkey(id, full_name)
       `)
             .eq('learner_id', user.id)
             .in('status', ['active', 'pending'])
@@ -99,6 +130,35 @@ export default async function JournalPage({
 
     const partnerId = isLeader ? pairing.learner_id : pairing.leader_id
     const partnerName = isLeader ? learnerName : leaderName
+
+    if (!isLeader && pairing.leader_id) {
+        const leader = pairing.leader as unknown as { id?: string; full_name: string }
+        dailyPrayerPartners = [{
+            pairingId: pairing.id,
+            userId: pairing.leader_id,
+            name: leader?.full_name || leaderName,
+        }]
+    }
+
+    const currentWeek = pairing.current_week || 1
+    let weekTitle: string | null = null
+    let weekScripture: string | null = null
+    const weeklyQuery = supabase
+        .from('weekly_content')
+        .select('title, scripture_reference, week_number')
+        .eq('week_number', currentWeek)
+        .limit(1)
+    if (pairing.journey_id) weeklyQuery.eq('journey_id', pairing.journey_id)
+    const { data: weekRows } = await weeklyQuery
+    weekTitle = weekRows?.[0]?.title || null
+    weekScripture = weekRows?.[0]?.scripture_reference || null
+
+    const assignmentsQuery = supabase
+        .from('assignments')
+        .select('week_number, title, guided_prayer')
+        .eq('week_number', currentWeek)
+    if (pairing.journey_id) assignmentsQuery.eq('journey_id', pairing.journey_id)
+    const { data: weekAssignments } = await assignmentsQuery
 
     // Fetch OWN journal entries. NOTE: prayer_journal has exactly one row per
     // (user_id, journal_date), and that row can carry ANY of the user's pairing_ids
@@ -320,6 +380,17 @@ export default async function JournalPage({
     // Fetch today's entry for editor (using local date to avoid timezone issues)
     const todayEntry = await getTodayEntry(user.id, localDate)
 
+    const dailyPrayerInput = resolveDailyPrayerInput({
+        journalEntries: (myEntriesData || []).map((entry) => ({
+            prayer_items: entry.prayer_items,
+            god_speaking: entry.god_speaking,
+        })),
+        weekNumber: currentWeek,
+        weekTitle,
+        weekScripture,
+        assignments: weekAssignments || [],
+    })
+
     return (
         <JournalPageClient
             key={pairing.id}
@@ -333,6 +404,8 @@ export default async function JournalPage({
             initialSection={params.section || null}
             currentUserId={user.id}
             currentUserName={profile.full_name || 'You'}
+            dailyPrayerPartners={dailyPrayerPartners}
+            dailyPrayerInput={dailyPrayerInput}
         />
     )
 }

@@ -16,6 +16,7 @@ import {
 import { ensureCompletedMeetingProgress } from '@/lib/meeting-progress'
 import { notifyLeaderOfJourneyComplete } from '@/lib/notifications'
 import { advancePairingWeek, markPairingJourneyCompleted } from '@/lib/pairing-writes'
+import { resolveDailyPrayerInput } from '@/lib/daily-prayer-content'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -447,6 +448,42 @@ export default async function DashboardPage({
     hasJournalEntryToday = (journalEntry?.length ?? 0) > 0
   }
 
+  let recentJournalEntries: { prayer_items: string | null; god_speaking: string | null }[] = []
+  if (pairing) {
+    const { data: recentJournal } = await supabase
+      .from('prayer_journal')
+      .select('prayer_items, god_speaking')
+      .eq('user_id', user.id)
+      .order('journal_date', { ascending: false })
+      .limit(8)
+    recentJournalEntries = recentJournal || []
+  }
+
+  const currentWeekRow = (weeklyContent || []).find((week) => week.week_number === effectiveCurrentWeek)
+  const dailyPrayerInput = resolveDailyPrayerInput({
+    journalEntries: recentJournalEntries,
+    weekNumber: effectiveCurrentWeek,
+    weekTitle: currentWeekRow?.title,
+    weekScripture: currentWeekRow?.scripture_reference,
+    assignments: assignments || [],
+  })
+  const dailyPrayerPartners = profile.role === 'leader'
+    ? [
+        ...(partner
+          ? [{ pairingId: pairing.id, userId: partner.id, name: partner.full_name || 'Learner' }]
+          : []),
+        ...allLearners
+          .filter((item) => item.learner.id !== partner?.id)
+          .map((item) => ({
+            pairingId: item.pairing.id,
+            userId: item.learner.id,
+            name: item.learner.full_name || 'Learner',
+          })),
+      ]
+    : partner
+      ? [{ pairingId: pairing.id, userId: partner.id, name: partner.full_name || 'your leader' }]
+      : []
+
   // Check for pending week celebration (learners only)
   let celebrationWeek: number | null = null
   let celebrationWeekTitle: string | null = null
@@ -534,6 +571,8 @@ export default async function DashboardPage({
         expandedAssignmentId={params.assignmentId}
         allLearners={allLearners}
         maxLearners={(profile.subscription_tier as { max_learners?: number })?.max_learners || 1}
+        dailyPrayerPartners={dailyPrayerPartners}
+        dailyPrayerInput={dailyPrayerInput}
       />
     )
   }
@@ -545,6 +584,8 @@ export default async function DashboardPage({
       hasJournalEntryToday={hasJournalEntryToday}
       celebrationWeek={celebrationWeek}
       celebrationWeekTitle={celebrationWeekTitle}
+      dailyPrayerPartners={dailyPrayerPartners}
+      dailyPrayerInput={dailyPrayerInput}
     />
   )
 }

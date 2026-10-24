@@ -27,7 +27,8 @@ import { QuickChat } from './quick-chat'
 import { formatLocalDateKey } from '@/lib/local-datetime'
 import { resolveBibleTranslation, scriptureToUrl } from '@/lib/bible-utils'
 import { ScriptureText } from '@/components/bible/scripture-text'
-import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
+import { DailyPopups } from '@/components/journal/daily-popups'
+import type { DailyPrayerPartner, DailyPrayerInput } from '@/lib/daily-prayer-content'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { leaderDashboardSteps } from '@/lib/tour-steps'
 import { LearnerSwitcher } from './learner-switcher'
@@ -59,6 +60,8 @@ interface LeaderDashboardProps {
   expandedAssignmentId?: string | null
   allLearners?: { pairing: Pairing; learner: Profile }[]
   maxLearners?: number
+  dailyPrayerPartners?: DailyPrayerPartner[]
+  dailyPrayerInput?: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
 }
 
 export function LeaderDashboard({
@@ -78,6 +81,8 @@ export function LeaderDashboard({
   expandedAssignmentId,
   allLearners = [],
   maxLearners = 1,
+  dailyPrayerPartners = [],
+  dailyPrayerInput,
 }: LeaderDashboardProps) {
   const currentPairingId = pairing.id
   const currentWeekContent = weeklyContent.find(w => w.week_number === currentWeek)
@@ -488,11 +493,19 @@ export function LeaderDashboard({
         </div>
       </div>
 
-      {/* Daily Journal Popup */}
-      <DailyJournalPopup
+      <DailyPopups
         pairingId={pairing.id}
-        hasEntryToday={hasJournalEntryToday}
-        leaderName={partner?.full_name || 'your partner'}
+        hasJournalEntryToday={hasJournalEntryToday}
+        journalShareName={partner?.full_name || 'your partner'}
+        viewerRole="leader"
+        partners={dailyPrayerPartners.length > 0
+          ? dailyPrayerPartners
+          : allLearners.map((item) => ({
+              pairingId: item.pairing.id,
+              userId: item.learner.id,
+              name: item.learner.full_name || 'Learner',
+            }))}
+        prayerInput={dailyPrayerInput || {}}
       />
 
       {/* Onboarding Tour */}
