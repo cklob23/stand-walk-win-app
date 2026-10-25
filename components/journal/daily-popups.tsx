@@ -10,8 +10,10 @@ import {
     prayerCloseTransition,
     releaseDailyCadence,
 } from '@/lib/daily-prayer-cadence'
+import { ensureTodaysPrayer } from '@/lib/daily-prayer-actions'
 import {
     buildDailyPrayer,
+    type DailyPrayerContent,
     type DailyPrayerInput,
     type DailyPrayerPartner,
 } from '@/lib/daily-prayer-content'
@@ -53,15 +55,51 @@ export function DailyPopups({
         deviceDate,
     })
 
-    const content = useMemo(() => {
-        const dateKey = deviceDate || new Date().toLocaleDateString('en-CA')
-        const currentPartner = partners.find((partner) => partner.pairingId === pairingId) || partners[0]
-        return buildDailyPrayer({
+    const dateKey = deviceDate || new Date().toLocaleDateString('en-CA')
+    const currentPartner = partners.find((partner) => partner.pairingId === pairingId) || partners[0]
+    const prayerInputKey = [
+        prayerInput.prayerItems,
+        prayerInput.reflection,
+        prayerInput.weekNumber,
+        prayerInput.weekTitle,
+        prayerInput.weekScripture,
+        prayerInput.guidedPrayer,
+        prayerInput.assignmentTitle,
+    ].join('\0')
+    const catalogContent = useMemo(
+        () => buildDailyPrayer({
             ...prayerInput,
             dateKey,
             partnerName: currentPartner?.name || null,
+        }),
+        // prayerInputKey stands in for the journal/week fields used above.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [currentPartner?.name, dateKey, prayerInputKey],
+    )
+    const [content, setContent] = useState<DailyPrayerContent>(catalogContent)
+
+    useEffect(() => {
+        setContent(catalogContent)
+    }, [catalogContent])
+
+    useEffect(() => {
+        let cancelled = false
+        ensureTodaysPrayer({
+            pairingId,
+            partnerUserId: currentPartner?.userId || null,
+            partnerName: currentPartner?.name || null,
+            localDate: dateKey,
+            timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+            prayerInput,
+        }).then((result) => {
+            if (!cancelled && result && 'content' in result) setContent(result.content)
+        }).catch(() => {
+            // Keep the catalog prayer. The popup must still open.
         })
-    }, [deviceDate, pairingId, partners, prayerInput])
+        return () => {
+            cancelled = true
+        }
+    }, [currentPartner?.name, currentPartner?.userId, dateKey, pairingId, prayerInputKey])
 
     useEffect(() => {
         if (!deviceDate) return
@@ -127,6 +165,7 @@ export function DailyPopups({
                 viewerRole={viewerRole}
                 partners={partners}
                 content={content}
+                prayerInput={prayerInput}
             />
             <DailyJournalPopup
                 pairingId={pairingId}

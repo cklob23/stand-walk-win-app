@@ -23,6 +23,7 @@ import {
     SCRIPTURE_LINE_SEPARATOR,
     sendPrayerButtonLabel,
     type DailyPrayerContent,
+    type DailyPrayerInput,
     type DailyPrayerPartner,
 } from '@/lib/daily-prayer-content'
 import { cn } from '@/lib/utils'
@@ -33,6 +34,7 @@ export interface DailyPrayerPopupProps {
     viewerRole: 'leader' | 'learner'
     partners: DailyPrayerPartner[]
     content: DailyPrayerContent
+    prayerInput?: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
     /** Skip storage writes and network sends (dev preview / tests). */
     preview?: boolean
     initiallyHearted?: boolean
@@ -45,6 +47,7 @@ export function DailyPrayerPopup({
     viewerRole,
     partners,
     content,
+    prayerInput,
     preview = false,
     initiallyHearted = false,
     initiallyConfirming = false,
@@ -116,6 +119,7 @@ export function DailyPrayerPopup({
             scriptureRef: content.scriptureRef,
             localDate: new Date().toLocaleDateString('en-CA'),
             timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+            prayerInput,
         })
         setSending(false)
         const feedback = prayerSendFeedback(result, confirmName)
