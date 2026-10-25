@@ -125,6 +125,10 @@ export async function loadAnyDailyPrayerForDate(
     return data[0] || null
 }
 
+export function isAiDailyPrayerRow(row: DailyPrayerRow | null | undefined): row is DailyPrayerRow {
+    return !!row && row.generated_by === 'ai'
+}
+
 export async function saveDailyPrayerRow(
     supabase: SupabaseLike,
     row: DailyPrayerRow,

@@ -9,17 +9,32 @@ import {
 } from './daily-prayer-content.ts'
 import {
     buildDailyPrayerPrompt,
+    capPromptField,
     dailyPrayerCacheKey,
+    DAILY_PRAYER_MAX_OUTPUT_TOKENS,
     finalizeGeneratedPrayer,
     isRepeatedPrayer,
+    MAX_PROMPT_FIELD_CHARS,
     prayerTextKey,
     resolveTodaysPrayer,
+    sanitizeAiPrayerBody,
+    withHeavenlyFatherOpening,
 } from './daily-prayer-generate.ts'
+import {
+    claimDailyPrayerAiAttempt,
+    claimDailyPrayerAiUserSlot,
+    pickSendPrayerContent,
+    planEnsureDailyPrayer,
+    resetDailyPrayerLimitsForTests,
+    sanitizedPartnerId,
+} from './daily-prayer-limits.ts'
 import {
     classifyDailyPrayerStoreError,
     dailyPrayerContentToRow,
+    isAiDailyPrayerRow,
     rowToDailyPrayerContent,
 } from './daily-prayer-store.ts'
+import { stripEmDashes } from './daily-prayer-content.ts'
 
 const JOURNAL = {
     prayerItems: '1. peace at work',
@@ -190,5 +205,115 @@ describe('daily prayer AI generation', () => {
             'unavailable',
         )
         assert.equal(prayerTextKey('Heavenly Father, peace!'), 'heavenly father peace')
+        assert.equal(isAiDailyPrayerRow({ generated_by: 'catalog' } as never), false)
+        assert.equal(DAILY_PRAYER_MAX_OUTPUT_TOKENS, 300)
+    })
+
+    it('caps journal and week fields before they reach the prompt', () => {
+        const longJournal = `1. ${'peace at work and more '.repeat(40)}`
+        assert.ok(longJournal.length > MAX_PROMPT_FIELD_CHARS)
+        assert.ok(capPromptField(longJournal).length <= MAX_PROMPT_FIELD_CHARS)
+        const prompt = buildDailyPrayerPrompt({
+            prayerInput: { dateKey: '2026-10-25', prayerItems: longJournal },
+            recentBodies: [],
+        })
+        assert.equal(prompt.includes(longJournal), false)
+        assert.ok(prompt.length < longJournal.length + 2000)
+    })
+
+    it('strips ellipses, fixes dash spacing, and drops a redundant Lord', () => {
+        assert.equal(
+            sanitizeAiPrayerBody('Guide me\u2014 today... and keep me\u2026 close.'),
+            'Guide me, today and keep me close.',
+        )
+        assert.equal(stripEmDashes('guide me \u2014 today'), 'guide me, today')
+        assert.equal(
+            withHeavenlyFatherOpening('Lord, give me peace at work today.'),
+            'Heavenly Father, give me peace at work today.',
+        )
+        assert.equal(
+            withHeavenlyFatherOpening('Heavenly Father, Lord, give me peace at work today.'),
+            'Heavenly Father, give me peace at work today.',
+        )
+        const content = finalizeGeneratedPrayer(
+            {
+                body: 'Lord, give me peace at work... and guide me \u2014 today. Keep my heart soft. In Jesus\' name I pray, Amen.',
+                scriptureRef: 'Psalm 143:8',
+            },
+            { dateKey: '2026-10-25', prayerItems: '1. something unique' },
+        )
+        assert.ok(content)
+        assert.match(content.body, /^Heavenly Father/)
+        assert.equal(content.body.includes('Heavenly Father, Lord'), false)
+        assert.equal(content.body.includes('...'), false)
+        assert.equal(content.body.includes(' , '), false)
+    })
+})
+
+describe('daily prayer AI limits and send pick', () => {
+    it('claims one AI attempt per user, pairing, and day', () => {
+        resetDailyPrayerLimitsForTests()
+        assert.equal(claimDailyPrayerAiAttempt('u1', 'p1', '2026-10-25'), true)
+        assert.equal(claimDailyPrayerAiAttempt('u1', 'p1', '2026-10-25'), false)
+        assert.equal(claimDailyPrayerAiAttempt('u1', 'p1', '2026-10-26'), true)
+        assert.equal(claimDailyPrayerAiAttempt('u1', 'p2', '2026-10-25'), true)
+    })
+
+    it('rate limits a second AI call from the same user', () => {
+        resetDailyPrayerLimitsForTests()
+        assert.equal(claimDailyPrayerAiUserSlot('u1', 1_000), true)
+        assert.equal(claimDailyPrayerAiUserSlot('u1', 1_500), false)
+        assert.equal(claimDailyPrayerAiUserSlot('u1', 10_000), true)
+        assert.equal(claimDailyPrayerAiUserSlot('u2', 10_100), true)
+    })
+
+    it('plans cache, generate, or catalog without looping', () => {
+        assert.equal(planEnsureDailyPrayer({
+            aiCached: true,
+            allowGenerate: true,
+            claimedAttempt: true,
+            rateLimited: false,
+        }), 'cache')
+        assert.equal(planEnsureDailyPrayer({
+            aiCached: false,
+            allowGenerate: true,
+            claimedAttempt: true,
+            rateLimited: false,
+        }), 'generate')
+        assert.equal(planEnsureDailyPrayer({
+            aiCached: false,
+            allowGenerate: true,
+            claimedAttempt: false,
+            rateLimited: false,
+        }), 'catalog')
+        assert.equal(planEnsureDailyPrayer({
+            aiCached: false,
+            allowGenerate: false,
+            claimedAttempt: true,
+            rateLimited: false,
+        }), 'catalog')
+    })
+
+    it('validates partner_id against the pairing', () => {
+        const pairing = { leader_id: 'leader-1', learner_id: 'beckett' }
+        assert.equal(sanitizedPartnerId(pairing, 'leader-1', 'beckett'), 'beckett')
+        assert.equal(sanitizedPartnerId(pairing, 'leader-1', 'stranger'), 'beckett')
+        assert.equal(sanitizedPartnerId(pairing, 'beckett', 'leader-1'), 'leader-1')
+        assert.equal(sanitizedPartnerId(pairing, 'other', 'beckett'), null)
+    })
+
+    it('sends the cached row or the displayed text, never a fresh AI draft', () => {
+        const cached = {
+            body: 'Heavenly Father, cached prayer. In Jesus\' name I pray, Amen.',
+            scriptureText: 'Fear not, for I am with you.',
+            scriptureRef: 'Isaiah 41:10',
+        }
+        const displayed = {
+            body: 'Heavenly Father, on screen. In Jesus\' name I pray, Amen.',
+            scriptureText: 'Let me hear in the morning.',
+            scriptureRef: 'Psalm 143:8',
+        }
+        assert.deepEqual(pickSendPrayerContent({ cached, displayed }), cached)
+        assert.deepEqual(pickSendPrayerContent({ cached: null, displayed }), displayed)
     })
 })

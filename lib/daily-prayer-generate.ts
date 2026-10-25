@@ -21,7 +21,9 @@ import {
 
 export const DAILY_PRAYER_AI_MODEL = 'openai/gpt-4o-mini'
 export const DAILY_PRAYER_AI_TIMEOUT_MS = 8000
+export const DAILY_PRAYER_MAX_OUTPUT_TOKENS = 300
 export const DAILY_PRAYER_RECENT_LIMIT = 14
+export const MAX_PROMPT_FIELD_CHARS = 280
 
 export type DailyPrayerOrigin = 'cache' | 'ai' | 'catalog'
 export type DailyPrayerGeneratedBy = 'ai' | 'catalog'
@@ -47,6 +49,52 @@ Rules:
 - Do not use em dashes, ellipses, or the words petition / NIV
 - Pick scriptureRef from the allowed ESV list only. Do not rewrite the verse.`
 
+export function capPromptField(
+    text: string | null | undefined,
+    max = MAX_PROMPT_FIELD_CHARS,
+): string {
+    const cleaned = (text || '').replace(/\s+/g, ' ').trim()
+    if (cleaned.length <= max) return cleaned
+    const sliced = cleaned.slice(0, max)
+    const atSpace = sliced.lastIndexOf(' ')
+    return (atSpace > 40 ? sliced.slice(0, atSpace) : sliced).trim()
+}
+
+export function sanitizeDailyPrayerInput(input: DailyPrayerInput): DailyPrayerInput {
+    return {
+        ...input,
+        prayerItems: input.prayerItems == null ? input.prayerItems : capPromptField(input.prayerItems),
+        reflection: input.reflection == null ? input.reflection : capPromptField(input.reflection),
+        weekTitle: input.weekTitle == null ? input.weekTitle : capPromptField(input.weekTitle, 80),
+        weekScripture: input.weekScripture == null ? input.weekScripture : capPromptField(input.weekScripture, 160),
+        guidedPrayer: input.guidedPrayer == null ? input.guidedPrayer : capPromptField(input.guidedPrayer),
+        assignmentTitle: input.assignmentTitle == null ? input.assignmentTitle : capPromptField(input.assignmentTitle, 80),
+    }
+}
+
+/** Remove ellipses and tidy comma spacing after a dash replacement. */
+export function sanitizeAiPrayerBody(text: string): string {
+    return text
+        .replace(/\.\.\.|\u2026/g, '')
+        .replace(/[\u2014\u2013]/g, ',')
+        .replace(/\s+,/g, ',')
+        .replace(/,(?=\S)/g, ', ')
+        .replace(/\s+/g, ' ')
+        .trim()
+}
+
+/** Never emit "Heavenly Father, Lord, ...". */
+export function withHeavenlyFatherOpening(text: string): string {
+    const cleaned = sanitizeAiPrayerBody(text)
+    if (!cleaned) return ''
+    const withoutLord = cleaned
+        .replace(/^Heavenly Father,?\s+(?:O\s+)?Lord,?\s+/i, 'Heavenly Father, ')
+        .replace(/^(?:O\s+)?Lord,?\s+/i, '')
+        .replace(/^[,.\s]+/, '')
+    if (/^Heavenly Father/i.test(withoutLord)) return withoutLord
+    return `Heavenly Father, ${withoutLord}`
+}
+
 export function prayerTextKey(text: string): string {
     return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
@@ -65,12 +113,12 @@ export function isRepeatedPrayer(body: string, recentBodies: string[]): boolean 
 }
 
 export function buildDailyPrayerPrompt(input: DailyPrayerGenerateRequest): string {
-    const { prayerInput, recentBodies } = input
+    const prayerInput = sanitizeDailyPrayerInput(input.prayerInput)
     const verses = uniqueDailyPrayerVerses()
         .map((verse) => `- ${verse.ref}: ${verse.text}`)
         .join('\n')
-    const recent = recentBodies.length
-        ? recentBodies.map((body, index) => `${index + 1}. ${body}`).join('\n')
+    const recent = input.recentBodies.length
+        ? input.recentBodies.map((body, index) => `${index + 1}. ${capPromptField(body)}`).join('\n')
         : '(none)'
     const topic = prayerInput.prayerItems?.trim() || prayerInput.reflection?.trim() || ''
     const week = prayerInput.weekNumber && prayerInput.weekTitle
@@ -98,12 +146,7 @@ export function finalizeGeneratedPrayer(
     recentBodies: string[] = [],
 ): DailyPrayerContent | null {
     const fallback = buildDailyPrayer(prayerInput)
-    const rawBody = (draft.body || '').replace(/[\u2014\u2013]/g, ',').trim()
-    const withOpening = /^Heavenly Father/i.test(rawBody)
-        ? rawBody
-        : rawBody
-            ? `Heavenly Father, ${rawBody.replace(/^[,.\s]+/, '')}`
-            : ''
+    const withOpening = withHeavenlyFatherOpening(draft.body || '')
     let body = clampPrayerBody(withOpening, undefined, MAX_PRAYER_WORDS, PARTNER_MENTION_SENTENCE)
     if (!body) return null
     if (isRepeatedPrayer(body, [...recentBodies, fallback.body])) return null

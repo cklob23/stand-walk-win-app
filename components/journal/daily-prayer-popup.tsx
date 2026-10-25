@@ -34,6 +34,7 @@ export interface DailyPrayerPopupProps {
     viewerRole: 'leader' | 'learner'
     partners: DailyPrayerPartner[]
     content: DailyPrayerContent
+    prayerReady?: boolean
     prayerInput?: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
     /** Skip storage writes and network sends (dev preview / tests). */
     preview?: boolean
@@ -47,6 +48,7 @@ export function DailyPrayerPopup({
     viewerRole,
     partners,
     content,
+    prayerReady = true,
     prayerInput,
     preview = false,
     initiallyHearted = false,
@@ -166,7 +168,7 @@ export function DailyPrayerPopup({
                                 <Button variant="ghost" onClick={() => setConfirming(false)} disabled={sending}>
                                     Cancel
                                 </Button>
-                                <Button className="ml-auto" onClick={handleConfirmSend} disabled={sending || !selectedPartner}>
+                                <Button className="ml-auto" onClick={handleConfirmSend} disabled={sending || !selectedPartner || !prayerReady}>
                                     {sending && <Loader2 className="h-4 w-4 animate-spin" />}
                                     <Send className="h-4 w-4" />
                                     Send
@@ -195,7 +197,7 @@ export function DailyPrayerPopup({
                                 <Button
                                     className="ml-auto w-full sm:w-auto"
                                     onClick={handleSendClick}
-                                    disabled={!selectedPartner}
+                                    disabled={!selectedPartner || !prayerReady}
                                 >
                                     <Send className="h-4 w-4" />
                                     {sendLabel}
@@ -206,14 +208,14 @@ export function DailyPrayerPopup({
                 )}
             >
                 <span className="inline-flex w-fit items-center rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground">
-                    {content.contextTopic ? (
-                        <>
-                            {content.contextLabel} ·{' '}
-                            <strong className="ml-1 font-medium text-foreground">{content.contextTopic}</strong>
-                        </>
-                    ) : (
-                        chip
-                    )}
+                    {prayerReady
+                        ? (content.contextTopic ? (
+                            <>
+                                {content.contextLabel} ·{' '}
+                                <strong className="ml-1 font-medium text-foreground">{content.contextTopic}</strong>
+                            </>
+                        ) : chip)
+                        : 'Today\'s prayer'}
                 </span>
 
                 <div className="rounded-xl border border-pink-200/70 dark:border-pink-900/40 bg-gradient-to-b from-pink-50/80 dark:from-pink-950/20 to-card p-4 space-y-3">
@@ -226,22 +228,26 @@ export function DailyPrayerPopup({
                         </p>
                     </div>
                     <p className="font-serif text-[15px] sm:text-base leading-8 text-foreground">
-                        {displayBody}
+                        {prayerReady ? displayBody : 'Preparing today\'s prayer…'}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">Written for you today</p>
+                    <p className="text-[11px] text-muted-foreground">
+                        {prayerReady ? 'Written for you today' : 'One moment'}
+                    </p>
                 </div>
 
-                <p className="font-serif italic text-[13px] leading-relaxed text-muted-foreground px-0.5">
-                    {content.scriptureText ? (
-                        <>
-                            {content.scriptureText}
-                            {SCRIPTURE_LINE_SEPARATOR}
-                        </>
-                    ) : null}
-                    <cite className="not-italic font-sans font-medium text-xs">
-                        {content.scriptureRef}
-                    </cite>
-                </p>
+                {prayerReady ? (
+                    <p className="font-serif italic text-[13px] leading-relaxed text-muted-foreground px-0.5">
+                        {content.scriptureText ? (
+                            <>
+                                {content.scriptureText}
+                                {SCRIPTURE_LINE_SEPARATOR}
+                            </>
+                        ) : null}
+                        <cite className="not-italic font-sans font-medium text-xs">
+                            {content.scriptureRef}
+                        </cite>
+                    </p>
+                ) : null}
 
                 {confirming && (
                     <div className="rounded-[10px] border border-border bg-muted/50 p-3.5 space-y-3">

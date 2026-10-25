@@ -174,7 +174,7 @@ export function sendPrayerButtonLabel(partnerName: string | null | undefined): s
 }
 
 export function stripEmDashes(text: string): string {
-    return text.replace(/[\u2014\u2013]/g, ',')
+    return text.replace(/[\u2014\u2013]/g, ',').replace(/\s+,/g, ',')
 }
 
 export function extractJournalTopic(
