@@ -13,10 +13,21 @@ import {
 import {
     DAILY_PRAYER_RECENT_LIMIT,
     resolveTodaysPrayer,
+    sanitizeDailyPrayerInput,
     type DailyPrayerOrigin,
 } from '@/lib/daily-prayer-generate'
 import {
+    claimDailyPrayerAiAttempt,
+    claimDailyPrayerAiUserSlot,
+    hasDailyPrayerAiAttempt,
+    loadMemoryDailyPrayer,
+    pickSendPrayerContent,
+    rememberMemoryDailyPrayer,
+    sanitizedPartnerId,
+} from '@/lib/daily-prayer-limits'
+import {
     dailyPrayerContentToRow,
+    isAiDailyPrayerRow,
     loadAnyDailyPrayerForDate,
     loadDailyPrayerRow,
     loadRecentDailyPrayerBodies,
@@ -50,6 +61,7 @@ export async function ensureTodaysPrayer(input: {
     localDate?: string
     timezoneOffsetMinutes?: number
     prayerInput?: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
+    allowGenerate?: boolean
 }): Promise<EnsureTodaysPrayerResult | { error: string }> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -62,9 +74,7 @@ export async function ensureTodaysPrayer(input: {
         localDate: input.localDate,
         timezoneOffsetMinutes: input.timezoneOffsetMinutes,
     })
-    const partnerId = input.partnerUserId
-        || (pairing.leader_id === user.id ? pairing.learner_id : pairing.leader_id)
-        || null
+    const partnerId = sanitizedPartnerId(pairing, user.id, input.partnerUserId)
 
     return loadOrCreateTodaysPrayer({
         supabase,
@@ -73,8 +83,11 @@ export async function ensureTodaysPrayer(input: {
         partnerId,
         partnerName: input.partnerName || null,
         localDate,
-        prayerInput: input.prayerInput || {},
-        preferSameDay: false,
+        prayerInput: sanitizeDailyPrayerInput({
+            ...(input.prayerInput || {}),
+            dateKey: localDate,
+        }),
+        allowGenerate: input.allowGenerate !== false,
     })
 }
 
@@ -139,21 +152,18 @@ export async function sendDailyPrayerToPartner(input: {
     const senderName = profiles?.find((row) => row.id === user.id)?.full_name || 'Your partner'
     const recipientName = profiles?.find((row) => row.id === input.partnerUserId)?.full_name || null
 
-    const resolved = await loadOrCreateTodaysPrayer({
-        supabase,
-        userId: user.id,
-        pairingId: pairing.id,
-        partnerId: input.partnerUserId,
-        partnerName: recipientName,
-        localDate,
-        prayerInput: input.prayerInput || {},
-        preferSameDay: true,
+    const prayer = pickSendPrayerContent({
+        cached: await loadCachedSendPrayer(supabase, {
+            userId: user.id,
+            pairingId: pairing.id,
+            localDate,
+        }),
+        displayed: {
+            body: input.prayerBody,
+            scriptureText: input.scriptureText,
+            scriptureRef: input.scriptureRef,
+        },
     })
-    const prayer = 'content' in resolved ? resolved.content : {
-        body: input.prayerBody,
-        scriptureText: input.scriptureText,
-        scriptureRef: input.scriptureRef,
-    }
 
     const content = formatPrayerMessage({
         body: retargetPartnerMention(prayer.body, recipientName),
@@ -250,6 +260,22 @@ async function loadViewerPairing(
     return pairing
 }
 
+async function loadCachedSendPrayer(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    input: { userId: string; pairingId: string; localDate: string },
+): Promise<DailyPrayerContent | null> {
+    const memory = loadMemoryDailyPrayer(input.userId, input.pairingId, input.localDate)
+    if (memory) return memory
+    const pairingRow = await loadDailyPrayerRow(supabase, input)
+    if (isAiDailyPrayerRow(pairingRow)) return rowToDailyPrayerContent(pairingRow)
+    const sameDay = await loadAnyDailyPrayerForDate(supabase, {
+        userId: input.userId,
+        localDate: input.localDate,
+    })
+    if (isAiDailyPrayerRow(sameDay)) return rowToDailyPrayerContent(sameDay)
+    return null
+}
+
 async function loadOrCreateTodaysPrayer(input: {
     supabase: Awaited<ReturnType<typeof createClient>>
     userId: string
@@ -258,26 +284,30 @@ async function loadOrCreateTodaysPrayer(input: {
     partnerName?: string | null
     localDate: string
     prayerInput: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
-    preferSameDay: boolean
+    allowGenerate: boolean
 }): Promise<EnsureTodaysPrayerResult> {
     const pairingRow = await loadDailyPrayerRow(input.supabase, {
         userId: input.userId,
         pairingId: input.pairingId,
         localDate: input.localDate,
     })
-    const sameDayRow = input.preferSameDay && !pairingRow
-        ? await loadAnyDailyPrayerForDate(input.supabase, {
-            userId: input.userId,
-            localDate: input.localDate,
-        })
-        : null
-    const cached = pairingRow || sameDayRow
-    const recentBodies = cached
-        ? []
-        : await loadRecentDailyPrayerBodies(input.supabase, {
+    const memory = loadMemoryDailyPrayer(input.userId, input.pairingId, input.localDate)
+    const aiCached = memory || (isAiDailyPrayerRow(pairingRow) ? rowToDailyPrayerContent(pairingRow) : null)
+
+    if (aiCached) {
+        return { content: aiCached, origin: memory && !isAiDailyPrayerRow(pairingRow) ? 'ai' : 'cache' }
+    }
+
+    const claimed = input.allowGenerate
+        && !hasDailyPrayerAiAttempt(input.userId, input.pairingId, input.localDate)
+        && claimDailyPrayerAiUserSlot(input.userId)
+        && claimDailyPrayerAiAttempt(input.userId, input.pairingId, input.localDate)
+    const recentBodies = claimed
+        ? await loadRecentDailyPrayerBodies(input.supabase, {
             userId: input.userId,
             limit: DAILY_PRAYER_RECENT_LIMIT,
         })
+        : []
 
     const resolved = await resolveTodaysPrayer({
         prayerInput: {
@@ -285,12 +315,12 @@ async function loadOrCreateTodaysPrayer(input: {
             dateKey: input.localDate,
             partnerName: input.partnerName,
         },
-        cached: cached ? rowToDailyPrayerContent(cached) : null,
         recentBodies,
-        generate: cached ? undefined : generateDailyPrayerDraft,
+        generate: claimed ? generateDailyPrayerDraft : undefined,
     })
 
-    if (!cached) {
+    if (resolved.origin === 'ai') {
+        rememberMemoryDailyPrayer(input.userId, input.pairingId, input.localDate, resolved.content)
         const saved = await saveDailyPrayerRow(
             input.supabase,
             dailyPrayerContentToRow({
@@ -299,7 +329,7 @@ async function loadOrCreateTodaysPrayer(input: {
                 partnerId: input.partnerId,
                 localDate: input.localDate,
                 content: resolved.content,
-                generatedBy: resolved.origin === 'ai' ? 'ai' : 'catalog',
+                generatedBy: 'ai',
             }),
         )
         if (saved === 'duplicate') {
@@ -308,10 +338,11 @@ async function loadOrCreateTodaysPrayer(input: {
                 pairingId: input.pairingId,
                 localDate: input.localDate,
             })
-            if (winner) {
+            if (isAiDailyPrayerRow(winner)) {
                 return { content: rowToDailyPrayerContent(winner), origin: 'cache' }
             }
         }
+        return resolved
     }
 
     return resolved
