@@ -1,8 +1,7 @@
 /**
- * Compose Today's prayer from existing journal / week / encouragement sources.
- * No new AI dependency: reuses guided-prayer wording when it is already short,
- * otherwise fills a short user-focused template. Partner is mentioned only
- * occasionally (about 1 in 5 or fewer) and only when it fits the topic.
+ * Compose Today's prayer from journal / week / encouragement sources.
+ * The catalog here is the fallback when AI generation is unavailable.
+ * Partner is mentioned only occasionally (about 1 in 5 or fewer).
  */
 
 export type DailyPrayerSource = 'journal' | 'week' | 'encouragement'
@@ -102,6 +101,19 @@ export function listDailyPrayerVerses(): { text: string; ref: string }[] {
         })),
         ...Object.values(WEEK_SCRIPTURES),
     ]
+}
+
+/** Deduped ESV catalog for the daily-prayer prompt. */
+export function uniqueDailyPrayerVerses(): { text: string; ref: string }[] {
+    const seen = new Set<string>()
+    const verses: { text: string; ref: string }[] = []
+    for (const verse of listDailyPrayerVerses()) {
+        const key = verse.ref.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        verses.push(verse)
+    }
+    return verses
 }
 
 function normalizeVerseRef(ref: string): string {

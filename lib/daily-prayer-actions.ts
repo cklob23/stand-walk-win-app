@@ -3,7 +3,26 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { notifyNewMessage } from '@/lib/notifications'
-import { formatPrayerMessage, retargetPartnerMention } from '@/lib/daily-prayer-content'
+import { generateDailyPrayerDraft } from '@/lib/daily-prayer-ai'
+import {
+    formatPrayerMessage,
+    retargetPartnerMention,
+    type DailyPrayerContent,
+    type DailyPrayerInput,
+} from '@/lib/daily-prayer-content'
+import {
+    DAILY_PRAYER_RECENT_LIMIT,
+    resolveTodaysPrayer,
+    type DailyPrayerOrigin,
+} from '@/lib/daily-prayer-generate'
+import {
+    dailyPrayerContentToRow,
+    loadAnyDailyPrayerForDate,
+    loadDailyPrayerRow,
+    loadRecentDailyPrayerBodies,
+    rowToDailyPrayerContent,
+    saveDailyPrayerRow,
+} from '@/lib/daily-prayer-store'
 import {
     alreadySentDailyPrayerToday,
     classifyPrayerSendWriteError,
@@ -19,6 +38,46 @@ export type SendDailyPrayerResult =
     | { alreadySent: true }
     | { error: string }
 
+export type EnsureTodaysPrayerResult = {
+    content: DailyPrayerContent
+    origin: DailyPrayerOrigin
+}
+
+export async function ensureTodaysPrayer(input: {
+    pairingId: string
+    partnerUserId?: string | null
+    partnerName?: string | null
+    localDate?: string
+    timezoneOffsetMinutes?: number
+    prayerInput?: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
+}): Promise<EnsureTodaysPrayerResult | { error: string }> {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Not authenticated' }
+
+    const pairing = await loadViewerPairing(supabase, user.id, input.pairingId)
+    if (!pairing) return { error: 'Pairing not found' }
+
+    const { localDate } = resolveClientLocalDate({
+        localDate: input.localDate,
+        timezoneOffsetMinutes: input.timezoneOffsetMinutes,
+    })
+    const partnerId = input.partnerUserId
+        || (pairing.leader_id === user.id ? pairing.learner_id : pairing.leader_id)
+        || null
+
+    return loadOrCreateTodaysPrayer({
+        supabase,
+        userId: user.id,
+        pairingId: pairing.id,
+        partnerId,
+        partnerName: input.partnerName || null,
+        localDate,
+        prayerInput: input.prayerInput || {},
+        preferSameDay: false,
+    })
+}
+
 export async function sendDailyPrayerToPartner(input: {
     pairingId: string
     partnerUserId: string
@@ -27,6 +86,7 @@ export async function sendDailyPrayerToPartner(input: {
     scriptureRef: string
     localDate?: string
     timezoneOffsetMinutes?: number
+    prayerInput?: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
 }): Promise<SendDailyPrayerResult> {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -79,10 +139,26 @@ export async function sendDailyPrayerToPartner(input: {
     const senderName = profiles?.find((row) => row.id === user.id)?.full_name || 'Your partner'
     const recipientName = profiles?.find((row) => row.id === input.partnerUserId)?.full_name || null
 
-    const content = formatPrayerMessage({
-        body: retargetPartnerMention(input.prayerBody, recipientName),
+    const resolved = await loadOrCreateTodaysPrayer({
+        supabase,
+        userId: user.id,
+        pairingId: pairing.id,
+        partnerId: input.partnerUserId,
+        partnerName: recipientName,
+        localDate,
+        prayerInput: input.prayerInput || {},
+        preferSameDay: true,
+    })
+    const prayer = 'content' in resolved ? resolved.content : {
+        body: input.prayerBody,
         scriptureText: input.scriptureText,
         scriptureRef: input.scriptureRef,
+    }
+
+    const content = formatPrayerMessage({
+        body: retargetPartnerMention(prayer.body, recipientName),
+        scriptureText: prayer.scriptureText,
+        scriptureRef: prayer.scriptureRef,
     })
 
     const { error } = await supabase.from('messages').insert({
@@ -157,4 +233,86 @@ async function reserveDailyPrayerSend(
     }
 
     return 'fallback-ok'
+}
+
+async function loadViewerPairing(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    userId: string,
+    pairingId: string,
+): Promise<{ id: string; leader_id: string; learner_id: string | null } | null> {
+    const { data: pairing } = await supabase
+        .from('pairings')
+        .select('id, leader_id, learner_id')
+        .eq('id', pairingId)
+        .maybeSingle()
+    if (!pairing) return null
+    if (pairing.leader_id !== userId && pairing.learner_id !== userId) return null
+    return pairing
+}
+
+async function loadOrCreateTodaysPrayer(input: {
+    supabase: Awaited<ReturnType<typeof createClient>>
+    userId: string
+    pairingId: string
+    partnerId?: string | null
+    partnerName?: string | null
+    localDate: string
+    prayerInput: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
+    preferSameDay: boolean
+}): Promise<EnsureTodaysPrayerResult> {
+    const pairingRow = await loadDailyPrayerRow(input.supabase, {
+        userId: input.userId,
+        pairingId: input.pairingId,
+        localDate: input.localDate,
+    })
+    const sameDayRow = input.preferSameDay && !pairingRow
+        ? await loadAnyDailyPrayerForDate(input.supabase, {
+            userId: input.userId,
+            localDate: input.localDate,
+        })
+        : null
+    const cached = pairingRow || sameDayRow
+    const recentBodies = cached
+        ? []
+        : await loadRecentDailyPrayerBodies(input.supabase, {
+            userId: input.userId,
+            limit: DAILY_PRAYER_RECENT_LIMIT,
+        })
+
+    const resolved = await resolveTodaysPrayer({
+        prayerInput: {
+            ...input.prayerInput,
+            dateKey: input.localDate,
+            partnerName: input.partnerName,
+        },
+        cached: cached ? rowToDailyPrayerContent(cached) : null,
+        recentBodies,
+        generate: cached ? undefined : generateDailyPrayerDraft,
+    })
+
+    if (!cached) {
+        const saved = await saveDailyPrayerRow(
+            input.supabase,
+            dailyPrayerContentToRow({
+                userId: input.userId,
+                pairingId: input.pairingId,
+                partnerId: input.partnerId,
+                localDate: input.localDate,
+                content: resolved.content,
+                generatedBy: resolved.origin === 'ai' ? 'ai' : 'catalog',
+            }),
+        )
+        if (saved === 'duplicate') {
+            const winner = await loadDailyPrayerRow(input.supabase, {
+                userId: input.userId,
+                pairingId: input.pairingId,
+                localDate: input.localDate,
+            })
+            if (winner) {
+                return { content: rowToDailyPrayerContent(winner), origin: 'cache' }
+            }
+        }
+    }
+
+    return resolved
 }
