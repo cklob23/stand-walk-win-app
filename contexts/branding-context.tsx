@@ -11,6 +11,25 @@ export interface OrgBranding {
     organizationName: string | null
 }
 
+export function brandingFromOrganization(organization: {
+    name?: string | null
+    branding_logo_url?: string | null
+    branding_church_name?: string | null
+    branding_slogan?: string | null
+    branding_primary_color?: string | null
+    branding_secondary_color?: string | null
+} | null | undefined): OrgBranding | null {
+    if (!organization) return null
+    return {
+        logoUrl: organization.branding_logo_url ?? null,
+        churchName: organization.branding_church_name ?? null,
+        slogan: organization.branding_slogan ?? null,
+        primaryColor: organization.branding_primary_color ?? null,
+        secondaryColor: organization.branding_secondary_color ?? null,
+        organizationName: organization.name ?? null,
+    }
+}
+
 interface BrandingContextType {
     branding: OrgBranding
     isLoading: boolean

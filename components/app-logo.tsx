@@ -3,11 +3,13 @@
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
 import { useBranding } from '@/contexts/branding-context'
+import { getAppTitleParts } from '@/lib/app-title'
 
 interface AppLogoProps {
   className?: string
   iconClassName?: string
   textClassName?: string
+  subtitleClassName?: string
   showText?: boolean
   showSubtitle?: boolean
 }
@@ -16,14 +18,13 @@ export function AppLogo({
   className,
   iconClassName,
   textClassName,
+  subtitleClassName,
   showText = true,
   showSubtitle = false
 }: AppLogoProps) {
   const { branding } = useBranding()
-
-  // Only show custom name if branding_church_name is set, otherwise show "Stand Walk Run"
-  const displayName = branding.churchName || 'Stand Walk Run'
-  const hasCustomName = !!branding.churchName
+  const { title, subtitle } = getAppTitleParts(branding.churchName)
+  const displayName = title
 
   // Handle private blob pathname - convert to API URL if not already a full URL
   const getLogoSrc = (logoPath: string | null) => {
@@ -34,8 +35,8 @@ export function AppLogo({
   const logoUrl = getLogoSrc(branding.logoUrl)
 
   return (
-    <span className={cn("flex items-center gap-2", className)}>
-      <span className={cn("relative overflow-hidden rounded-sm", iconClassName || "h-8 w-8 sm:h-9 sm:w-9")}>
+    <span className={cn("flex items-center gap-2 min-w-0", className)}>
+      <span className={cn("relative overflow-hidden rounded-sm shrink-0", iconClassName || "h-8 w-8 sm:h-9 sm:w-9")}>
         {logoUrl ? (
           <Image
             src={logoUrl}
@@ -54,13 +55,13 @@ export function AppLogo({
         )}
       </span>
       {showText && (
-        <span className="flex flex-col">
-          <span className={cn("font-semibold text-foreground leading-tight", textClassName || "text-sm sm:text-base")}>
+        <span className="flex flex-col min-w-0">
+          <span className={cn("font-semibold text-foreground leading-tight truncate", textClassName || "text-sm sm:text-base")}>
             {displayName}
           </span>
-          {(showSubtitle && hasCustomName) && (
-            <span className="text-xs text-muted-foreground leading-tight">
-              Stand Walk Run
+          {showSubtitle && subtitle && (
+            <span className={cn("text-xs text-muted-foreground leading-tight truncate", subtitleClassName)}>
+              {subtitle}
             </span>
           )}
         </span>
@@ -75,7 +76,7 @@ export function AppLogoStatic({
   iconClassName,
   textClassName,
   showText = true
-}: Omit<AppLogoProps, 'showSubtitle'>) {
+}: Omit<AppLogoProps, 'showSubtitle' | 'subtitleClassName'>) {
   return (
     <span className={cn("flex items-center gap-2", className)}>
       <span className={cn("relative overflow-hidden rounded-sm", iconClassName || "h-8 w-8 sm:h-9 sm:w-9")}>

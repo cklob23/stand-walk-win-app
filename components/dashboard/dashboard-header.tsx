@@ -455,8 +455,8 @@ export function DashboardHeader({ profile, notificationCount, recentNotification
         <div className="mx-auto max-w-7xl px-4">
           <div className="flex h-16 items-center justify-between">
             {/* Logo */}
-            <Link href="/dashboard" className="shrink-0">
-              <AppLogo textClassName="hidden lg:block text-sm lg:text-base" showSubtitle />
+            <Link href="/dashboard" className="min-w-0 shrink">
+              <AppLogo textClassName="text-sm lg:text-base" showSubtitle />
             </Link>
 
             {/* Desktop Navigation */}
