@@ -6,7 +6,8 @@ import { getSelectedPairingId } from '@/lib/selected-pairing'
 import { pickActivePairing } from '@/lib/pairing-resolution'
 import { SyncSelectedPairing } from '@/components/dashboard/sync-selected-pairing'
 import { SyncLocalDate } from '@/components/dashboard/sync-local-date'
-import { BrandingProvider, type OrgBranding } from '@/contexts/branding-context'
+import { BrandingProvider } from '@/contexts/branding-context'
+import { brandingFromOrganization, type OrgBranding } from '@/lib/org-branding'
 import { SplitScreenProvider } from '@/contexts/split-screen-context'
 import { DynamicFavicon } from '@/components/dynamic-favicon'
 import { DashboardContent } from '@/components/dashboard/dashboard-content'
@@ -60,14 +61,7 @@ export default async function DashboardLayout({
       .single()
 
     if (org) {
-      orgBranding = {
-        logoUrl: org.branding_logo_url,
-        churchName: org.branding_church_name,
-        slogan: org.branding_slogan,
-        primaryColor: org.branding_primary_color,
-        secondaryColor: org.branding_secondary_color,
-        organizationName: org.name,
-      }
+      orgBranding = brandingFromOrganization(org)
     }
   }
 

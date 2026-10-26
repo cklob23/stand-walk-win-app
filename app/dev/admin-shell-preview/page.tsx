@@ -45,6 +45,9 @@ function PreviewInner() {
     const { setTheme } = useTheme()
     const params = useSearchParams()
     const view = params.get('view') || 'dashboard'
+    const churchName = params.get('churchName') ?? previewBranding.churchName
+    const organizationName = params.get('orgName') ?? churchName
+    const previewOrg = { id: 'preview-org', name: organizationName }
 
     useEffect(() => {
         setTheme('light')
@@ -107,7 +110,7 @@ function PreviewInner() {
                 <AdminHeader
                     user={mockUser}
                     profile={{ full_name: 'Caleb Klobe', role: 'leader' }}
-                    organization={{ id: 'preview-org', name: '101 Church' }}
+                    organization={previewOrg}
                     isMasterAdmin={false}
                 />
                 <div className="flex">
@@ -190,7 +193,7 @@ function PreviewInner() {
             <AdminHeader
                 user={mockUser}
                 profile={{ full_name: 'Caleb Klobe', role: 'leader' }}
-                organization={{ id: 'preview-org', name: '101 Church' }}
+                organization={previewOrg}
                 isMasterAdmin={false}
             />
             <div className="flex">
@@ -312,12 +315,21 @@ function PreviewInner() {
     )
 }
 
+function PreviewWithBranding() {
+    const params = useSearchParams()
+    const churchName = params.get('churchName') ?? previewBranding.churchName
+    const organizationName = params.get('orgName') ?? churchName
+    return (
+        <BrandingProvider initialBranding={{ ...previewBranding, churchName, organizationName }}>
+            <PreviewInner />
+        </BrandingProvider>
+    )
+}
+
 export default function AdminShellPreviewPage() {
     return (
-        <BrandingProvider initialBranding={previewBranding}>
-            <Suspense fallback={null}>
-                <PreviewInner />
-            </Suspense>
-        </BrandingProvider>
+        <Suspense fallback={null}>
+            <PreviewWithBranding />
+        </Suspense>
     )
 }

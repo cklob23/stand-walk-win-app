@@ -21,4 +21,22 @@ describe('app title parts', () => {
             subtitle: 'Stand Walk Run',
         })
     })
+
+    it('falls back to the organization name when church name is unset', () => {
+        assert.deepEqual(getAppTitleParts(null, '101 Church'), {
+            title: '101 Church',
+            subtitle: 'Stand Walk Run',
+        })
+        assert.deepEqual(getAppTitleParts('   ', '  101 Church  '), {
+            title: '101 Church',
+            subtitle: 'Stand Walk Run',
+        })
+    })
+
+    it('prefers the church name over the organization name', () => {
+        assert.deepEqual(getAppTitleParts('101 Church', 'Stand Walk Run Inc'), {
+            title: '101 Church',
+            subtitle: 'Stand Walk Run',
+        })
+    })
 })
