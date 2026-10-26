@@ -24,6 +24,7 @@ export const DAILY_PRAYER_AI_TIMEOUT_MS = 8000
 export const DAILY_PRAYER_MAX_OUTPUT_TOKENS = 300
 export const DAILY_PRAYER_RECENT_LIMIT = 14
 export const MAX_PROMPT_FIELD_CHARS = 280
+export const DAILY_PRAYER_PREPARING_MS = 20_000
 
 export type DailyPrayerOrigin = 'cache' | 'ai' | 'catalog'
 export type DailyPrayerGeneratedBy = 'ai' | 'catalog'
@@ -72,27 +73,50 @@ export function sanitizeDailyPrayerInput(input: DailyPrayerInput): DailyPrayerIn
     }
 }
 
-/** Remove ellipses and tidy comma spacing after a dash replacement. */
+const ELLIPSIS_RE = /(?:\.\s*){3,}|\.{3,}|\u2026/g
+const OPENING_PHRASE_RE =
+    /^(?:Dear\s+)?(?:Heavenly\s+Father|Father(?:\s+God)?|Lord(?=\s*,))[,:\s]+/i
+
+/** Replace ... / … / . . . with a sentence break or a space. */
+export function replaceAiEllipsis(text: string): string {
+    return text.replace(ELLIPSIS_RE, (match, offset: number, full: string) => {
+        const after = full.slice(offset + match.length).replace(/^\s+/, '')
+        if (/^[A-Z]/.test(after)) return '. '
+        if (/^[A-Za-z]/.test(after)) return ' '
+        return ''
+    })
+}
+
+/** Remove ellipses and tidy punctuation after a dash replacement. */
 export function sanitizeAiPrayerBody(text: string): string {
-    return text
-        .replace(/\.\.\.|\u2026/g, '')
+    return replaceAiEllipsis(text)
         .replace(/[\u2014\u2013]/g, ',')
-        .replace(/\s+,/g, ',')
-        .replace(/,(?=\S)/g, ', ')
+        .replace(/\s+([.,!?;:])/g, '$1')
+        .replace(/,(?=[A-Za-z])/g, ', ')
         .replace(/\s+/g, ' ')
         .trim()
 }
 
-/** Never emit "Heavenly Father, Lord, ...". */
+/**
+ * One Heavenly Father opening. Drop a bare "Lord," after it, or turn a bare
+ * opening "Lord," into Heavenly Father. Leave Lord God / Lord Jesus / Lord of.
+ */
 export function withHeavenlyFatherOpening(text: string): string {
     const cleaned = sanitizeAiPrayerBody(text)
     if (!cleaned) return ''
-    const withoutLord = cleaned
-        .replace(/^Heavenly Father,?\s+(?:O\s+)?Lord,?\s+/i, 'Heavenly Father, ')
-        .replace(/^(?:O\s+)?Lord,?\s+/i, '')
-        .replace(/^[,.\s]+/, '')
-    if (/^Heavenly Father/i.test(withoutLord)) return withoutLord
-    return `Heavenly Father, ${withoutLord}`
+    let rest = cleaned
+    let previous = ''
+    while (rest !== previous) {
+        previous = rest
+        rest = rest.replace(OPENING_PHRASE_RE, '')
+    }
+    rest = rest.replace(/^[,.\s]+/, '')
+    if (/^Heavenly Father\b/i.test(rest)) return rest
+    return rest ? `Heavenly Father, ${rest}` : 'Heavenly Father,'
+}
+
+export function isDailyPrayerRendered(content: { body?: string } | null | undefined): boolean {
+    return !!content?.body?.trim()
 }
 
 export function prayerTextKey(text: string): string {

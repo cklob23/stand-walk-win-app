@@ -86,6 +86,29 @@ export function pickSendPrayerContent(input: {
     return input.displayed
 }
 
+/** Server Send: never use browser-supplied body. Memory/AI, then any saved row, then server catalog. */
+export function resolveServerSendPrayer<T extends { body: string }>(input: {
+    memoryOrAi: T | null
+    savedRow: T | null
+    serverCatalog: T
+}): T {
+    if (input.memoryOrAi?.body) return input.memoryOrAi
+    if (input.savedRow?.body) return input.savedRow
+    return input.serverCatalog
+}
+
+/** Unique index hit: use the stored AI row, or keep this session's AI when the row is catalog. */
+export function resolveDuplicateDailyPrayerSave<T extends { body: string }>(input: {
+    existingGeneratedBy: 'ai' | 'catalog' | null
+    existing: T | null
+    generated: T
+}): { content: T; origin: 'cache' | 'ai' } {
+    if (input.existingGeneratedBy === 'ai' && input.existing) {
+        return { content: input.existing, origin: 'cache' }
+    }
+    return { content: input.generated, origin: 'ai' }
+}
+
 export function planEnsureDailyPrayer(input: {
     aiCached: boolean
     allowGenerate: boolean

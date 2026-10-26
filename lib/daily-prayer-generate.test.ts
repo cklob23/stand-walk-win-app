@@ -17,15 +17,17 @@ import {
     MAX_PROMPT_FIELD_CHARS,
     prayerTextKey,
     resolveTodaysPrayer,
+    isDailyPrayerRendered,
     sanitizeAiPrayerBody,
     withHeavenlyFatherOpening,
 } from './daily-prayer-generate.ts'
 import {
     claimDailyPrayerAiAttempt,
     claimDailyPrayerAiUserSlot,
-    pickSendPrayerContent,
     planEnsureDailyPrayer,
     resetDailyPrayerLimitsForTests,
+    resolveDuplicateDailyPrayerSave,
+    resolveServerSendPrayer,
     sanitizedPartnerId,
 } from './daily-prayer-limits.ts'
 import {
@@ -221,32 +223,88 @@ describe('daily prayer AI generation', () => {
         assert.ok(prompt.length < longJournal.length + 2000)
     })
 
-    it('strips ellipses, fixes dash spacing, and drops a redundant Lord', () => {
-        assert.equal(
-            sanitizeAiPrayerBody('Guide me\u2014 today... and keep me\u2026 close.'),
-            'Guide me, today and keep me close.',
-        )
+    it('keeps dash-to-comma tidy in catalog copy', () => {
         assert.equal(stripEmDashes('guide me \u2014 today'), 'guide me, today')
+    })
+})
+
+describe('daily prayer AI sanitizer', () => {
+    it('turns today... Help me into a sentence break', () => {
+        assert.equal(sanitizeAiPrayerBody('today... Help me'), 'today. Help me')
+        assert.equal(sanitizeAiPrayerBody('today… Help me'), 'today. Help me')
+    })
+
+    it('keeps a space when come...and is joined', () => {
+        assert.equal(sanitizeAiPrayerBody('come...and'), 'come and')
+        assert.equal(sanitizeAiPrayerBody('come…and'), 'come and')
+    })
+
+    it('removes a spaced . . . ellipsis', () => {
+        assert.equal(sanitizeAiPrayerBody('wait . . . now'), 'wait now')
+        assert.equal(sanitizeAiPrayerBody('wait. . . now'), 'wait now')
+    })
+
+    it('removes a space before . ! ? ; : and ,', () => {
+        assert.equal(sanitizeAiPrayerBody('today . Help'), 'today. Help')
+        assert.equal(sanitizeAiPrayerBody('today ! Help'), 'today! Help')
+        assert.equal(sanitizeAiPrayerBody('today ? Help'), 'today? Help')
+        assert.equal(sanitizeAiPrayerBody('today ; Help'), 'today; Help')
+        assert.equal(sanitizeAiPrayerBody('today : Help'), 'today: Help')
+        assert.equal(sanitizeAiPrayerBody('guide me , today'), 'guide me, today')
+    })
+
+    it('collapses repeated openings to a single Heavenly Father', () => {
         assert.equal(
-            withHeavenlyFatherOpening('Lord, give me peace at work today.'),
-            'Heavenly Father, give me peace at work today.',
+            withHeavenlyFatherOpening('Heavenly Father, Father God, give me peace.'),
+            'Heavenly Father, give me peace.',
         )
         assert.equal(
-            withHeavenlyFatherOpening('Heavenly Father, Lord, give me peace at work today.'),
-            'Heavenly Father, give me peace at work today.',
+            withHeavenlyFatherOpening('Dear Lord, give me peace.'),
+            'Heavenly Father, give me peace.',
         )
-        const content = finalizeGeneratedPrayer(
-            {
-                body: 'Lord, give me peace at work... and guide me \u2014 today. Keep my heart soft. In Jesus\' name I pray, Amen.',
-                scriptureRef: 'Psalm 143:8',
-            },
-            { dateKey: '2026-10-25', prayerItems: '1. something unique' },
+        assert.equal(
+            withHeavenlyFatherOpening('Father, give me peace.'),
+            'Heavenly Father, give me peace.',
         )
-        assert.ok(content)
-        assert.match(content.body, /^Heavenly Father/)
-        assert.equal(content.body.includes('Heavenly Father, Lord'), false)
-        assert.equal(content.body.includes('...'), false)
-        assert.equal(content.body.includes(' , '), false)
+        assert.equal(
+            withHeavenlyFatherOpening('Dear Heavenly Father, give me peace.'),
+            'Heavenly Father, give me peace.',
+        )
+    })
+
+    it('only drops a bare Lord, and leaves Lord God / Lord Jesus / Lord of', () => {
+        assert.equal(
+            withHeavenlyFatherOpening('Lord, give me peace.'),
+            'Heavenly Father, give me peace.',
+        )
+        assert.equal(
+            withHeavenlyFatherOpening('Heavenly Father, Lord, give me peace.'),
+            'Heavenly Father, give me peace.',
+        )
+        assert.equal(
+            withHeavenlyFatherOpening('Lord God, give me peace.'),
+            'Heavenly Father, Lord God, give me peace.',
+        )
+        assert.equal(
+            withHeavenlyFatherOpening('Lord Jesus, give me peace.'),
+            'Heavenly Father, Lord Jesus, give me peace.',
+        )
+        assert.equal(
+            withHeavenlyFatherOpening('Lord of all, give me peace.'),
+            'Heavenly Father, Lord of all, give me peace.',
+        )
+    })
+
+    it('does not insert a space inside 1,000 or before a closing quote', () => {
+        assert.equal(sanitizeAiPrayerBody('about 1,000 times'), 'about 1,000 times')
+        assert.equal(sanitizeAiPrayerBody('"Be still," You said'), '"Be still," You said')
+    })
+
+    it('gates Send on the same rendered prayer body', () => {
+        assert.equal(isDailyPrayerRendered(null), false)
+        assert.equal(isDailyPrayerRendered({ body: '' }), false)
+        assert.equal(isDailyPrayerRendered({ body: '  ' }), false)
+        assert.equal(isDailyPrayerRendered({ body: 'Heavenly Father, thank You.' }), true)
     })
 })
 
@@ -302,18 +360,52 @@ describe('daily prayer AI limits and send pick', () => {
         assert.equal(sanitizedPartnerId(pairing, 'other', 'beckett'), null)
     })
 
-    it('sends the cached row or the displayed text, never a fresh AI draft', () => {
-        const cached = {
-            body: 'Heavenly Father, cached prayer. In Jesus\' name I pray, Amen.',
-            scriptureText: 'Fear not, for I am with you.',
-            scriptureRef: 'Isaiah 41:10',
-        }
-        const displayed = {
-            body: 'Heavenly Father, on screen. In Jesus\' name I pray, Amen.',
-            scriptureText: 'Let me hear in the morning.',
-            scriptureRef: 'Psalm 143:8',
-        }
-        assert.deepEqual(pickSendPrayerContent({ cached, displayed }), cached)
-        assert.deepEqual(pickSendPrayerContent({ cached: null, displayed }), displayed)
+    it('sends memory/AI or a saved row or server catalog, never browser text', () => {
+        const memory = { body: 'Heavenly Father, from memory.' }
+        const saved = { body: 'Heavenly Father, from the table.' }
+        const catalog = { body: 'Heavenly Father, catalog fallback.' }
+        const browser = { body: 'Heavenly Father, from the browser.' }
+        assert.equal(resolveServerSendPrayer({
+            memoryOrAi: memory,
+            savedRow: saved,
+            serverCatalog: catalog,
+        }).body, memory.body)
+        assert.equal(resolveServerSendPrayer({
+            memoryOrAi: null,
+            savedRow: saved,
+            serverCatalog: catalog,
+        }).body, saved.body)
+        assert.equal(resolveServerSendPrayer({
+            memoryOrAi: null,
+            savedRow: null,
+            serverCatalog: catalog,
+        }).body, catalog.body)
+        assert.equal(resolveServerSendPrayer({
+            memoryOrAi: null,
+            savedRow: null,
+            serverCatalog: catalog,
+        }).body.includes(browser.body), false)
+    })
+
+    it('on a unique violation uses the AI row, or keeps session AI over a catalog row', () => {
+        const generated = { body: 'Heavenly Father, new AI.' }
+        const existingAi = { body: 'Heavenly Father, already saved AI.' }
+        const existingCatalog = { body: 'Heavenly Father, old catalog.' }
+        assert.deepEqual(
+            resolveDuplicateDailyPrayerSave({
+                existingGeneratedBy: 'ai',
+                existing: existingAi,
+                generated,
+            }),
+            { content: existingAi, origin: 'cache' },
+        )
+        assert.deepEqual(
+            resolveDuplicateDailyPrayerSave({
+                existingGeneratedBy: 'catalog',
+                existing: existingCatalog,
+                generated,
+            }),
+            { content: generated, origin: 'ai' },
+        )
     })
 })

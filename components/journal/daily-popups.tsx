@@ -17,6 +17,7 @@ import {
     type DailyPrayerInput,
     type DailyPrayerPartner,
 } from '@/lib/daily-prayer-content'
+import { DAILY_PRAYER_PREPARING_MS } from '@/lib/daily-prayer-generate'
 import { resolveJournalHasEntryToday } from '@/lib/local-date-key'
 import { readDailyPrayerSession, writeDailyPrayerSession } from '@/lib/daily-prayer-session'
 import { DailyJournalPopup } from '@/components/journal/daily-journal-popup'
@@ -82,25 +83,22 @@ export function DailyPopups({
         [pairingId, dateKey],
     )
     const [content, setContent] = useState<DailyPrayerContent | null>(sessionContent)
-    const [prayerReady, setPrayerReady] = useState(!!sessionContent)
     const generateAbortRef = useRef(false)
 
     useEffect(() => {
         generateAbortRef.current = false
         const dismissed = prayerDismiss.isDismissedToday()
         if (dismissed) {
-            if (!content) setContent(catalogContent)
-            setPrayerReady(true)
             return
         }
-        if (sessionContent) {
-            setContent(sessionContent)
-            setPrayerReady(true)
-        } else {
-            setPrayerReady(false)
-        }
+        if (sessionContent) setContent(sessionContent)
 
         let cancelled = false
+        const preparingTimer = setTimeout(() => {
+            if (cancelled || generateAbortRef.current) return
+            setContent((current) => current || catalogContent)
+        }, DAILY_PRAYER_PREPARING_MS)
+
         ensureTodaysPrayer({
             pairingId,
             partnerUserId: currentPartner?.userId || null,
@@ -110,7 +108,7 @@ export function DailyPopups({
             prayerInput,
             allowGenerate: !dismissed,
         }).then((result) => {
-            if (cancelled || generateAbortRef.current || prayerDismiss.isDismissedToday()) return
+            if (cancelled || generateAbortRef.current) return
             if (result && 'content' in result) {
                 setContent(result.content)
                 if (result.origin === 'ai' || result.origin === 'cache') {
@@ -119,14 +117,13 @@ export function DailyPopups({
             } else if (!sessionContent) {
                 setContent(catalogContent)
             }
-            setPrayerReady(true)
         }).catch(() => {
             if (cancelled || generateAbortRef.current) return
             if (!sessionContent) setContent(catalogContent)
-            setPrayerReady(true)
         })
         return () => {
             cancelled = true
+            clearTimeout(preparingTimer)
         }
     }, [currentPartner?.name, currentPartner?.userId, dateKey, pairingId, prayerInputKey])
 
@@ -194,8 +191,7 @@ export function DailyPopups({
                 onOpenChange={handlePrayerOpenChange}
                 viewerRole={viewerRole}
                 partners={partners}
-                content={content || catalogContent}
-                prayerReady={prayerReady && !!content}
+                content={content}
                 prayerInput={prayerInput}
             />
             <DailyJournalPopup

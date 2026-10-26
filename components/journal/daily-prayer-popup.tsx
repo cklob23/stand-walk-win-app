@@ -26,6 +26,7 @@ import {
     type DailyPrayerInput,
     type DailyPrayerPartner,
 } from '@/lib/daily-prayer-content'
+import { isDailyPrayerRendered } from '@/lib/daily-prayer-generate'
 import { cn } from '@/lib/utils'
 
 export interface DailyPrayerPopupProps {
@@ -33,8 +34,7 @@ export interface DailyPrayerPopupProps {
     onOpenChange: (open: boolean) => void
     viewerRole: 'leader' | 'learner'
     partners: DailyPrayerPartner[]
-    content: DailyPrayerContent
-    prayerReady?: boolean
+    content: DailyPrayerContent | null
     prayerInput?: Omit<DailyPrayerInput, 'dateKey' | 'partnerName'>
     /** Skip storage writes and network sends (dev preview / tests). */
     preview?: boolean
@@ -48,7 +48,6 @@ export function DailyPrayerPopup({
     viewerRole,
     partners,
     content,
-    prayerReady = true,
     prayerInput,
     preview = false,
     initiallyHearted = false,
@@ -73,10 +72,11 @@ export function DailyPrayerPopup({
     )
 
     const dateLabel = formatPrayerDate()
-    const chip = formatPrayerChip(content)
+    const prayerShown = isDailyPrayerRendered(content)
+    const chip = content ? formatPrayerChip(content) : 'Today\'s prayer'
     const displayBody = useMemo(
-        () => retargetPartnerMention(content.body, selectedPartner?.name),
-        [content.body, selectedPartner?.name],
+        () => (content ? retargetPartnerMention(content.body, selectedPartner?.name) : ''),
+        [content, selectedPartner?.name],
     )
     const showPicker = viewerRole === 'leader' && partners.length > 1
     const sendLabel = sendPrayerButtonLabel(selectedPartner?.name || defaultPartner?.name)
@@ -93,11 +93,13 @@ export function DailyPrayerPopup({
     }
 
     const handleHeart = () => {
+        if (!prayerShown) return
         setHearted(true)
         dismissForToday()
     }
 
     const handleSendClick = () => {
+        if (!prayerShown) return
         if (!selectedPartner) {
             toast.error('No partner is available to send this prayer.')
             return
@@ -106,7 +108,7 @@ export function DailyPrayerPopup({
     }
 
     const handleConfirmSend = async () => {
-        if (!selectedPartner) return
+        if (!selectedPartner || !content || !prayerShown) return
         if (preview) {
             dismissForToday()
             onOpenChange(false)
@@ -168,7 +170,7 @@ export function DailyPrayerPopup({
                                 <Button variant="ghost" onClick={() => setConfirming(false)} disabled={sending}>
                                     Cancel
                                 </Button>
-                                <Button className="ml-auto" onClick={handleConfirmSend} disabled={sending || !selectedPartner || !prayerReady}>
+                                <Button className="ml-auto" onClick={handleConfirmSend} disabled={sending || !selectedPartner || !prayerShown}>
                                     {sending && <Loader2 className="h-4 w-4 animate-spin" />}
                                     <Send className="h-4 w-4" />
                                     Send
@@ -185,6 +187,7 @@ export function DailyPrayerPopup({
                                     size="icon"
                                     aria-label={hearted ? 'Saved' : 'Heart'}
                                     onClick={handleHeart}
+                                    disabled={!prayerShown}
                                     className={cn(
                                         hearted && 'border-rose-300 bg-rose-500/10 text-rose-600 hover:bg-rose-500/15 hover:text-rose-600 dark:border-rose-800 dark:text-rose-400',
                                     )}
@@ -197,7 +200,7 @@ export function DailyPrayerPopup({
                                 <Button
                                     className="ml-auto w-full sm:w-auto"
                                     onClick={handleSendClick}
-                                    disabled={!selectedPartner || !prayerReady}
+                                    disabled={!selectedPartner || !prayerShown}
                                 >
                                     <Send className="h-4 w-4" />
                                     {sendLabel}
@@ -208,14 +211,12 @@ export function DailyPrayerPopup({
                 )}
             >
                 <span className="inline-flex w-fit items-center rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground">
-                    {prayerReady
-                        ? (content.contextTopic ? (
-                            <>
-                                {content.contextLabel} ·{' '}
-                                <strong className="ml-1 font-medium text-foreground">{content.contextTopic}</strong>
-                            </>
-                        ) : chip)
-                        : 'Today\'s prayer'}
+                    {prayerShown && content?.contextTopic ? (
+                        <>
+                            {content.contextLabel} ·{' '}
+                            <strong className="ml-1 font-medium text-foreground">{content.contextTopic}</strong>
+                        </>
+                    ) : prayerShown ? chip : 'Today\'s prayer'}
                 </span>
 
                 <div className="rounded-xl border border-pink-200/70 dark:border-pink-900/40 bg-gradient-to-b from-pink-50/80 dark:from-pink-950/20 to-card p-4 space-y-3">
@@ -228,14 +229,14 @@ export function DailyPrayerPopup({
                         </p>
                     </div>
                     <p className="font-serif text-[15px] sm:text-base leading-8 text-foreground">
-                        {prayerReady ? displayBody : 'Preparing today\'s prayer…'}
+                        {prayerShown ? displayBody : 'Preparing today\'s prayer…'}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
-                        {prayerReady ? 'Written for you today' : 'One moment'}
+                        {prayerShown ? 'Written for you today' : 'One moment'}
                     </p>
                 </div>
 
-                {prayerReady ? (
+                {prayerShown && content ? (
                     <p className="font-serif italic text-[13px] leading-relaxed text-muted-foreground px-0.5">
                         {content.scriptureText ? (
                             <>

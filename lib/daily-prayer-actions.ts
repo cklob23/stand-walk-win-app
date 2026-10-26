@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { notifyNewMessage } from '@/lib/notifications'
 import { generateDailyPrayerDraft } from '@/lib/daily-prayer-ai'
 import {
+    buildDailyPrayer,
     formatPrayerMessage,
     retargetPartnerMention,
     type DailyPrayerContent,
@@ -21,8 +22,9 @@ import {
     claimDailyPrayerAiUserSlot,
     hasDailyPrayerAiAttempt,
     loadMemoryDailyPrayer,
-    pickSendPrayerContent,
     rememberMemoryDailyPrayer,
+    resolveDuplicateDailyPrayerSave,
+    resolveServerSendPrayer,
     sanitizedPartnerId,
 } from '@/lib/daily-prayer-limits'
 import {
@@ -152,17 +154,26 @@ export async function sendDailyPrayerToPartner(input: {
     const senderName = profiles?.find((row) => row.id === user.id)?.full_name || 'Your partner'
     const recipientName = profiles?.find((row) => row.id === input.partnerUserId)?.full_name || null
 
-    const prayer = pickSendPrayerContent({
-        cached: await loadCachedSendPrayer(supabase, {
+    const pairingRow = await loadDailyPrayerRow(supabase, {
+        userId: user.id,
+        pairingId: pairing.id,
+        localDate,
+    })
+    const prayer = resolveServerSendPrayer({
+        memoryOrAi: await loadCachedSendPrayer(supabase, {
             userId: user.id,
             pairingId: pairing.id,
             localDate,
         }),
-        displayed: {
-            body: input.prayerBody,
-            scriptureText: input.scriptureText,
-            scriptureRef: input.scriptureRef,
-        },
+        savedRow: pairingRow ? rowToDailyPrayerContent(pairingRow) : null,
+        serverCatalog: buildDailyPrayer({
+            ...sanitizeDailyPrayerInput({
+                ...(input.prayerInput || {}),
+                dateKey: localDate,
+            }),
+            dateKey: localDate,
+            partnerName: recipientName,
+        }),
     })
 
     const content = formatPrayerMessage({
@@ -338,9 +349,17 @@ async function loadOrCreateTodaysPrayer(input: {
                 pairingId: input.pairingId,
                 localDate: input.localDate,
             })
-            if (isAiDailyPrayerRow(winner)) {
-                return { content: rowToDailyPrayerContent(winner), origin: 'cache' }
+            const picked = resolveDuplicateDailyPrayerSave({
+                existingGeneratedBy: winner?.generated_by === 'ai' || winner?.generated_by === 'catalog'
+                    ? winner.generated_by
+                    : null,
+                existing: winner ? rowToDailyPrayerContent(winner) : null,
+                generated: resolved.content,
+            })
+            if (picked.origin === 'ai') {
+                rememberMemoryDailyPrayer(input.userId, input.pairingId, input.localDate, picked.content)
             }
+            return picked
         }
         return resolved
     }
