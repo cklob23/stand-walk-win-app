@@ -9,7 +9,7 @@ export function getAppTitleParts(
     title: string
     subtitle: string | null
 } {
-    const name = (churchName || organizationName || '').trim()
+    const name = (churchName || '').trim() || (organizationName || '').trim()
     if (name) {
         return { title: name, subtitle: SITE_NAME }
     }
