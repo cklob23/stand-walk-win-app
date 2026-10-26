@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { startCartCheckout, startJourneyCartCheckout, getCheckoutSession } from '@/app/actions/stripe'
 import { SUBSCRIPTION_TIERS, JOURNEYS, formatPrice } from '@/lib/products'
+import { BackToAdminLink } from './back-to-admin'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
@@ -41,6 +42,7 @@ interface CartCheckoutProps {
     orgName: string
     userId?: string
     organizationId?: string // For existing org admins adding more licenses
+    isOrgAdmin?: boolean
     onBack: () => void
 }
 
@@ -52,6 +54,7 @@ export function CartCheckout({
     orgName,
     userId,
     organizationId,
+    isOrgAdmin = false,
     onBack,
 }: CartCheckoutProps) {
     const router = useRouter()
@@ -129,10 +132,13 @@ export function CartCheckout({
             {/* Header */}
             <div className="border-b bg-card">
                 <div className="container mx-auto px-4 py-4">
-                    <Button variant="ghost" onClick={onBack} className="gap-2">
-                        <ArrowLeft className="h-4 w-4" />
-                        Back to Plans
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="ghost" onClick={onBack} className="gap-2">
+                            <ArrowLeft className="h-4 w-4" />
+                            Back to Plans
+                        </Button>
+                        <BackToAdminLink isOrgAdmin={isOrgAdmin} />
+                    </div>
                 </div>
             </div>
 

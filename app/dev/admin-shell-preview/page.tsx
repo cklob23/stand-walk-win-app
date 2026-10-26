@@ -1,14 +1,20 @@
 'use client'
 
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { AdminHeader } from '@/components/admin/admin-header'
 import { AdminSidebar } from '@/components/admin/admin-sidebar'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Ticket, Users, TrendingUp, Building2, Copy, ExternalLink, Bell } from 'lucide-react'
+import { Ticket, Users, TrendingUp, Building2, Copy, ExternalLink, Bell, Calendar, CreditCard, Package } from 'lucide-react'
 import Link from 'next/link'
 import type { User } from '@supabase/supabase-js'
+import { PricingContent } from '@/components/pricing/pricing-content'
+import { SuccessContent } from '@/app/pricing/success/success-content'
+import { SUPPORT_EMAIL } from '@/lib/support'
+import { formatBillingDate, getNextBillingDate, getNextBillingTotals } from '@/lib/admin-billing'
 
 const mockUser = {
     id: 'preview-admin',
@@ -19,12 +25,129 @@ const mockUser = {
     created_at: '2026-01-01T00:00:00.000Z',
 } as User
 
-export default function AdminShellPreviewPage() {
+const previewSubscriptions = [
+    { status: 'active', license_count: 1, amount_paid: 699, current_period_end: '2026-11-15T00:00:00.000Z', name: 'Basic' },
+    { status: 'cancelled', license_count: 1, amount_paid: 1999, current_period_end: '2026-08-29T00:00:00.000Z', name: 'Premium' },
+]
+
+function PreviewInner() {
     const { setTheme } = useTheme()
+    const params = useSearchParams()
+    const view = params.get('view') || 'dashboard'
 
     useEffect(() => {
         setTheme('light')
     }, [setTheme])
+
+    if (view === 'pricing') {
+        return (
+            <PricingContent
+                userData={{
+                    id: mockUser.id,
+                    email: mockUser.email || '',
+                    fullName: 'Caleb Klobe',
+                    avatarUrl: null,
+                    hasSubscription: true,
+                    organizationId: 'preview-org',
+                    organizationName: '101 Church',
+                    isOrgAdmin: true,
+                }}
+            />
+        )
+    }
+
+    if (view === 'success') {
+        return <SuccessContent isOrgAdmin />
+    }
+
+    if (view === 'billing') {
+        const nextBilling = getNextBillingTotals(previewSubscriptions)
+        const nextBillingDate = getNextBillingDate(previewSubscriptions, new Date('2026-10-26T12:00:00.000Z'))
+        const formatCurrency = (amount: number) =>
+            new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount / 100)
+
+        return (
+            <div className="min-h-screen bg-background overflow-x-hidden">
+                <AdminHeader
+                    user={mockUser}
+                    profile={{ full_name: 'Caleb Klobe', role: 'leader' }}
+                    organization={{ id: 'preview-org', name: '101 Church' }}
+                    isMasterAdmin={false}
+                />
+                <div className="flex">
+                    <AdminSidebar isMasterAdmin={false} journeyRole="leader" />
+                    <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 space-y-6">
+                        <div>
+                            <h1 className="text-2xl font-bold">Subscription</h1>
+                            <p className="text-muted-foreground">Manage your organization&apos;s subscription and billing</p>
+                        </div>
+                        <div className="space-y-4">
+                            <h2 className="text-lg font-semibold">Your Plans</h2>
+                            <div className="grid gap-4 md:grid-cols-2">
+                                {previewSubscriptions.map((subscription) => (
+                                    <Card key={subscription.name}>
+                                        <CardHeader>
+                                            <div className="flex items-center justify-between">
+                                                <CardTitle className="flex items-center gap-2">
+                                                    <Package className="h-5 w-5" />
+                                                    {subscription.name}
+                                                </CardTitle>
+                                                <Badge className={subscription.status === 'active'
+                                                    ? 'bg-green-500/10 text-green-600'
+                                                    : 'bg-amber-500/10 text-amber-600'}
+                                                >
+                                                    {subscription.status}
+                                                </Badge>
+                                            </div>
+                                            <CardDescription>
+                                                {subscription.license_count} license
+                                            </CardDescription>
+                                        </CardHeader>
+                                    </Card>
+                                ))}
+                            </div>
+                        </div>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Calendar className="h-5 w-5" />
+                                    Billing Details
+                                </CardTitle>
+                                <CardDescription>Subscription billing information</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Next Billing Date</p>
+                                        <p className="font-medium">{nextBillingDate ? formatBillingDate(nextBillingDate) : 'Not available'}</p>
+                                        {nextBillingDate && <p className="text-sm text-muted-foreground">Auto-renewal</p>}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Next Billing Amount</p>
+                                        <p className="font-medium text-lg">{formatCurrency(nextBilling.amountPaidCents)}</p>
+                                        <p className="text-sm text-muted-foreground">{nextBilling.licenseCount} license{nextBilling.licenseCount !== 1 ? 's' : ''}</p>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Need Help?</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <Button asChild variant="outline">
+                                    <a href={`mailto:${SUPPORT_EMAIL}?subject=Subscription Support Request`}>
+                                        <CreditCard className="mr-2 h-4 w-4" />
+                                        Contact Support
+                                    </a>
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    </main>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className="min-h-screen bg-background overflow-x-hidden">
@@ -150,5 +273,13 @@ export default function AdminShellPreviewPage() {
                 </main>
             </div>
         </div>
+    )
+}
+
+export default function AdminShellPreviewPage() {
+    return (
+        <Suspense fallback={null}>
+            <PreviewInner />
+        </Suspense>
     )
 }

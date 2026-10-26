@@ -1,6 +1,7 @@
 import { Metadata } from 'next'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { PricingContent } from '@/components/pricing/pricing-content'
+import { getAdminUser } from '@/lib/admin-auth-actions'
 
 export const metadata: Metadata = {
     title: 'Pricing | Stand Walk Run',
@@ -15,6 +16,7 @@ interface UserData {
     hasSubscription: boolean
     organizationId: string | null
     organizationName: string | null
+    isOrgAdmin: boolean
 }
 
 async function getUserData(): Promise<UserData | null> {
@@ -100,6 +102,9 @@ async function getUserData(): Promise<UserData | null> {
 
     const { data: subscriptions } = await subscriptionQuery
 
+    const adminData = await getAdminUser()
+    const isOrgAdmin = Boolean(adminData && !adminData.isMasterAdmin && adminData.organization)
+
     return {
         id: user.id,
         email: user.email || '',
@@ -108,6 +113,7 @@ async function getUserData(): Promise<UserData | null> {
         hasSubscription: (subscriptions && subscriptions.length > 0) || !!profile.subscription_tier_id,
         organizationId: organizationId,
         organizationName: organizationName,
+        isOrgAdmin,
     }
 }
 
