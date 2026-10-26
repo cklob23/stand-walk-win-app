@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AppLogoStatic } from '@/components/app-logo'
+import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -81,9 +81,8 @@ export function AdminHeader({ user, profile, organization, isMasterAdmin }: Admi
                 <SheetContent side="left" className="w-72 p-0 flex flex-col">
                     <SheetHeader className="p-4 border-b">
                         <SheetTitle className="flex items-center gap-2">
-                            <Link href={logoHref} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2">
-                                <AppLogoStatic iconClassName="h-8 w-8 rounded-sm" showText={false} />
-                                <span>Stand Walk Run</span>
+                            <Link href={logoHref} onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2 min-w-0">
+                                <AppLogo iconClassName="h-8 w-8 rounded-sm" textClassName="text-base" showSubtitle />
                             </Link>
                         </SheetTitle>
                     </SheetHeader>
@@ -148,8 +147,13 @@ export function AdminHeader({ user, profile, organization, isMasterAdmin }: Admi
                             <span className="sr-only">Open menu</span>
                         </Button>
 
-                        <Link href={logoHref} className="flex items-center gap-2">
-                            <AppLogoStatic iconClassName="h-8 w-8 rounded-sm" textClassName="text-lg hidden lg:block" />
+                        <Link href={logoHref} className="flex items-center gap-2 min-w-0">
+                            <AppLogo
+                                iconClassName="h-8 w-8 rounded-sm"
+                                textClassName="text-sm lg:text-lg"
+                                subtitleClassName="hidden lg:block"
+                                showSubtitle
+                            />
                         </Link>
                         {journeyHomeHref && (
                             <AdminBackToJourneyLink

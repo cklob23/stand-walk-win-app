@@ -36,6 +36,21 @@ describe('admin billing', () => {
         assert.equal(totals.licenseCount, 3)
     })
 
+    it('includes Basic plus reactivated Premium in the next bill', () => {
+        const totals = getNextBillingTotals([
+            { status: 'active', license_count: 1, amount_paid: 699 },
+            { status: 'active', license_count: 1, amount_paid: 1999 },
+        ])
+        assert.equal(totals.amountPaidCents, 2698)
+        assert.equal(totals.licenseCount, 2)
+        const nextDate = getNextBillingDate([
+            { status: 'active', current_period_end: '2026-11-15T00:00:00.000Z' },
+            { status: 'active', current_period_end: '2026-11-29T00:00:00.000Z' },
+        ], NOW)
+        assert.ok(nextDate)
+        assert.equal(nextDate.toISOString(), '2026-11-15T00:00:00.000Z')
+    })
+
     it('picks the earliest future period end from billable subscriptions', () => {
         const nextDate = getNextBillingDate([
             { status: 'cancelled', current_period_end: '2026-11-01T00:00:00.000Z' },
