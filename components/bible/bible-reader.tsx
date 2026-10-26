@@ -54,15 +54,24 @@ import {
 import { ListenEngine, createPersistentListenPlayer } from '@/lib/bible-listen-engine'
 import {
     INITIAL_LISTEN_FOLLOW,
-    LISTEN_FOLLOW_RESUME_MS,
+    LISTEN_FOLLOW_PROGRAMMATIC_MAX_MS,
+    clearProgrammaticScroll,
+    findListenFollowScrollContainer,
+    findVisibleVerseElement,
+    isListenFollowInteractiveEventTarget,
     isListenFollowScrollKey,
+    listenFollowResumeDelayMs,
     listenFollowScrollBehavior,
+    listenFollowScrollTopFromEvent,
+    listenFollowTargetTopForElement,
     markProgrammaticScroll,
     programmaticScrollGuardMs,
     reduceListenFollow,
-    shouldIgnoreScrollAsUser,
+    scrollListenFollowContainer,
+    shouldIgnoreUserScrollIntent,
     type ListenFollowCommand,
     type ListenFollowEvent,
+    type ListenFollowScrollIntent,
 } from '@/lib/bible-listen-follow'
 
 interface BibleBook {
@@ -418,6 +427,12 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     })
     const listenFollowRef = useRef({ ...INITIAL_LISTEN_FOLLOW })
     const listenFollowIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const readerRootRef = useRef<HTMLDivElement | null>(null)
+    const listenFollowProgrammaticRef = useRef<{
+        targetTop: number | null
+        container: Window | HTMLElement | null
+        clearTimer: ReturnType<typeof setTimeout> | null
+    }>({ targetTop: null, container: null, clearTimer: null })
 
     const [skipVerseNumbers, setSkipVerseNumbers] = useState(savedSkipVerseNumbers)
     const skipVerseNumbersRef = useRef(savedSkipVerseNumbers)
@@ -582,15 +597,20 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         const firstVerse = Math.min(...flashVerses)
         // Small delay to let DOM render
         const scrollTimer = setTimeout(() => {
-            const el = document.getElementById(`verse-${firstVerse}`)
+            const el = findVisibleVerseElement(readerRootRef.current, firstVerse)
             if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                const container = findListenFollowScrollContainer(el)
+                scrollListenFollowContainer(
+                    container,
+                    listenFollowTargetTopForElement(el, container),
+                    'smooth',
+                )
             }
         }, 300)
         // Apply flash via inline styles to override Tailwind classes
         const flashTimer = setTimeout(() => {
             flashVerses.forEach(vNum => {
-                const el = document.getElementById(`verse-${vNum}`)
+                const el = findVisibleVerseElement(readerRootRef.current, vNum)
                 if (el) {
                     const isDark = document.documentElement.classList.contains('dark')
                     el.style.backgroundColor = isDark
@@ -1360,42 +1380,78 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         })
     }, [selectedBook, selectedChapter, verses, versesLoading, chapters.length, books])
 
+    const clearListenFollowProgrammatic = useCallback(() => {
+        const tracked = listenFollowProgrammaticRef.current
+        if (tracked.clearTimer) {
+            clearTimeout(tracked.clearTimer)
+        }
+        listenFollowProgrammaticRef.current = { targetTop: null, container: null, clearTimer: null }
+        listenFollowRef.current = clearProgrammaticScroll(listenFollowRef.current)
+    }, [])
+
     const applyListenFollowCommand = useCallback((command: ListenFollowCommand) => {
         if (command.type === 'none' || typeof window === 'undefined') return
         const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        const behavior = listenFollowScrollBehavior(reducedMotion)
+        const root = readerRootRef.current
+
+        let container: Window | HTMLElement
+        let targetTop: number
+        if (command.type === 'scroll-top') {
+            container = findListenFollowScrollContainer(root)
+            targetTop = 0
+        } else {
+            const el = findVisibleVerseElement(root, command.verse)
+            if (!el) return
+            container = findListenFollowScrollContainer(el)
+            targetTop = listenFollowTargetTopForElement(el, container)
+        }
+
         listenFollowRef.current = markProgrammaticScroll(
             listenFollowRef.current,
             Date.now(),
             programmaticScrollGuardMs(reducedMotion),
         )
-        const behavior = listenFollowScrollBehavior(reducedMotion)
-        if (command.type === 'scroll-top') {
-            window.scrollTo({ top: 0, left: 0, behavior })
-            return
+        if (listenFollowProgrammaticRef.current.clearTimer) {
+            clearTimeout(listenFollowProgrammaticRef.current.clearTimer)
         }
-        document.getElementById(`verse-${command.verse}`)?.scrollIntoView({
-            behavior,
-            block: 'center',
-        })
-    }, [])
+        listenFollowProgrammaticRef.current = {
+            targetTop,
+            container,
+            clearTimer: setTimeout(clearListenFollowProgrammatic, LISTEN_FOLLOW_PROGRAMMATIC_MAX_MS),
+        }
+        scrollListenFollowContainer(container, targetTop, behavior)
+    }, [clearListenFollowProgrammatic])
 
     const dispatchListenFollow = useCallback((event: ListenFollowEvent) => {
         const { state, command } = reduceListenFollow(listenFollowRef.current, event)
         listenFollowRef.current = state
         applyListenFollowCommand(command)
-        if (listenFollowIdleRef.current) {
+
+        if (event.type === 'user-scroll') {
+            if (listenFollowIdleRef.current) {
+                clearTimeout(listenFollowIdleRef.current)
+                listenFollowIdleRef.current = null
+            }
+            if (state.mode === 'user-paused' && state.lastUserScrollAt != null) {
+                const delay = listenFollowResumeDelayMs(state.lastUserScrollAt, Date.now()) ?? 0
+                listenFollowIdleRef.current = setTimeout(() => {
+                    const next = reduceListenFollow(listenFollowRef.current, {
+                        type: 'idle-check',
+                        now: Date.now(),
+                    })
+                    listenFollowRef.current = next.state
+                    applyListenFollowCommand(next.command)
+                }, delay)
+            }
+            return
+        }
+
+        // Verse ticks while paused must not reset the glide-back clock.
+        // Leaving user-paused (play / pause / stop / chapter) cancels it.
+        if (state.mode !== 'user-paused' && listenFollowIdleRef.current) {
             clearTimeout(listenFollowIdleRef.current)
             listenFollowIdleRef.current = null
-        }
-        if (state.mode === 'user-paused' && state.lastUserScrollAt != null) {
-            listenFollowIdleRef.current = setTimeout(() => {
-                const next = reduceListenFollow(listenFollowRef.current, {
-                    type: 'idle-check',
-                    now: Date.now(),
-                })
-                listenFollowRef.current = next.state
-                applyListenFollowCommand(next.command)
-            }, LISTEN_FOLLOW_RESUME_MS)
         }
     }, [applyListenFollowCommand])
 
@@ -1461,36 +1517,54 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     ])
 
     useEffect(() => {
-        const noteUserScroll = () => {
+        const noteUserScroll = (source: ListenFollowScrollIntent, event?: Event) => {
             const now = Date.now()
-            if (shouldIgnoreScrollAsUser(now, listenFollowRef.current.programmaticUntil)) return
+            const tracked = listenFollowProgrammaticRef.current
+            const fromEvent = event ? listenFollowScrollTopFromEvent(event) : null
+            const sameContainer =
+                !fromEvent ||
+                tracked.container == null ||
+                tracked.container === fromEvent.container
+            const targetTop = sameContainer ? tracked.targetTop : null
+            const guardUntil = sameContainer ? listenFollowRef.current.programmaticUntil : 0
+            if (
+                shouldIgnoreUserScrollIntent(source, now, guardUntil, {
+                    currentTop: fromEvent?.top ?? 0,
+                    targetTop,
+                })
+            ) {
+                return
+            }
             if (listenFollowRef.current.mode === 'idle') return
             dispatchListenFollow({ type: 'user-scroll', now })
         }
+        const onWheel = () => noteUserScroll('wheel')
+        const onTouchMove = () => noteUserScroll('touch')
         const onKeyDown = (event: KeyboardEvent) => {
-            const target = event.target
-            if (target instanceof HTMLElement) {
-                const tag = target.tagName
-                if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return
-            }
+            if (isListenFollowInteractiveEventTarget(event.target)) return
             if (!isListenFollowScrollKey(event.key)) return
-            noteUserScroll()
+            noteUserScroll('key')
         }
-        window.addEventListener('wheel', noteUserScroll, { passive: true })
-        window.addEventListener('touchmove', noteUserScroll, { passive: true })
-        window.addEventListener('scroll', noteUserScroll, { passive: true })
+        const onScroll = (event: Event) => noteUserScroll('scroll', event)
+        const onScrollEnd = () => clearListenFollowProgrammatic()
+        window.addEventListener('wheel', onWheel, { passive: true })
+        window.addEventListener('touchmove', onTouchMove, { passive: true })
+        window.addEventListener('scroll', onScroll, { passive: true, capture: true })
+        window.addEventListener('scrollend', onScrollEnd, { capture: true } as AddEventListenerOptions)
         window.addEventListener('keydown', onKeyDown)
         return () => {
-            window.removeEventListener('wheel', noteUserScroll)
-            window.removeEventListener('touchmove', noteUserScroll)
-            window.removeEventListener('scroll', noteUserScroll)
+            window.removeEventListener('wheel', onWheel)
+            window.removeEventListener('touchmove', onTouchMove)
+            window.removeEventListener('scroll', onScroll, { capture: true } as EventListenerOptions)
+            window.removeEventListener('scrollend', onScrollEnd, { capture: true } as EventListenerOptions)
             window.removeEventListener('keydown', onKeyDown)
             if (listenFollowIdleRef.current) {
                 clearTimeout(listenFollowIdleRef.current)
                 listenFollowIdleRef.current = null
             }
+            clearListenFollowProgrammatic()
         }
-    }, [dispatchListenFollow])
+    }, [clearListenFollowProgrammatic, dispatchListenFollow])
 
     const handleSelectBook = (bookId: string) => {
         setSelectedBook(bookId)
@@ -1647,7 +1721,7 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
     const isOTBook = (id: string) => Number(id) >= 1 && Number(id) <= 39
 
     return (
-        <div className="space-y-4">
+        <div ref={readerRootRef} className="space-y-4">
             {/* Header Bar */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
