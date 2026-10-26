@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Users, GraduationCap, BookOpen, Crown, Minus, Plus, Building2, ShoppingCart, Trash2, X, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import { Check, Users, GraduationCap, BookOpen, Crown, Minus, Plus, Building2, ShoppingCart, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -17,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SUBSCRIPTION_TIERS, JOURNEYS, formatPrice } from '@/lib/products'
 import { CartCheckout } from './cart-checkout'
 import { AppLogoStatic } from '@/components/app-logo'
+import { BackToAdminLink } from './back-to-admin'
 
 // Cart item type
 interface CartItem {
@@ -44,6 +44,7 @@ interface UserData {
     hasSubscription: boolean
     organizationId: string | null
     organizationName: string | null
+    isOrgAdmin?: boolean
 }
 
 interface PricingContentProps {
@@ -152,6 +153,7 @@ export function PricingContent({ userData }: PricingContentProps) {
                 orgName={orgName}
                 userId={userData?.id}
                 organizationId={userData?.organizationId || undefined}
+                isOrgAdmin={Boolean(userData?.isOrgAdmin)}
                 onBack={() => setShowCheckout(false)}
             />
         )
@@ -166,7 +168,7 @@ export function PricingContent({ userData }: PricingContentProps) {
                         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                             <AppLogoStatic
                                 iconClassName="h-7 w-7 sm:h-9 sm:w-9 rounded-sm shrink-0"
-                                textClassName="text-sm sm:text-lg"
+                                textClassName={`text-sm sm:text-lg ${userData?.isOrgAdmin ? 'hidden sm:block' : ''}`}
                                 showText={true}
                             />
                             <div className="hidden sm:block border-l pl-3 ml-1">
@@ -178,20 +180,7 @@ export function PricingContent({ userData }: PricingContentProps) {
 
                         {/* User Info & Cart Button */}
                         <div className="flex items-center gap-2 sm:gap-3">
-                            {/* Back to Admin Dashboard for logged-in org admins */}
-                            {userData?.organizationId && (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    asChild
-                                    className="hidden sm:flex"
-                                >
-                                    <Link href="/admin/dashboard">
-                                        <ArrowLeft className="h-4 w-4 mr-1" />
-                                        Admin
-                                    </Link>
-                                </Button>
-                            )}
+                            <BackToAdminLink isOrgAdmin={Boolean(userData?.isOrgAdmin)} />
 
                             {userData && (
                                 <div className="hidden sm:flex items-center gap-2">

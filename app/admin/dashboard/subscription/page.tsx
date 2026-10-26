@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { CreditCard, Calendar, Users, Package, ExternalLink, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
 import { redirectToBillingPortal } from '@/app/actions/stripe-billing'
+import { SUPPORT_EMAIL } from '@/lib/support'
+import { formatBillingDate, getNextBillingDate, getNextBillingTotals } from '@/lib/admin-billing'
 
 interface Subscription {
     id: string
@@ -76,6 +78,8 @@ export default async function AdminSubscriptionPage() {
     // Calculate totals
     const totalLicenses = subscriptions.reduce((sum, sub) => sum + (sub.license_count || 0), 0)
     const totalAmount = subscriptions.reduce((sum, sub) => sum + (sub.amount_paid || 0), 0)
+    const nextBilling = getNextBillingTotals(subscriptions)
+    const nextBillingDate = getNextBillingDate(subscriptions)
     const hasStripeCustomer = subscriptions.some(sub => sub.stripe_customer_id)
 
     const formatCurrency = (amount: number, currency?: string | null) => {
@@ -254,7 +258,7 @@ export default async function AdminSubscriptionPage() {
                                     </form>
                                 ) : (
                                     <Button variant="outline" className="w-full" asChild>
-                                        <a href="mailto:standwalkrunapp@gmail.com?subject=Update Billing Information">
+                                        <a href={`mailto:${SUPPORT_EMAIL}?subject=Update Billing Information`}>
                                             Contact Support
                                         </a>
                                     </Button>
@@ -296,31 +300,18 @@ export default async function AdminSubscriptionPage() {
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Next Billing Date</p>
                                     <p className="font-medium">
-                                        {subscriptions[0]?.current_period_end
-                                            ? new Date(subscriptions[0].current_period_end).toLocaleDateString('en-US', {
-                                                month: 'long',
-                                                day: 'numeric',
-                                                year: 'numeric'
-                                            })
-                                            : (() => {
-                                                const nextDate = new Date(subscriptions[0]?.created_at)
-                                                nextDate.setMonth(nextDate.getMonth() + 1)
-                                                return nextDate.toLocaleDateString('en-US', {
-                                                    month: 'long',
-                                                    day: 'numeric',
-                                                    year: 'numeric'
-                                                })
-                                            })()
-                                        }
+                                        {nextBillingDate ? formatBillingDate(nextBillingDate) : 'Not available'}
                                     </p>
-                                    <p className="text-sm text-muted-foreground">Auto-renewal</p>
+                                    {nextBillingDate && (
+                                        <p className="text-sm text-muted-foreground">Auto-renewal</p>
+                                    )}
                                 </div>
 
                                 {/* Next Billing Amount */}
                                 <div className="space-y-1">
                                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Next Billing Amount</p>
-                                    <p className="font-medium text-lg">{formatCurrency(totalAmount)}</p>
-                                    <p className="text-sm text-muted-foreground">{totalLicenses} license{totalLicenses !== 1 ? 's' : ''}</p>
+                                    <p className="font-medium text-lg">{formatCurrency(nextBilling.amountPaidCents)}</p>
+                                    <p className="text-sm text-muted-foreground">{nextBilling.licenseCount} license{nextBilling.licenseCount !== 1 ? 's' : ''}</p>
                                 </div>
                             </div>
                         </CardContent>
@@ -343,7 +334,7 @@ export default async function AdminSubscriptionPage() {
                                     </p>
                                 </div>
                                 <Button asChild variant="outline">
-                                    <a href="mailto:standwalkrunapp@gmail.com?subject=Subscription Support Request">
+                                    <a href={`mailto:${SUPPORT_EMAIL}?subject=Subscription Support Request`}>
                                         Contact Support
                                     </a>
                                 </Button>

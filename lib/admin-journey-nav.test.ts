@@ -2,9 +2,12 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
     ADMIN_HOME_HREF,
+    ADMIN_PLANS_HREF,
+    BACK_TO_ADMIN_LABEL,
     BACK_TO_JOURNEY_LABEL,
     JOURNEY_HOME_HREF,
     getAdminLogoHref,
+    getBackToAdminHref,
     getJourneyHomeHref,
     hasJourneyRole,
 } from './admin-journey-nav.ts'
@@ -39,5 +42,13 @@ describe('admin journey navigation', () => {
     it('uses Back to Journey copy without an em dash', () => {
         assert.equal(BACK_TO_JOURNEY_LABEL, 'Back to Journey')
         assert.equal(BACK_TO_JOURNEY_LABEL.includes('\u2014'), false)
+    })
+
+    it('sends org admins back to the plans page and hides the link otherwise', () => {
+        assert.equal(BACK_TO_ADMIN_LABEL, 'Back to Admin')
+        assert.equal(BACK_TO_ADMIN_LABEL.includes('\u2014'), false)
+        assert.equal(ADMIN_PLANS_HREF, '/admin/dashboard/subscription')
+        assert.equal(getBackToAdminHref(true), '/admin/dashboard/subscription')
+        assert.equal(getBackToAdminHref(false), null)
     })
 })
