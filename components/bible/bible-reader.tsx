@@ -52,6 +52,18 @@ import {
     resolveListenStartIndex,
 } from '@/lib/bible-listen'
 import { ListenEngine, createPersistentListenPlayer } from '@/lib/bible-listen-engine'
+import {
+    INITIAL_LISTEN_FOLLOW,
+    LISTEN_FOLLOW_RESUME_MS,
+    isListenFollowScrollKey,
+    listenFollowScrollBehavior,
+    markProgrammaticScroll,
+    programmaticScrollGuardMs,
+    reduceListenFollow,
+    shouldIgnoreScrollAsUser,
+    type ListenFollowCommand,
+    type ListenFollowEvent,
+} from '@/lib/bible-listen-follow'
 
 interface BibleBook {
     id: string
@@ -404,6 +416,8 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
         book: initialBook,
         chapter: initialChapter,
     })
+    const listenFollowRef = useRef({ ...INITIAL_LISTEN_FOLLOW })
+    const listenFollowIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     const [skipVerseNumbers, setSkipVerseNumbers] = useState(savedSkipVerseNumbers)
     const skipVerseNumbersRef = useRef(savedSkipVerseNumbers)
@@ -1240,10 +1254,6 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             startIndex: verseIndex,
             hasNextChapter: selectedChapter < chapters.length,
         })
-        const first = verses[verseIndex]?.verse
-        if (initialStartVerse == null && first != null) {
-            document.getElementById(`verse-${first}`)?.scrollIntoView({ behavior: 'auto', block: 'start' })
-        }
     }
 
     const handlePlayChapter = (initialStartVerse?: number) => {
@@ -1348,15 +1358,139 @@ export function BibleReader({ weekScripture, weekNumber, pairingId, savedTransla
             bookName,
             hasNextChapter: chapters.length > 0 && selectedChapter < chapters.length,
         })
-        const state = engine.getState()
-        if (state.status === 'loading-audio' && state.currentIndex === 0) {
-            const firstVerse = state.verses[0]?.verse
-            if (firstVerse != null) {
-                document.getElementById(`verse-${firstVerse}`)
-                    ?.scrollIntoView({ behavior: 'auto', block: 'start' })
+    }, [selectedBook, selectedChapter, verses, versesLoading, chapters.length, books])
+
+    const applyListenFollowCommand = useCallback((command: ListenFollowCommand) => {
+        if (command.type === 'none' || typeof window === 'undefined') return
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        listenFollowRef.current = markProgrammaticScroll(
+            listenFollowRef.current,
+            Date.now(),
+            programmaticScrollGuardMs(reducedMotion),
+        )
+        const behavior = listenFollowScrollBehavior(reducedMotion)
+        if (command.type === 'scroll-top') {
+            window.scrollTo({ top: 0, left: 0, behavior })
+            return
+        }
+        document.getElementById(`verse-${command.verse}`)?.scrollIntoView({
+            behavior,
+            block: 'center',
+        })
+    }, [])
+
+    const dispatchListenFollow = useCallback((event: ListenFollowEvent) => {
+        const { state, command } = reduceListenFollow(listenFollowRef.current, event)
+        listenFollowRef.current = state
+        applyListenFollowCommand(command)
+        if (listenFollowIdleRef.current) {
+            clearTimeout(listenFollowIdleRef.current)
+            listenFollowIdleRef.current = null
+        }
+        if (state.mode === 'user-paused' && state.lastUserScrollAt != null) {
+            listenFollowIdleRef.current = setTimeout(() => {
+                const next = reduceListenFollow(listenFollowRef.current, {
+                    type: 'idle-check',
+                    now: Date.now(),
+                })
+                listenFollowRef.current = next.state
+                applyListenFollowCommand(next.command)
+            }, LISTEN_FOLLOW_RESUME_MS)
+        }
+    }, [applyListenFollowCommand])
+
+    // Keep the verse being read in the vertical center while audio is playing.
+    // Reuses isPlaying / isPaused / currentReadingVerse from desktop TTS and ListenEngine.
+    useEffect(() => {
+        const now = Date.now()
+        const chapterKey =
+            selectedBook && selectedChapter != null ? `${selectedBook}:${selectedChapter}` : null
+        const listenSessionActive =
+            isPlaying ||
+            isPaused ||
+            currentReadingVerse != null ||
+            audioLoading ||
+            autoAdvanceCountdown != null
+
+        if (isPaused && !isPlaying) {
+            dispatchListenFollow({ type: 'pause' })
+            return
+        }
+
+        if (!listenSessionActive) {
+            dispatchListenFollow({ type: 'stop' })
+            return
+        }
+
+        if (chapterKey && chapterKey !== listenFollowRef.current.chapterKey) {
+            dispatchListenFollow({ type: 'chapter', chapterKey, now })
+        }
+
+        if (!isPlaying || currentReadingVerse == null) return
+
+        if (listenFollowRef.current.mode === 'idle') {
+            dispatchListenFollow({
+                type: 'play',
+                verse: currentReadingVerse,
+                chapterKey: chapterKey ?? '',
+                now,
+            })
+            return
+        }
+
+        if (
+            listenFollowRef.current.verse !== currentReadingVerse ||
+            listenFollowRef.current.chapterKey !== chapterKey
+        ) {
+            dispatchListenFollow({
+                type: 'verse',
+                verse: currentReadingVerse,
+                chapterKey: chapterKey ?? '',
+                now,
+            })
+        }
+    }, [
+        isPlaying,
+        isPaused,
+        currentReadingVerse,
+        audioLoading,
+        autoAdvanceCountdown,
+        selectedBook,
+        selectedChapter,
+        dispatchListenFollow,
+    ])
+
+    useEffect(() => {
+        const noteUserScroll = () => {
+            const now = Date.now()
+            if (shouldIgnoreScrollAsUser(now, listenFollowRef.current.programmaticUntil)) return
+            if (listenFollowRef.current.mode === 'idle') return
+            dispatchListenFollow({ type: 'user-scroll', now })
+        }
+        const onKeyDown = (event: KeyboardEvent) => {
+            const target = event.target
+            if (target instanceof HTMLElement) {
+                const tag = target.tagName
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return
+            }
+            if (!isListenFollowScrollKey(event.key)) return
+            noteUserScroll()
+        }
+        window.addEventListener('wheel', noteUserScroll, { passive: true })
+        window.addEventListener('touchmove', noteUserScroll, { passive: true })
+        window.addEventListener('scroll', noteUserScroll, { passive: true })
+        window.addEventListener('keydown', onKeyDown)
+        return () => {
+            window.removeEventListener('wheel', noteUserScroll)
+            window.removeEventListener('touchmove', noteUserScroll)
+            window.removeEventListener('scroll', noteUserScroll)
+            window.removeEventListener('keydown', onKeyDown)
+            if (listenFollowIdleRef.current) {
+                clearTimeout(listenFollowIdleRef.current)
+                listenFollowIdleRef.current = null
             }
         }
-    }, [selectedBook, selectedChapter, verses, versesLoading, chapters.length, books])
+    }, [dispatchListenFollow])
 
     const handleSelectBook = (bookId: string) => {
         setSelectedBook(bookId)
