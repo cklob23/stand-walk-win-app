@@ -135,7 +135,7 @@ export function AdminHeader({ user, profile, organization, isMasterAdmin }: Admi
 
             <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                 <div className="flex h-16 items-center justify-between px-4 lg:px-6">
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
                         {/* Mobile menu trigger */}
                         <Button
                             variant="ghost"
@@ -147,7 +147,7 @@ export function AdminHeader({ user, profile, organization, isMasterAdmin }: Admi
                             <span className="sr-only">Open menu</span>
                         </Button>
 
-                        <Link href={logoHref} className="flex items-center gap-2 min-w-0">
+                        <Link href={logoHref} className="flex min-w-0 items-center gap-2">
                             <AppLogo
                                 iconClassName="h-8 w-8 rounded-sm"
                                 textClassName="text-sm lg:text-lg"
@@ -158,29 +158,27 @@ export function AdminHeader({ user, profile, organization, isMasterAdmin }: Admi
                         {journeyHomeHref && (
                             <AdminBackToJourneyLink
                                 href={journeyHomeHref}
-                                className="lg:hidden px-2 py-1.5 gap-1.5 whitespace-nowrap"
+                                className="lg:hidden shrink-0 px-2 py-1.5 gap-1.5 whitespace-nowrap"
                                 iconClassName="h-4 w-4"
                             />
                         )}
-                        <div className="hidden lg:flex items-center gap-2 text-sm text-muted-foreground">
-                            <span className="text-border">/</span>
-                            {isMasterAdmin ? (
+                        {isMasterAdmin ? (
+                            <div className="hidden lg:flex items-center gap-2 text-sm text-muted-foreground">
+                                <span className="text-border">/</span>
                                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-500/10 text-amber-600">
                                     <Shield className="h-3.5 w-3.5" />
                                     <span className="font-medium">Master Admin</span>
                                 </div>
-                            ) : organization ? (
-                                <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-primary/10 text-primary">
-                                    <Building2 className="h-3.5 w-3.5" />
-                                    <span className="font-medium">{organization.name}</span>
-                                </div>
-                            ) : (
+                            </div>
+                        ) : !organization ? (
+                            <div className="hidden lg:flex items-center gap-2 text-sm text-muted-foreground">
+                                <span className="text-border">/</span>
                                 <span>Admin Portal</span>
-                            )}
-                        </div>
+                            </div>
+                        ) : null}
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex shrink-0 items-center gap-4">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" className="relative h-9 w-9 rounded-full">

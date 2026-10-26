@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation'
 import { getAdminUser } from '@/lib/admin-auth-actions'
 import { AdminSidebar } from '@/components/admin/admin-sidebar'
 import { AdminHeader } from '@/components/admin/admin-header'
-import { BrandingProvider, brandingFromOrganization } from '@/contexts/branding-context'
+import { BrandingProvider } from '@/contexts/branding-context'
+import { brandingFromOrganization } from '@/lib/org-branding'
 
 export default async function AdminDashboardLayout({
     children,

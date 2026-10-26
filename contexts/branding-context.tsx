@@ -1,34 +1,9 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { DEFAULT_ORG_BRANDING, type OrgBranding } from '@/lib/org-branding'
 
-export interface OrgBranding {
-    logoUrl: string | null
-    churchName: string | null
-    slogan: string | null
-    primaryColor: string | null
-    secondaryColor: string | null
-    organizationName: string | null
-}
-
-export function brandingFromOrganization(organization: {
-    name?: string | null
-    branding_logo_url?: string | null
-    branding_church_name?: string | null
-    branding_slogan?: string | null
-    branding_primary_color?: string | null
-    branding_secondary_color?: string | null
-} | null | undefined): OrgBranding | null {
-    if (!organization) return null
-    return {
-        logoUrl: organization.branding_logo_url ?? null,
-        churchName: organization.branding_church_name ?? null,
-        slogan: organization.branding_slogan ?? null,
-        primaryColor: organization.branding_primary_color ?? null,
-        secondaryColor: organization.branding_secondary_color ?? null,
-        organizationName: organization.name ?? null,
-    }
-}
+export type { OrgBranding }
 
 interface BrandingContextType {
     branding: OrgBranding
@@ -36,14 +11,7 @@ interface BrandingContextType {
     updateBranding: (updates: Partial<OrgBranding>) => void
 }
 
-const defaultBranding: OrgBranding = {
-    logoUrl: null,
-    churchName: null,
-    slogan: null,
-    primaryColor: null,
-    secondaryColor: null,
-    organizationName: null,
-}
+const defaultBranding: OrgBranding = DEFAULT_ORG_BRANDING
 
 const BrandingContext = createContext<BrandingContextType>({
     branding: defaultBranding,

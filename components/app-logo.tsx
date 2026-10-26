@@ -23,7 +23,7 @@ export function AppLogo({
   showSubtitle = false
 }: AppLogoProps) {
   const { branding } = useBranding()
-  const { title, subtitle } = getAppTitleParts(branding.churchName)
+  const { title, subtitle } = getAppTitleParts(branding.churchName, branding.organizationName)
   const displayName = title
 
   // Handle private blob pathname - convert to API URL if not already a full URL
