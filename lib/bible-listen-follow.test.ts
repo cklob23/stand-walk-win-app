@@ -2,12 +2,19 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
     INITIAL_LISTEN_FOLLOW,
+    LISTEN_FOLLOW_HEADER_PX,
     LISTEN_FOLLOW_RESUME_MS,
+    isListenFollowInteractiveKeyTarget,
     isListenFollowScrollKey,
+    isListenFollowStillApproachingTarget,
+    listenFollowCenterScrollTop,
+    listenFollowResumeDelayMs,
     listenFollowScrollBehavior,
+    listenFollowWindowMetrics,
     markProgrammaticScroll,
     reduceListenFollow,
     shouldIgnoreScrollAsUser,
+    shouldIgnoreUserScrollIntent,
 } from './bible-listen-follow.ts'
 
 const CHAPTER = '43:3'
@@ -179,6 +186,44 @@ describe('bible listen auto-follow', () => {
         assert.deepEqual(firstVerse.command, { type: 'scroll-center', verse: 1 })
     })
 
+    it('keeps the original glide-back clock when verses advance during a user pause', () => {
+        const playing = reduce(INITIAL_LISTEN_FOLLOW, {
+            type: 'play',
+            verse: 1,
+            chapterKey: CHAPTER,
+            now: 0,
+        }).state
+        const scrolled = reduce(playing, { type: 'user-scroll', now: 1000 }).state
+        assert.equal(scrolled.lastUserScrollAt, 1000)
+
+        let paused = scrolled
+        for (const [verse, at] of [[2, 4000], [3, 7000], [4, 10000]] as const) {
+            const next = reduce(paused, { type: 'verse', verse, chapterKey: CHAPTER, now: at })
+            assert.equal(next.state.mode, 'user-paused')
+            assert.equal(next.state.lastUserScrollAt, 1000)
+            assert.equal(next.state.verse, verse)
+            assert.equal(next.command.type, 'none')
+            paused = next.state
+        }
+
+        const tooSoon = reduce(paused, {
+            type: 'idle-check',
+            now: 1000 + LISTEN_FOLLOW_RESUME_MS - 1,
+        })
+        assert.equal(tooSoon.state.mode, 'user-paused')
+        assert.equal(tooSoon.command.type, 'none')
+
+        const ready = reduce(paused, {
+            type: 'idle-check',
+            now: 1000 + LISTEN_FOLLOW_RESUME_MS,
+        })
+        assert.equal(ready.state.mode, 'following')
+        assert.deepEqual(ready.command, { type: 'scroll-center', verse: 4 })
+        assert.equal(listenFollowResumeDelayMs(1000, 4000), 1500)
+        assert.equal(listenFollowResumeDelayMs(1000, 1000 + LISTEN_FOLLOW_RESUME_MS), 0)
+        assert.equal(listenFollowResumeDelayMs(null, 4000), null)
+    })
+
     it('does not treat a programmatic scroll as a user scroll', () => {
         const marked = markProgrammaticScroll(INITIAL_LISTEN_FOLLOW, 1000, 800)
         assert.equal(shouldIgnoreScrollAsUser(1000, marked.programmaticUntil), true)
@@ -199,5 +244,44 @@ describe('bible listen auto-follow', () => {
         assert.equal(isListenFollowScrollKey('a'), false)
         assert.equal(listenFollowScrollBehavior(true), 'auto')
         assert.equal(listenFollowScrollBehavior(false), 'smooth')
+        assert.equal(isListenFollowScrollKey(' '), true)
+        assert.equal(isListenFollowScrollKey('Enter'), false)
+        assert.equal(isListenFollowInteractiveKeyTarget('BUTTON'), true)
+        assert.equal(isListenFollowInteractiveKeyTarget('A'), true)
+        assert.equal(isListenFollowInteractiveKeyTarget('INPUT'), true)
+        assert.equal(isListenFollowInteractiveKeyTarget('DIV', 'button'), true)
+        assert.equal(isListenFollowInteractiveKeyTarget('DIV'), false)
+        assert.equal(shouldIgnoreUserScrollIntent('wheel', 1000, 1800), false)
+        assert.equal(shouldIgnoreUserScrollIntent('touch', 1000, 1800), false)
+        assert.equal(shouldIgnoreUserScrollIntent('key', 1000, 1800), false)
+        assert.equal(shouldIgnoreUserScrollIntent('scroll', 1000, 1800), true)
+        assert.equal(
+            shouldIgnoreUserScrollIntent('scroll', 2000, 1800, { currentTop: 420, targetTop: 0 }),
+            true,
+        )
+        assert.equal(shouldIgnoreUserScrollIntent('scroll', 2000, 1800, { targetTop: null }), false)
+        assert.equal(isListenFollowStillApproachingTarget(420, 0), true)
+        assert.equal(isListenFollowStillApproachingTarget(1, 0), false)
+
+        const windowMetrics = listenFollowWindowMetrics(800)
+        assert.equal(windowMetrics.viewportTop, LISTEN_FOLLOW_HEADER_PX)
+        assert.equal(windowMetrics.viewportHeight, 736)
+        const centered = listenFollowCenterScrollTop({
+            currentScrollTop: 0,
+            elementTopInViewport: 500,
+            elementHeight: 20,
+            viewportTop: windowMetrics.viewportTop,
+            viewportHeight: windowMetrics.viewportHeight,
+        })
+        const fullViewportCenter = listenFollowCenterScrollTop({
+            currentScrollTop: 0,
+            elementTopInViewport: 500,
+            elementHeight: 20,
+            viewportTop: 0,
+            viewportHeight: 800,
+        })
+        assert.equal(centered, 78)
+        assert.equal(fullViewportCenter, 110)
+        assert.equal(fullViewportCenter - centered, 32)
     })
 })
