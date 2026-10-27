@@ -44,6 +44,13 @@ describe('Paul journey content', () => {
         for (const phrase of BANNED_QA_PHRASES) {
             assert.equal(joined.includes(phrase), false, `copy still contains ${phrase}`)
         }
+        assert.match(joined, /help thou mine unbelief/)
+        assert.equal(joined.includes('Help thou my unbelief'), false)
+        assert.match(joined, /Blessed are those who have not seen and yet have believed/)
+        assert.match(joined, /the gospel \(good news\)/)
+        assert.match(joined, /shares the gospel with others/)
+        assert.match(joined, /gospel of peace/)
+        assert.match(joined, /The four Gospels/)
     })
 
     it('does not use em or en dashes', () => {
@@ -65,12 +72,19 @@ describe('Paul journey content', () => {
         for (const typo of BANNED_TYPOS) {
             assert.equal(sql017.includes(typo), false, `017 SQL still contains ${typo}`)
         }
-        assert.match(sql017, /This is the Salvation prayer/)
+        for (const phrase of BANNED_QA_PHRASES) {
+            assert.equal(sql017.includes(phrase), false, `017 SQL still contains ${phrase}`)
+        }
+        assert.match(sql017, /This is the salvation prayer/)
+        assert.equal(sql017.includes('This is the Salvation prayer'), false)
         assert.match(sql017, /journey_id IS NOT DISTINCT FROM/)
         assert.match(sql017, /Romans 10:8-10: What does this passage/)
         assert.match(sql017, /description LIKE 'Romans 10:8-10%'/)
         assert.equal(sql017.includes('WHERE week_number = 3 AND title ILIKE'), false)
         assert.equal(sql017.includes('WHERE week_number = 2 AND title ILIKE'), false)
+        for (const text of allPaulCopy()) {
+            assert.equal(sql017.includes(text), true, `017 is missing copy: ${text.slice(0, 48)}`)
+        }
     })
 
     it('makes 018 the prod copy-fix script and keeps it journey-scoped', () => {
@@ -80,6 +94,7 @@ describe('Paul journey content', () => {
         assert.match(sql018, /This is the salvation prayer/)
         assert.match(sql018, /Romans 10:8-10: What does this passage/)
         assert.match(sql018, /RAISE EXCEPTION/)
+        assert.match(sql018, /Q1 was found but journey_id is NULL/)
         assert.match(sql018, /GET DIAGNOSTICS/)
         assert.match(sql018, /journey_id IS NOT DISTINCT FROM/)
         assert.equal(/\bINSERT\s+INTO\s+assignments\b/i.test(sql018), false)
@@ -94,6 +109,8 @@ describe('Paul journey content', () => {
     it('ships a read-only 018 precheck for other-journey title overlap', () => {
         assert.match(sql018Precheck, /journey_count|COUNT\(\*\)/)
         assert.match(sql018Precheck, /Understanding Born Again/)
+        assert.match(sql018Precheck, /light of man/)
+        assert.match(sql018Precheck, /populated_row_count|IS NOT NULL/)
         assert.equal(/\bUPDATE\b/i.test(sql018Precheck), false)
         assert.equal(/\bINSERT\b/i.test(sql018Precheck), false)
         assert.equal(/\bDELETE\b/i.test(sql018Precheck), false)

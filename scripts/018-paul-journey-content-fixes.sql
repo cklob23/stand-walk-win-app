@@ -22,6 +22,7 @@ DECLARE
   q5_new text := $paul$Romans 10:8-10: What does this passage tell us that relates to the idea of being "born again"?$paul$;
   has_journey boolean;
   target_jid uuid;
+  found_q1_id uuid;
   n int;
   q5_order int;
 BEGIN
@@ -36,8 +37,8 @@ BEGIN
     RAISE EXCEPTION '018 aborted: assignments.journey_id is missing; refuse to match by title alone';
   END IF;
 
-  SELECT a.journey_id
-  INTO target_jid
+  SELECT a.id, a.journey_id
+  INTO found_q1_id, target_jid
   FROM assignments a
   WHERE a.id = q1_id
      OR (
@@ -48,8 +49,12 @@ BEGIN
   ORDER BY CASE WHEN a.id = q1_id THEN 0 ELSE 1 END
   LIMIT 1;
 
-  IF target_jid IS NULL THEN
+  IF found_q1_id IS NULL THEN
     RAISE EXCEPTION '018 aborted: Q1 not found by id or exact Nicodemus prompt';
+  END IF;
+
+  IF target_jid IS NULL THEN
+    RAISE EXCEPTION '018 aborted: Q1 was found but journey_id is NULL; refuse to match by title alone';
   END IF;
 
   SELECT COUNT(*) INTO n
@@ -160,7 +165,7 @@ BEGIN
 
   UPDATE assignments
   SET
-    commentary = $paul$John 1:4 teaches us that "in Him was life, and that life was the light of men." His light overcomes darkness, including the darkness in our heart without His breath or life. When we believe in Him and confess that with our mouth, we are living in the purposed design. He is lifted up when we live in obedience to His calling and we believe. "Believe" means to "trust in, cling to, and rely on." May we believe and pray like the father of the boy possessed by a demon, "Help mine unbelief."$paul$,
+    commentary = $paul$John 1:4 teaches us that "in Him was life, and that life was the light of men." His light overcomes darkness, including the darkness in our heart without His breath or life. When we believe in Him and confess that with our mouth, we are living in the purposed design. He is lifted up when we live in obedience to His calling and we believe. "Believe" means to "trust in, cling to, and rely on." May we believe and pray like the father of the boy possessed by a demon, "help thou mine unbelief."$paul$,
     prayer = $paul$Heavenly Father, I ask that the life of Your Holy Spirit breathe in me in such a way as to cause me to reflect the light of Your glory in my life. I know that in myself I am not worthy of Your presence and might, but through Christ in me I have the hope of glory. Help me to be the salt and light You've called me to become so that Your life is lifted up in mine. Come, Holy Spirit, and have Your way in me today!$paul$
   WHERE journey_id IS NOT DISTINCT FROM target_jid
     AND (
@@ -174,7 +179,7 @@ BEGIN
 
   UPDATE assignments
   SET
-    commentary = $paul$Our trusting and believing is a manifestation of His grace and His moving in our hearts. We can't see God, but Jesus tells Thomas to experience with his senses the reality of Jesus' nail holes and the spear wound in His side. He then tells Thomas that he's blessed having been able to see and believe, but that "blessed are they who do not see, yet believe." We may not be able to see with our eyes and experience with our senses the reality of Christ and His working in us, but believing will be seeing if we trust God and lean not on our own understanding (Proverbs 3:5-6).$paul$,
+    commentary = $paul$Our trusting and believing is a manifestation of His grace and His moving in our hearts. We can't see God, but Jesus tells Thomas to experience with his senses the reality of Jesus' nail holes and the spear wound in His side. He then tells Thomas that he's blessed having been able to see and believe, but that "Blessed are those who have not seen and yet have believed." We may not be able to see with our eyes and experience with our senses the reality of Christ and His working in us, but believing will be seeing if we trust God and lean not on our own understanding (Proverbs 3:5-6).$paul$,
     prayer = $paul$Father God, I bless Your holy name that is above all other names. I believe You sent Your only Son, Jesus, to be the sacrificial Lamb of God for my forgiveness. I confess my sins openly before You and ask You to forgive me of my sins and cleanse me from all unrighteousness. I thank You that You loved me so much that Jesus came to give me life and that I am not condemned. Come, Holy Spirit, and fill me to be useful in Your kingdom today.$paul$
   WHERE journey_id IS NOT DISTINCT FROM target_jid
     AND (
@@ -189,9 +194,9 @@ BEGIN
   UPDATE assignments
   SET
     description = q5_new,
-    commentary = $paul$It is with our heart that we believe and with our mouth that we confess. The Bible teaches us to keep our heart, and it teaches us about the importance of our words. It is important that we intentionally feed our heart the truth of the Gospel (good news) because "out of the abundance of the heart the mouth speaks" (Matthew 12:34 and Luke 6:45).
+    commentary = $paul$It is with our heart that we believe and with our mouth that we confess. The Bible teaches us to keep our heart, and it teaches us about the importance of our words. It is important that we intentionally feed our heart the truth of the gospel (good news) because "out of the abundance of the heart the mouth speaks" (Matthew 12:34 and Luke 6:45).
 
-Romans 10:9-10 is a fundamental scripture that reveals what the Gospel is and how we are to respond. We are to believe with our heart. Proverbs 4:23 teaches us to "keep your heart with all diligence, for out of it are the issues of life." We believe with our heart and we confess with our mouth. The words of our mouth are a common theme in God's Word. The power of life and death is in the tongue. James tells us that it is like a rudder that steers our ship or a bit in the horse's mouth that controls its direction. May we believe in our hearts the truth of God's Word and confess with our mouth the great and glorious news of the Gospel: that Jesus died and was raised for our justification so that we might become the children of God.$paul$,
+Romans 10:9-10 is a fundamental scripture that reveals what the gospel is and how we are to respond. We are to believe with our heart. Proverbs 4:23 teaches us to "keep your heart with all diligence, for out of it are the issues of life." We believe with our heart and we confess with our mouth. The words of our mouth are a common theme in God's Word. The power of life and death is in the tongue. James tells us that it is like a rudder that steers our ship or a bit in the horse's mouth that controls its direction. May we believe in our hearts the truth of God's Word and confess with our mouth the great and glorious news of the gospel: that Jesus died and was raised for our justification so that we might become the children of God.$paul$,
     prayer = $paul$Heavenly Father, I believe with all of my heart that You are God and that Jesus Christ is the fulfillment of Your purpose on earth, and that He came, lived, and died for the sins of the whole world. I believe that He was raised from the dead and that the same Holy Spirit who worked in Him to raise Him dwells in me. I believe with my heart and, as a result of this belief, I confess with my mouth that Jesus Christ is Lord of all, and He is Lord of my life. Help me to keep my heart unspotted from the world and to live in ways that honor You, Lord.$paul$
   WHERE journey_id IS NOT DISTINCT FROM target_jid
     AND week_number = 1
