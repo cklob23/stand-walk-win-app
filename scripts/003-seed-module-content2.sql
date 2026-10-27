@@ -37,7 +37,7 @@ INSERT INTO assignments (week_number, title, description, assignment_type, order
 (1, 'Understanding Born Again', 'In John 3:8, what does the wind represent, and what is its effect?', 'reading', 2),
 (1, 'Understanding Born Again', 'In John 3:14, what does Jesus mean by "being lifted up"? In John 3:15, what does it mean to believe?', 'reading', 3),
 (1, 'Understanding Born Again', 'How does John 3:16 connect with your own story of trusting Jesus as Lord and Savior?', 'reading', 4),
-(1, 'Understanding Born Again', 'Romans 10:8-10 What does this passage tell us that relates to the idea of being "born again"?', 'reading', 5),
+(1, 'Understanding Born Again', 'Romans 10:8-10: What does this passage tell us that relates to the idea of being "born again"?', 'reading', 5),
 (1, 'Your Salvation Story', 'Reflect on and write about when and how you accepted Christ. If you have not yet made this decision, discuss with your leader what it means to accept Jesus as Lord.', 'reflection', 6),
 (1, 'The Meaning of Baptism', 'Study Matthew 28:19-20 and Romans 6:3-4. Write about what baptism symbolizes and its importance in the believer''s life. Discuss with your leader if you have been baptized or need to take this step.', 'reading', 7),
 (1, 'Prayer: Talking with Your Father', 'Begin a daily practice of spending 10 minutes talking to God. Share your thoughts, fears, hopes, and gratitude. Record your experience each day this week.', 'prayer', 8);

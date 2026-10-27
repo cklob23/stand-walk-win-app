@@ -2,7 +2,8 @@
 --
 -- DO NOT RUN from this PR or against production from the agent.
 -- Caleb: apply this in the Supabase SQL editor after review (staging first).
--- Run BEFORE 014-week12-paul-content.sql and 017-paul-journey-content.sql.
+-- Run BEFORE 014-week12-paul-content.sql, 017-paul-journey-content.sql,
+-- and 018-paul-journey-content-fixes.sql.
 --
 -- commentary: teacher notes under a question or assignment card.
 -- prayer: collapsible per-question Prayer card. Not the guided prayer.
