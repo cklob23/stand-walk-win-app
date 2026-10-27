@@ -1,5 +1,8 @@
 -- 014: Paul's Week 1 and Week 2 commentary, prayer, and Question 5
 --
+-- SUPERSEDED by 017-paul-journey-content.sql (full sheet + grammar pass).
+-- Do not run 014 after 017; 017 is the copy to apply.
+--
 -- DO NOT RUN from this PR or against production from the agent.
 -- Caleb: apply this in the Supabase SQL editor after review (staging first).
 -- Run AFTER 013-assignment-commentary-prayer.sql.

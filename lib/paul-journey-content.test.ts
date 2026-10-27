@@ -58,5 +58,8 @@ describe('Paul journey content', () => {
         assert.match(sql, /The Armor of God/)
         assert.match(sql, /Making a Stand Plan/)
         assert.match(sql, /Prayer for Strength/)
+        assert.match(sql, /The Psalms teach us/)
+        assert.match(sql, /Come, Holy Spirit, and/)
+        assert.match(sql, /the old has passed away/)
     })
 })
