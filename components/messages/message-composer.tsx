@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -9,6 +9,7 @@ import {
   MESSAGE_ATTACHMENT_ACCEPT,
 } from '@/lib/message-limits'
 import { MESSAGE_COMPOSER_EMOJIS, insertTextAtCursor } from '@/lib/message-composer-emojis'
+import { applyComposerTextareaSize } from '@/lib/message-composer-layout'
 import {
   DICTATION_LISTENING_LABEL,
   DICTATION_PERMISSION_MESSAGE,
@@ -28,6 +29,9 @@ import type { Message } from '@/lib/types'
 import { getFileIcon } from './message-bubble'
 
 export type AttachmentDraft = { file: File; preview: string | null }
+
+const toolbarBtn =
+  'h-9 w-9 shrink-0 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground'
 
 interface MessageComposerProps {
   partnerName: string | null
@@ -106,6 +110,18 @@ export function MessageComposer({
     ? 'Edit your message...'
     : `Message ${partnerName || 'your partner'}...`
 
+  const setComposerTextareaRef = useCallback(
+    (node: HTMLTextAreaElement | null) => {
+      textareaRef.current = node
+      applyComposerTextareaSize(node)
+    },
+    [textareaRef],
+  )
+
+  useLayoutEffect(() => {
+    applyComposerTextareaSize(textareaRef.current)
+  }, [textareaRef, value])
+
   const insertEmoji = (emoji: string) => {
     const el = textareaRef.current
     const { next, cursor } = insertTextAtCursor(value, emoji, el?.selectionStart, el?.selectionEnd)
@@ -115,35 +131,21 @@ export function MessageComposer({
     requestAnimationFrame(() => {
       el?.focus()
       el?.setSelectionRange(cursor, cursor)
+      applyComposerTextareaSize(el)
     })
   }
 
-  const emojiButton = (placement: 'desktop' | 'mobile') => (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className={cn(
-        'shrink-0 rounded-full text-muted-foreground hover:text-foreground',
-        placement === 'desktop' &&
-          'hidden h-11 w-11 md:inline-flex',
-        placement === 'mobile' &&
-          'absolute top-1/2 h-9 w-9 -translate-y-1/2 md:hidden',
-        placement === 'mobile' && (canSend ? 'right-10' : 'right-1'),
-        emojiVisible && 'bg-primary/10 text-primary',
-      )}
-      title="Insert emoji"
-      data-testid={placement === 'mobile' ? 'message-emoji' : 'message-emoji-desktop'}
-      aria-expanded={emojiVisible}
-      onClick={() => setEmojiOpen((open) => !open)}
-    >
-      <Smile className="h-5 w-5" />
-      <span className="sr-only">Insert emoji</span>
-    </Button>
-  )
+  const submit = () => {
+    if (dictationActive) dictation.stop()
+    onSend()
+  }
 
   return (
-    <div data-tour="messages-input" data-testid="message-composer" className="shrink-0 border-t">
+    <div
+      data-tour="messages-input"
+      data-testid="message-composer"
+      className="shrink-0 border-t bg-card pb-[max(0.75rem,calc(env(safe-area-inset-bottom,0px)+0.5rem))] max-md:pb-[max(1rem,calc(env(safe-area-inset-bottom,0px)+0.75rem))]"
+    >
       {(replyTo || editingMessage) && (
         <div className="flex items-center gap-2 px-4 pt-3 sm:px-6">
           <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground">
@@ -279,128 +281,127 @@ export function MessageComposer({
       )}
 
       <form
-        className="flex items-end gap-2 px-4 py-3 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] max-md:items-center max-md:gap-2.5 max-md:pb-[max(1.75rem,calc(env(safe-area-inset-bottom)+1.25rem))] md:gap-3 md:px-6 md:py-5 md:pb-5"
+        className="px-3 pt-2 md:px-4 md:pt-3"
         onSubmit={(e) => {
           e.preventDefault()
-          if (dictationActive) dictation.stop()
-          onSend()
+          submit()
         }}
       >
         {!editingMessage && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              accept={MESSAGE_ATTACHMENT_ACCEPT}
-              onChange={onFileSelect}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-11 w-11 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
-              onClick={onAttachClick}
-              title="Attach file"
-              data-testid="message-attach"
-            >
-              <Paperclip className="h-5 w-5" />
-              <span className="sr-only">Attach file</span>
-            </Button>
-          </>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            accept={MESSAGE_ATTACHMENT_ACCEPT}
+            onChange={onFileSelect}
+          />
         )}
 
-        {emojiButton('desktop')}
-
-        <div className="relative min-w-0 flex-1">
+        <div
+          data-testid="message-composer-shell"
+          className="flex min-w-0 flex-col rounded-2xl border bg-background shadow-none focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/40"
+        >
           <Textarea
-            ref={textareaRef}
+            ref={setComposerTextareaRef}
             value={value}
             onChange={(e) => {
-              onChange(e.target.value)
-              if (e.target.value.trim()) onTyping?.()
+              onChange(e.currentTarget.value)
+              applyComposerTextareaSize(e.currentTarget)
+              if (e.currentTarget.value.trim()) onTyping?.()
             }}
             placeholder={placeholder}
             className={cn(
-              'min-h-12 max-h-32 w-full resize-none border bg-background py-3 text-base shadow-none',
-              'placeholder:text-muted-foreground/80 focus-visible:ring-1',
-              'rounded-full px-4 max-md:min-h-11 max-md:py-2.5 max-md:pr-12 md:rounded-2xl md:px-4',
-              canSend && 'max-md:pr-[5.5rem]',
+              'min-h-11 max-h-40 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2.5 text-base shadow-none md:text-base',
+              'field-sizing-content placeholder:text-muted-foreground/80 focus-visible:ring-0',
             )}
             rows={1}
             onKeyDown={(e) => {
               if (shouldSendOnEnterKey(e.key, e.shiftKey, !isMobile)) {
                 e.preventDefault()
-                if (dictationActive) dictation.stop()
-                onSend()
+                submit()
               }
               if (e.key === 'Escape') {
                 onCancelAction()
               }
             }}
           />
-          {emojiButton('mobile')}
-          {canSend && (
-            <Button
-              type="submit"
-              size="icon"
-              data-testid="message-send-mobile"
-              className="absolute top-1/2 right-1 h-9 w-9 -translate-y-1/2 rounded-full bg-primary/80 text-primary-foreground shadow-none hover:bg-primary md:hidden"
-            >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : editingMessage ? (
-                <Pencil className="h-4 w-4" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              <span className="sr-only">{editingMessage ? 'Save edit' : 'Send message'}</span>
-            </Button>
-          )}
+
+          <div className="flex items-center gap-0.5 px-1 pb-1">
+            {!editingMessage && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={toolbarBtn}
+                onClick={onAttachClick}
+                title="Attach file"
+                data-testid="message-attach"
+              >
+                <Paperclip className="h-5 w-5" />
+                <span className="sr-only">Attach file</span>
+              </Button>
+            )}
+
+            <div className="ml-auto flex items-center gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(toolbarBtn, emojiVisible && 'bg-primary/10 text-primary')}
+                title="Insert emoji"
+                data-testid="message-emoji"
+                aria-expanded={emojiVisible}
+                onClick={() => setEmojiOpen((open) => !open)}
+              >
+                <Smile className="h-5 w-5" />
+                <span className="sr-only">Insert emoji</span>
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                data-testid="message-mic"
+                aria-pressed={dictationActive}
+                title={
+                  transcribing ? 'Cancel transcription' : dictationActive ? 'Stop dictation' : 'Dictate message'
+                }
+                className={cn(
+                  toolbarBtn,
+                  dictationActive && 'bg-primary/15 text-primary hover:text-primary',
+                )}
+                onClick={() => dictation.toggle()}
+              >
+                {transcribing ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Mic className={cn('h-5 w-5', listening && 'animate-pulse')} />
+                )}
+                <span className="sr-only">
+                  {transcribing ? 'Cancel transcription' : dictationActive ? 'Stop dictation' : 'Dictate message'}
+                </span>
+              </Button>
+
+              <Button
+                type="submit"
+                disabled={!canSend}
+                size="icon"
+                data-testid="message-send"
+                className="h-9 w-9 shrink-0 rounded-full bg-primary/80 text-primary-foreground shadow-none hover:bg-primary"
+              >
+                {busy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : editingMessage ? (
+                  <Pencil className="h-4 w-4" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                <span className="sr-only">{editingMessage ? 'Save edit' : 'Send message'}</span>
+              </Button>
+            </div>
+          </div>
         </div>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          data-testid="message-mic"
-          aria-pressed={dictationActive}
-          title={
-            transcribing ? 'Cancel transcription' : dictationActive ? 'Stop dictation' : 'Dictate message'
-          }
-          className={cn(
-            'h-11 w-11 shrink-0 rounded-full text-muted-foreground hover:text-foreground',
-            dictationActive && 'bg-primary/15 text-primary hover:text-primary',
-          )}
-          onClick={() => dictation.toggle()}
-        >
-          {transcribing ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <Mic className={cn('h-5 w-5', listening && 'animate-pulse')} />
-          )}
-          <span className="sr-only">
-            {transcribing ? 'Cancel transcription' : dictationActive ? 'Stop dictation' : 'Dictate message'}
-          </span>
-        </Button>
-
-        <Button
-          type="submit"
-          disabled={!canSend}
-          size="icon"
-          data-testid="message-send"
-          className="hidden h-11 w-11 shrink-0 rounded-xl bg-primary/80 text-primary-foreground shadow-none hover:bg-primary md:inline-flex"
-        >
-          {busy ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : editingMessage ? (
-            <Pencil className="h-5 w-5" />
-          ) : (
-            <Send className="h-5 w-5" />
-          )}
-          <span className="sr-only">{editingMessage ? 'Save edit' : 'Send message'}</span>
-        </Button>
       </form>
     </div>
   )
