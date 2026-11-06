@@ -17,6 +17,7 @@ import {
   DICTATION_TRANSCRIBING_LABEL,
   DICTATION_UNSUPPORTED_MESSAGE,
   shouldSendOnEnterKey,
+  shouldShowUnsupportedDictationNotice,
 } from '@/lib/speech-dictation'
 import { applySessionDictation } from '@/lib/scribe-realtime'
 import { dictationMeterLevels } from '@/lib/pcm-audio'
@@ -245,11 +246,17 @@ export function MessageComposer({
           {forceError ? DICTATION_STT_ERROR_MESSAGE : dictation.notice}
         </p>
       )}
-      {dictation.status === 'error' && !forceError && !dictation.notice && !dictationActive && (
-        <p data-testid="dictation-unsupported" className="px-4 pt-2 text-xs text-destructive sm:px-6">
-          {DICTATION_UNSUPPORTED_MESSAGE}
-        </p>
-      )}
+      {shouldShowUnsupportedDictationNotice({
+        supported: dictation.supported,
+        status: dictation.status,
+        notice: dictation.notice,
+      }) &&
+        !forceError &&
+        !dictationActive && (
+          <p data-testid="dictation-unsupported" className="px-4 pt-2 text-xs text-destructive sm:px-6">
+            {DICTATION_UNSUPPORTED_MESSAGE}
+          </p>
+        )}
 
       {emojiVisible && (
         <div

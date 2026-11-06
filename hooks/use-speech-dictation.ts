@@ -18,9 +18,10 @@ import {
   isDictationSupported,
   isSpeechRecognitionSupported,
   shouldUseMediaRecorderDictation,
+  statusAfterDictationNoticeClear,
   type DictationRecognition,
 } from '@/lib/speech-dictation'
-import { transcribeErrorMessage } from '@/lib/message-transcribe'
+import { shouldSkipWavFallback, transcribeErrorMessage } from '@/lib/message-transcribe'
 import {
   PCM_TARGET_RATE,
   concatInt16,
@@ -105,6 +106,7 @@ export function useSpeechDictation({
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const sttConfigErrorRef = useRef<{ code: string; error: string } | null>(null)
   const onFinalRef = useRef(onFinalTranscript)
   const onLiveRef = useRef(onLiveTranscript)
   const onSessionStartRef = useRef(onSessionStart)
@@ -134,7 +136,10 @@ export function useSpeechDictation({
     setStatus(kind === 'permission' ? 'permission' : kind === 'error' ? 'error' : 'idle')
     if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
     if (message) {
-      noticeTimerRef.current = setTimeout(() => setNotice(null), 6000)
+      noticeTimerRef.current = setTimeout(() => {
+        setNotice(null)
+        setStatus((prev) => statusAfterDictationNoticeClear(prev))
+      }, 6000)
     }
   }, [])
 
@@ -251,7 +256,10 @@ export function useSpeechDictation({
           code?: string
         }
         if (!response.ok) {
-          showNotice(payload.error || transcribeErrorMessage(response.status, payload.code), 'error')
+          showNotice(
+            payload.error || transcribeErrorMessage(response.status, payload.code),
+            'error',
+          )
           return
         }
         const text = (payload.text || '').trim()
@@ -312,6 +320,12 @@ export function useSpeechDictation({
       if (elapsed < DICTATION_MIN_RECORDING_MS || pcm.length < 1600) {
         finishingRef.current = false
         showNotice(DICTATION_EMPTY_AUDIO_MESSAGE)
+        return
+      }
+      const configError = sttConfigErrorRef.current
+      if (configError && shouldSkipWavFallback(configError.code)) {
+        finishingRef.current = false
+        showNotice(configError.error, 'error')
         return
       }
       const wav = encodeWavFromPcm16(pcm, PCM_TARGET_RATE)
@@ -504,6 +518,7 @@ export function useSpeechDictation({
     pendingScribeChunksRef.current = []
     committedRef.current = ''
     partialRef.current = ''
+    sttConfigErrorRef.current = null
     onSessionStartRef.current?.()
 
     // Create AudioContext during the tap, before awaiting getUserMedia, so iOS
@@ -526,7 +541,12 @@ export function useSpeechDictation({
           code?: string
         }
         if (tokenRes.ok && tokenJson.token) return tokenJson.token
-        console.warn('[dictation] scribe token unavailable; WAV fallback on stop', tokenJson.code)
+        const code = tokenJson.code || ''
+        const error = tokenJson.error || transcribeErrorMessage(tokenRes.status, code)
+        if (shouldSkipWavFallback(code)) {
+          sttConfigErrorRef.current = { code, error }
+        }
+        console.warn('[dictation] scribe token unavailable; WAV fallback on stop', code || tokenRes.status)
         return ''
       })
       .catch(() => '')

@@ -7,6 +7,8 @@ import {
   DICTATION_ERROR_MESSAGE,
   DICTATION_PERMISSION_MESSAGE,
   DICTATION_RECORDING_LABEL,
+  DICTATION_STT_ERROR_MESSAGE,
+  DICTATION_STT_UNAVAILABLE_MESSAGE,
   DICTATION_UNSUPPORTED_MESSAGE,
   appendDictatedText,
   collectFinalTranscript,
@@ -22,7 +24,9 @@ import {
   preferRecorderMimeType,
   recordingFileName,
   shouldSendOnEnterKey,
+  shouldShowUnsupportedDictationNotice,
   shouldUseMediaRecorderDictation,
+  statusAfterDictationNoticeClear,
 } from './speech-dictation.ts'
 import { insertTextAtCursor, MESSAGE_COMPOSER_EMOJIS } from './message-composer-emojis.ts'
 
@@ -59,6 +63,14 @@ describe('speech dictation helpers', () => {
     assert.equal(isMediaRecorderSupported(iPhone), true)
     assert.equal(shouldUseMediaRecorderDictation(iPhone), true)
     assert.equal(isDictationSupported(iPhone), true)
+    assert.equal(
+      shouldShowUnsupportedDictationNotice({
+        supported: isDictationSupported(iPhone),
+        status: 'error',
+        notice: null,
+      }),
+      false,
+    )
     assert.equal(
       shouldUseMediaRecorderDictation({
         navigator: {
@@ -115,6 +127,46 @@ describe('speech dictation helpers', () => {
     assert.match(DICTATION_UNSUPPORTED_MESSAGE, /not supported/i)
   })
 
+  it('does not treat a MediaRecorder STT failure as an unsupported browser after the notice TTL', () => {
+    assert.equal(
+      shouldShowUnsupportedDictationNotice({
+        supported: true,
+        status: 'error',
+        notice: null,
+      }),
+      false,
+    )
+    assert.equal(
+      shouldShowUnsupportedDictationNotice({
+        supported: true,
+        status: 'error',
+        notice: DICTATION_STT_ERROR_MESSAGE,
+      }),
+      false,
+    )
+    assert.equal(
+      shouldShowUnsupportedDictationNotice({
+        supported: false,
+        status: 'error',
+        notice: null,
+      }),
+      true,
+    )
+    assert.equal(
+      shouldShowUnsupportedDictationNotice({
+        supported: false,
+        status: 'idle',
+        notice: null,
+      }),
+      false,
+    )
+    assert.equal(statusAfterDictationNoticeClear('error'), 'idle')
+    assert.equal(statusAfterDictationNoticeClear('permission'), 'permission')
+    assert.equal(statusAfterDictationNoticeClear('idle'), 'idle')
+    assert.match(DICTATION_STT_UNAVAILABLE_MESSAGE, /temporarily unavailable/i)
+    assert.doesNotMatch(DICTATION_STT_UNAVAILABLE_MESSAGE, /api key|elevenlabs|speech_to_text|permission/i)
+  })
+
   it('sends on Enter only on desktop without Shift', () => {
     assert.equal(shouldSendOnEnterKey('Enter', false, true), true)
     assert.equal(shouldSendOnEnterKey('Enter', true, true), false)
@@ -164,6 +216,13 @@ describe('composer and mobile chrome wiring', () => {
     assert.doesNotMatch(hook, /new MediaRecorder/)
     assert.doesNotMatch(hook, /continuous = true/)
     assert.match(hook, /position: 'top-center'/)
+    assert.match(hook, /statusAfterDictationNoticeClear/)
+    assert.match(hook, /shouldSkipWavFallback/)
+    assert.match(composer, /shouldShowUnsupportedDictationNotice/)
+    assert.doesNotMatch(
+      composer,
+      /dictation\.status === 'error' && !forceError && !dictation\.notice/,
+    )
     assert.match(composer, /DICTATION_RECORDING_LABEL/)
     assert.match(composer, /dictation-transcribing/)
     assert.match(composer, /dictation-volume/)

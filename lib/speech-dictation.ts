@@ -6,6 +6,8 @@ export const DICTATION_ERROR_MESSAGE = 'Could not capture audio. Try again.'
 export const DICTATION_STT_ERROR_MESSAGE = 'Could not transcribe audio. Try again.'
 export const DICTATION_STT_UNCONFIGURED_MESSAGE =
   'Voice dictation is not configured on this server. Type your message instead.'
+export const DICTATION_STT_UNAVAILABLE_MESSAGE =
+  'Voice dictation is temporarily unavailable. Type your message instead.'
 export const DICTATION_EMPTY_AUDIO_MESSAGE = 'No speech detected. Try again.'
 export const DICTATION_LISTENING_LABEL = 'Listening… tap the mic to stop'
 export const DICTATION_RECORDING_LABEL = 'Recording… tap the mic to stop'
@@ -193,6 +195,32 @@ export function dictationErrorMessage(error: string | undefined): string {
   }
   if (error === 'no-speech') return ''
   return DICTATION_ERROR_MESSAGE
+}
+
+/**
+ * After an STT/network/permission toast TTL, drop error status so the
+ * composer cannot treat a failed MediaRecorder session as "unsupported".
+ * Permission stays so the mic-denied footer remains until the next attempt.
+ */
+export function statusAfterDictationNoticeClear(
+  status: 'idle' | 'listening' | 'recording' | 'transcribing' | 'permission' | 'error',
+): 'idle' | 'listening' | 'recording' | 'transcribing' | 'permission' | 'error' {
+  return status === 'error' ? 'idle' : status
+}
+
+/**
+ * True unsupported browsers only. A MediaRecorder/iPhone path that already
+ * captured audio must never flip into DICTATION_UNSUPPORTED_MESSAGE after
+ * the error toast clears.
+ */
+export function shouldShowUnsupportedDictationNotice(options: {
+  supported: boolean
+  status: string
+  notice: string | null
+}): boolean {
+  if (options.supported) return false
+  if (options.notice) return false
+  return options.status === 'error'
 }
 
 export function shouldSendOnEnterKey(
