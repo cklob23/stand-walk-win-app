@@ -12,7 +12,9 @@ import { MESSAGE_COMPOSER_EMOJIS, insertTextAtCursor } from '@/lib/message-compo
 import {
   DICTATION_LISTENING_LABEL,
   DICTATION_PERMISSION_MESSAGE,
-  DICTATION_UNSAFE_MESSAGE,
+  DICTATION_RECORDING_LABEL,
+  DICTATION_STT_ERROR_MESSAGE,
+  DICTATION_TRANSCRIBING_LABEL,
   DICTATION_UNSUPPORTED_MESSAGE,
   appendDictatedText,
   shouldSendOnEnterKey,
@@ -45,7 +47,9 @@ interface MessageComposerProps {
   maxAttachments?: number
   forceEmojiOpen?: boolean
   forceListening?: boolean
-  forceUnsupported?: boolean
+  forceRecording?: boolean
+  forceTranscribing?: boolean
+  forceError?: boolean
 }
 
 export function MessageComposer({
@@ -68,7 +72,9 @@ export function MessageComposer({
   maxAttachments = MAX_MESSAGE_ATTACHMENTS,
   forceEmojiOpen = false,
   forceListening = false,
-  forceUnsupported = false,
+  forceRecording = false,
+  forceTranscribing = false,
+  forceError = false,
 }: MessageComposerProps) {
   const isMobile = useIsMobile()
   const [emojiOpen, setEmojiOpen] = useState(forceEmojiOpen)
@@ -79,7 +85,10 @@ export function MessageComposer({
       onTyping?.()
     },
   })
-  const listening = forceListening || dictation.listening
+  const recording = forceRecording || dictation.status === 'recording'
+  const transcribing = forceTranscribing || dictation.status === 'transcribing'
+  const listening = forceListening || recording || dictation.listening
+  const dictationActive = listening || transcribing
   const busy = isLoading || isUploading
   const canSend = !busy && Boolean(value.trim() || attachmentFiles.length > 0)
   const emojiVisible = forceEmojiOpen || emojiOpen
@@ -191,25 +200,30 @@ export function MessageComposer({
         </div>
       )}
 
-      {listening && (
+      {transcribing && (
+        <p data-testid="dictation-transcribing" className="px-4 pt-2 text-xs font-medium text-primary sm:px-6">
+          {DICTATION_TRANSCRIBING_LABEL}
+        </p>
+      )}
+      {listening && !transcribing && (
         <p
           data-testid="dictation-status"
           className="px-4 pt-2 text-xs font-medium text-primary sm:px-6"
         >
-          {DICTATION_LISTENING_LABEL}
+          {recording ? DICTATION_RECORDING_LABEL : DICTATION_LISTENING_LABEL}
         </p>
       )}
-      {dictation.status === 'permission' && !listening && (
+      {dictation.status === 'permission' && !dictationActive && (
         <p data-testid="dictation-permission" className="px-4 pt-2 text-xs text-destructive sm:px-6">
           {DICTATION_PERMISSION_MESSAGE}
         </p>
       )}
-      {(forceUnsupported || dictation.notice) && !listening && (
+      {(forceError || dictation.notice) && !dictationActive && (
         <p data-testid="dictation-unavailable" className="px-4 pt-2 text-xs text-muted-foreground sm:px-6">
-          {forceUnsupported ? DICTATION_UNSAFE_MESSAGE : dictation.notice}
+          {forceError ? DICTATION_STT_ERROR_MESSAGE : dictation.notice}
         </p>
       )}
-      {dictation.status === 'error' && !forceUnsupported && !dictation.notice && !listening && (
+      {dictation.status === 'error' && !forceError && !dictation.notice && !dictationActive && (
         <p data-testid="dictation-unsupported" className="px-4 pt-2 text-xs text-destructive sm:px-6">
           {DICTATION_UNSUPPORTED_MESSAGE}
         </p>
@@ -239,7 +253,7 @@ export function MessageComposer({
         className="flex items-end gap-2 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] max-md:items-center max-md:gap-2.5 md:gap-3 md:px-6 md:py-5 md:pb-5"
         onSubmit={(e) => {
           e.preventDefault()
-          if (listening) dictation.stop()
+          if (dictationActive) dictation.stop()
           onSend()
         }}
       >
@@ -289,7 +303,7 @@ export function MessageComposer({
             onKeyDown={(e) => {
               if (shouldSendOnEnterKey(e.key, e.shiftKey, !isMobile)) {
                 e.preventDefault()
-                if (listening) dictation.stop()
+                if (dictationActive) dictation.stop()
                 onSend()
               }
               if (e.key === 'Escape') {
@@ -322,16 +336,24 @@ export function MessageComposer({
           variant="ghost"
           size="icon"
           data-testid="message-mic"
-          aria-pressed={listening}
-          title={listening ? 'Stop dictation' : 'Dictate message'}
+          aria-pressed={dictationActive}
+          title={
+            transcribing ? 'Cancel transcription' : dictationActive ? 'Stop dictation' : 'Dictate message'
+          }
           className={cn(
             'h-11 w-11 shrink-0 rounded-full text-muted-foreground hover:text-foreground',
-            listening && 'bg-primary/15 text-primary hover:text-primary',
+            dictationActive && 'bg-primary/15 text-primary hover:text-primary',
           )}
           onClick={() => dictation.toggle()}
         >
-          <Mic className={cn('h-5 w-5', listening && 'animate-pulse')} />
-          <span className="sr-only">{listening ? 'Stop dictation' : 'Dictate message'}</span>
+          {transcribing ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Mic className={cn('h-5 w-5', listening && 'animate-pulse')} />
+          )}
+          <span className="sr-only">
+            {transcribing ? 'Cancel transcription' : dictationActive ? 'Stop dictation' : 'Dictate message'}
+          </span>
         </Button>
 
         <Button

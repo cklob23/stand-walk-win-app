@@ -1,12 +1,28 @@
 export const DICTATION_UNSUPPORTED_MESSAGE =
   'Voice dictation is not supported in this browser'
-export const DICTATION_UNSAFE_MESSAGE =
-  "Voice dictation isn't available in this browser. Type your message instead."
 export const DICTATION_PERMISSION_MESSAGE =
   'Microphone permission is needed to dictate a message'
 export const DICTATION_ERROR_MESSAGE = 'Could not capture audio. Try again.'
+export const DICTATION_STT_ERROR_MESSAGE = 'Could not transcribe audio. Try again.'
+export const DICTATION_STT_UNCONFIGURED_MESSAGE =
+  'Voice dictation is not configured on this server. Type your message instead.'
+export const DICTATION_EMPTY_AUDIO_MESSAGE = 'No speech detected. Try again.'
 export const DICTATION_LISTENING_LABEL = 'Listening… tap the mic to stop'
+export const DICTATION_RECORDING_LABEL = 'Recording… tap the mic to stop'
+export const DICTATION_TRANSCRIBING_LABEL = 'Transcribing…'
 export const DICTATION_WATCHDOG_MS = 12_000
+export const DICTATION_RECORDING_MAX_MS = 20_000
+export const DICTATION_GETUSERMEDIA_TIMEOUT_MS = 25_000
+export const DICTATION_TRANSCRIBE_TIMEOUT_MS = 20_000
+export const DICTATION_MIN_RECORDING_MS = 400
+
+export const RECORDER_MIME_CANDIDATES = [
+  'audio/mp4',
+  'audio/mp4;codecs=mp4a.40.2',
+  'audio/aac',
+  'audio/webm;codecs=opus',
+  'audio/webm',
+]
 
 export interface DictationAlternative {
   transcript: string
@@ -88,10 +104,50 @@ export function isSpeechRecognitionSupported(globalObj: object = globalThis): bo
   return !isUnsafeSpeechRecognitionPlatform(readNavigatorHints(globalObj))
 }
 
-export function dictationUnavailableMessage(globalObj: object = globalThis): string {
-  if (isUnsafeSpeechRecognitionPlatform(readNavigatorHints(globalObj))) {
-    return DICTATION_UNSAFE_MESSAGE
+export function isMediaRecorderSupported(globalObj: object = globalThis): boolean {
+  const g = globalObj as {
+    MediaRecorder?: unknown
+    navigator?: { mediaDevices?: { getUserMedia?: unknown } }
   }
+  if (typeof g.MediaRecorder !== 'function') return false
+  return typeof g.navigator?.mediaDevices?.getUserMedia === 'function'
+}
+
+/**
+ * iOS/iPadOS (and any browser without a safe Web Speech ctor) record with
+ * MediaRecorder and transcribe server-side. Never start webkitSpeechRecognition
+ * on unsafe platforms — that path can freeze Safari/PWA.
+ */
+export function shouldUseMediaRecorderDictation(globalObj: object = globalThis): boolean {
+  if (isSpeechRecognitionSupported(globalObj)) return false
+  return isMediaRecorderSupported(globalObj)
+}
+
+export function isDictationSupported(globalObj: object = globalThis): boolean {
+  return isSpeechRecognitionSupported(globalObj) || isMediaRecorderSupported(globalObj)
+}
+
+export function preferRecorderMimeType(
+  isTypeSupported: (type: string) => boolean = (type) => {
+    if (typeof MediaRecorder === 'undefined') return false
+    try {
+      return MediaRecorder.isTypeSupported(type)
+    } catch {
+      return false
+    }
+  },
+): string {
+  return RECORDER_MIME_CANDIDATES.find((type) => isTypeSupported(type)) || ''
+}
+
+export function recordingFileName(mimeType: string): string {
+  if (/mp4|aac|m4a/i.test(mimeType)) return 'dictation.m4a'
+  if (/mpeg|mp3/i.test(mimeType)) return 'dictation.mp3'
+  if (/wav/i.test(mimeType)) return 'dictation.wav'
+  return 'dictation.webm'
+}
+
+export function dictationUnavailableMessage(): string {
   return DICTATION_UNSUPPORTED_MESSAGE
 }
 

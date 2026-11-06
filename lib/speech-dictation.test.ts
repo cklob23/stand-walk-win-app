@@ -6,16 +6,21 @@ import { fileURLToPath } from 'node:url'
 import {
   DICTATION_ERROR_MESSAGE,
   DICTATION_PERMISSION_MESSAGE,
-  DICTATION_UNSAFE_MESSAGE,
+  DICTATION_RECORDING_LABEL,
   DICTATION_UNSUPPORTED_MESSAGE,
   appendDictatedText,
   collectFinalTranscript,
   dictationErrorMessage,
   dictationUnavailableMessage,
   getSpeechRecognitionCtor,
+  isDictationSupported,
+  isMediaRecorderSupported,
   isSpeechRecognitionSupported,
   isUnsafeSpeechRecognitionPlatform,
+  preferRecorderMimeType,
+  recordingFileName,
   shouldSendOnEnterKey,
+  shouldUseMediaRecorderDictation,
 } from './speech-dictation.ts'
 import { insertTextAtCursor, MESSAGE_COMPOSER_EMOJIS } from './message-composer-emojis.ts'
 
@@ -32,25 +37,33 @@ describe('speech dictation helpers', () => {
     assert.equal(isSpeechRecognitionSupported({ webkitSpeechRecognition: Fake }), true)
   })
 
-  it('treats iPhone, iPad, and iPadOS desktop-UA as unsafe even when the ctor exists', () => {
+  it('treats iPhone, iPad, and iPadOS desktop-UA as unsafe for Web Speech even when the ctor exists', () => {
     class Fake {}
+    class FakeRecorder {}
+    const iPhone = {
+      webkitSpeechRecognition: Fake,
+      MediaRecorder: FakeRecorder,
+      navigator: {
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)',
+        mediaDevices: { getUserMedia: async () => ({}) },
+      },
+    }
     assert.equal(isUnsafeSpeechRecognitionPlatform({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' }), true)
     assert.equal(isUnsafeSpeechRecognitionPlatform({ userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)' }), true)
     assert.equal(isUnsafeSpeechRecognitionPlatform({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', maxTouchPoints: 5 }), true)
     assert.equal(isUnsafeSpeechRecognitionPlatform({ userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/120' }), false)
-    assert.equal(
-      isSpeechRecognitionSupported({
-        webkitSpeechRecognition: Fake,
-        navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' },
-      }),
-      false,
-    )
-    assert.equal(
-      dictationUnavailableMessage({
-        navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' },
-      }),
-      DICTATION_UNSAFE_MESSAGE,
-    )
+    assert.equal(isSpeechRecognitionSupported(iPhone), false)
+    assert.equal(isMediaRecorderSupported(iPhone), true)
+    assert.equal(shouldUseMediaRecorderDictation(iPhone), true)
+    assert.equal(isDictationSupported(iPhone), true)
+    assert.equal(dictationUnavailableMessage(), DICTATION_UNSUPPORTED_MESSAGE)
+  })
+
+  it('prefers mp4 recordings on iOS-like mime support and names the file .m4a', () => {
+    assert.equal(preferRecorderMimeType((type) => type === 'audio/mp4' || type.startsWith('audio/webm')), 'audio/mp4')
+    assert.equal(preferRecorderMimeType((type) => type.startsWith('audio/webm')), 'audio/webm;codecs=opus')
+    assert.equal(recordingFileName('audio/mp4'), 'dictation.m4a')
+    assert.equal(recordingFileName('audio/webm;codecs=opus'), 'dictation.webm')
   })
 
   it('appends dictated text without auto-spacing twice', () => {
@@ -109,18 +122,26 @@ describe('composer and mobile chrome wiring', () => {
     assert.match(composer, /message-emoji-picker/)
     assert.match(composer, /message-mic/)
     const hook = readFileSync(join(here, '../hooks/use-speech-dictation.ts'), 'utf8')
+    const route = readFileSync(join(here, '../app/api/messages/transcribe/route.ts'), 'utf8')
     assert.match(hook, /dictationUnavailableMessage/)
     assert.match(hook, /isSpeechRecognitionSupported\(\)/)
+    assert.match(hook, /shouldUseMediaRecorderDictation\(\)/)
     assert.match(hook, /recognition\.continuous = false/)
     assert.match(hook, /Never restart/)
+    assert.match(hook, /Never pass a timeslice/)
     assert.match(hook, /DICTATION_WATCHDOG_MS/)
-    assert.match(hook, /showUnavailable/)
+    assert.match(hook, /DICTATION_RECORDING_MAX_MS/)
+    assert.match(hook, /\/api\/messages\/transcribe/)
+    assert.doesNotMatch(hook, /continuous = true/)
     assert.match(hook, /position: 'top-center'/)
-    assert.match(composer, /dictation-unavailable/)
+    assert.match(composer, /DICTATION_RECORDING_LABEL/)
+    assert.match(composer, /dictation-transcribing/)
     assert.match(composer, /max-md:pr-12/)
     assert.match(composer, /rounded-full/)
     assert.match(composer, /message-send-mobile/)
     assert.match(composer, /hidden h-11 w-11 shrink-0 rounded-xl/)
+    assert.match(route, /ELEVENLABS_API_KEY/)
+    assert.match(DICTATION_RECORDING_LABEL, /Recording/)
     assert.match(limits, /MAX_MESSAGE_ATTACHMENTS = 5/)
     assert.match(limits, /10 \* 1024 \* 1024/)
   })

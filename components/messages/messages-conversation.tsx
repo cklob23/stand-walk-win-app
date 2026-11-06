@@ -59,7 +59,9 @@ export interface MessagesConversationProps {
   onBack?: () => void
   forceEmojiOpen?: boolean
   forceListening?: boolean
-  forceUnsupported?: boolean
+  forceRecording?: boolean
+  forceTranscribing?: boolean
+  forceError?: boolean
 }
 
 export function MessagesConversation({
@@ -94,7 +96,9 @@ export function MessagesConversation({
   onBack,
   forceEmojiOpen = false,
   forceListening = false,
-  forceUnsupported = false,
+  forceRecording = false,
+  forceTranscribing = false,
+  forceError = false,
 }: MessagesConversationProps) {
   const partnerInitials = profileInitials(partner.full_name)
   const ownInitials = profileInitials(profile.full_name)
@@ -294,7 +298,9 @@ export function MessagesConversation({
           maxAttachments={MAX_MESSAGE_ATTACHMENTS}
           forceEmojiOpen={forceEmojiOpen}
           forceListening={forceListening}
-          forceUnsupported={forceUnsupported}
+          forceRecording={forceRecording}
+          forceTranscribing={forceTranscribing}
+          forceError={forceError}
         />
       </div>
 
