@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
-  DICTATION_UNSUPPORTED_MESSAGE,
+  DICTATION_WATCHDOG_MS,
   collectFinalTranscript,
   dictationErrorMessage,
+  dictationUnavailableMessage,
   getSpeechRecognitionCtor,
   isSpeechRecognitionSupported,
   type DictationRecognition,
@@ -19,91 +20,143 @@ interface UseSpeechDictationOptions {
 export function useSpeechDictation({ onFinalTranscript, lang }: UseSpeechDictationOptions) {
   const [listening, setListening] = useState(false)
   const [status, setStatus] = useState<'idle' | 'listening' | 'permission' | 'error'>('idle')
+  const [notice, setNotice] = useState<string | null>(null)
   const recognitionRef = useRef<DictationRecognition | null>(null)
   const wantListenRef = useRef(false)
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const onFinalRef = useRef(onFinalTranscript)
   onFinalRef.current = onFinalTranscript
 
-  const stop = useCallback(() => {
-    wantListenRef.current = false
-    const rec = recognitionRef.current
-    recognitionRef.current = null
+  const clearWatchdog = useCallback(() => {
+    if (watchdogRef.current) {
+      clearTimeout(watchdogRef.current)
+      watchdogRef.current = null
+    }
+  }, [])
+
+  const showUnavailable = useCallback((message: string) => {
+    toast.error(message, { position: 'top-center' })
+    setNotice(message)
+    setListening(false)
+    setStatus('idle')
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 6000)
+  }, [])
+
+  const detach = useCallback((rec: DictationRecognition | null) => {
+    if (!rec) return
+    rec.onresult = null
+    rec.onerror = null
+    rec.onend = null
     try {
-      rec?.stop()
+      rec.abort()
     } catch {
       try {
-        rec?.abort()
+        rec.stop()
       } catch {
         /* already stopped */
       }
     }
-    setListening(false)
-    setStatus((prev) => (prev === 'listening' ? 'idle' : prev))
   }, [])
 
+  const stop = useCallback(() => {
+    wantListenRef.current = false
+    clearWatchdog()
+    const rec = recognitionRef.current
+    recognitionRef.current = null
+    detach(rec)
+    setListening(false)
+    setStatus((prev) => (prev === 'listening' ? 'idle' : prev))
+  }, [clearWatchdog, detach])
+
+  useEffect(
+    () => () => {
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
+    },
+    [],
+  )
+
   const start = useCallback(() => {
+    if (!isSpeechRecognitionSupported()) {
+      showUnavailable(dictationUnavailableMessage())
+      return
+    }
+
     const Ctor = getSpeechRecognitionCtor()
     if (!Ctor) {
-      toast.error(DICTATION_UNSUPPORTED_MESSAGE)
-      setStatus('error')
-      setListening(false)
+      showUnavailable(dictationUnavailableMessage())
       return
     }
 
     stop()
+
     const recognition = new Ctor()
-    recognition.continuous = true
-    recognition.interimResults = true
+    // iOS freezes with continuous + onend restart. One-shot is enough on desktop/Android.
+    recognition.continuous = false
+    recognition.interimResults = false
     recognition.lang = lang || (typeof navigator !== 'undefined' ? navigator.language : 'en-US')
-    wantListenRef.current = true
-    recognitionRef.current = recognition
 
     recognition.onresult = (event) => {
       const transcript = collectFinalTranscript(event)
       if (transcript.trim()) onFinalRef.current(transcript)
+      wantListenRef.current = false
+      clearWatchdog()
+      setListening(false)
+      setStatus('idle')
     }
 
     recognition.onerror = (event) => {
       const message = dictationErrorMessage(event.error)
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        setStatus('permission')
-        toast.error(message)
+      if (event.error === 'no-speech') {
         wantListenRef.current = false
+        clearWatchdog()
         setListening(false)
+        setStatus('idle')
         return
       }
-      if (event.error === 'no-speech') return
-      setStatus('error')
-      if (message) toast.error(message)
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setStatus('permission')
+        if (message) toast.error(message)
+      } else {
+        setStatus('error')
+        if (message) toast.error(message)
+      }
       wantListenRef.current = false
+      clearWatchdog()
       setListening(false)
     }
 
     recognition.onend = () => {
-      if (wantListenRef.current && recognitionRef.current === recognition) {
-        try {
-          recognition.start()
-          return
-        } catch {
-          wantListenRef.current = false
-        }
-      }
+      // Never restart — iOS Safari hangs in a start/onend loop.
+      wantListenRef.current = false
+      clearWatchdog()
       if (recognitionRef.current === recognition) recognitionRef.current = null
       setListening(false)
       setStatus((prev) => (prev === 'listening' ? 'idle' : prev))
     }
 
+    wantListenRef.current = true
+    recognitionRef.current = recognition
+
     try {
       recognition.start()
-      setListening(true)
-      setStatus('listening')
     } catch {
-      toast.error(DICTATION_UNSUPPORTED_MESSAGE)
-      setStatus('error')
+      recognitionRef.current = null
       wantListenRef.current = false
-      setListening(false)
+      detach(recognition)
+      showUnavailable(dictationUnavailableMessage())
+      return
     }
-  }, [lang, stop])
+
+    setListening(true)
+    setStatus('listening')
+    clearWatchdog()
+    watchdogRef.current = setTimeout(() => {
+      if (!wantListenRef.current) return
+      stop()
+    }, DICTATION_WATCHDOG_MS)
+  }, [clearWatchdog, detach, lang, showUnavailable, stop])
 
   const toggle = useCallback(() => {
     if (listening) stop()
@@ -115,6 +168,7 @@ export function useSpeechDictation({ onFinalTranscript, lang }: UseSpeechDictati
   return {
     listening,
     status,
+    notice,
     toggle,
     stop,
     supported: isSpeechRecognitionSupported(),

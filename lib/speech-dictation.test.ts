@@ -6,12 +6,15 @@ import { fileURLToPath } from 'node:url'
 import {
   DICTATION_ERROR_MESSAGE,
   DICTATION_PERMISSION_MESSAGE,
+  DICTATION_UNSAFE_MESSAGE,
   DICTATION_UNSUPPORTED_MESSAGE,
   appendDictatedText,
   collectFinalTranscript,
   dictationErrorMessage,
+  dictationUnavailableMessage,
   getSpeechRecognitionCtor,
   isSpeechRecognitionSupported,
+  isUnsafeSpeechRecognitionPlatform,
   shouldSendOnEnterKey,
 } from './speech-dictation.ts'
 import { insertTextAtCursor, MESSAGE_COMPOSER_EMOJIS } from './message-composer-emojis.ts'
@@ -27,6 +30,27 @@ describe('speech dictation helpers', () => {
     assert.equal(getSpeechRecognitionCtor({ SpeechRecognition: Fake }), Fake)
     assert.equal(getSpeechRecognitionCtor({ webkitSpeechRecognition: Fake }), Fake)
     assert.equal(isSpeechRecognitionSupported({ webkitSpeechRecognition: Fake }), true)
+  })
+
+  it('treats iPhone, iPad, and iPadOS desktop-UA as unsafe even when the ctor exists', () => {
+    class Fake {}
+    assert.equal(isUnsafeSpeechRecognitionPlatform({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' }), true)
+    assert.equal(isUnsafeSpeechRecognitionPlatform({ userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)' }), true)
+    assert.equal(isUnsafeSpeechRecognitionPlatform({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', maxTouchPoints: 5 }), true)
+    assert.equal(isUnsafeSpeechRecognitionPlatform({ userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/120' }), false)
+    assert.equal(
+      isSpeechRecognitionSupported({
+        webkitSpeechRecognition: Fake,
+        navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' },
+      }),
+      false,
+    )
+    assert.equal(
+      dictationUnavailableMessage({
+        navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' },
+      }),
+      DICTATION_UNSAFE_MESSAGE,
+    )
   })
 
   it('appends dictated text without auto-spacing twice', () => {
@@ -85,7 +109,18 @@ describe('composer and mobile chrome wiring', () => {
     assert.match(composer, /message-emoji-picker/)
     assert.match(composer, /message-mic/)
     const hook = readFileSync(join(here, '../hooks/use-speech-dictation.ts'), 'utf8')
-    assert.match(hook, /DICTATION_UNSUPPORTED_MESSAGE/)
+    assert.match(hook, /dictationUnavailableMessage/)
+    assert.match(hook, /isSpeechRecognitionSupported\(\)/)
+    assert.match(hook, /recognition\.continuous = false/)
+    assert.match(hook, /Never restart/)
+    assert.match(hook, /DICTATION_WATCHDOG_MS/)
+    assert.match(hook, /showUnavailable/)
+    assert.match(hook, /position: 'top-center'/)
+    assert.match(composer, /dictation-unavailable/)
+    assert.match(composer, /max-md:pr-12/)
+    assert.match(composer, /rounded-full/)
+    assert.match(composer, /message-send-mobile/)
+    assert.match(composer, /hidden h-11 w-11 shrink-0 rounded-xl/)
     assert.match(limits, /MAX_MESSAGE_ATTACHMENTS = 5/)
     assert.match(limits, /10 \* 1024 \* 1024/)
   })
