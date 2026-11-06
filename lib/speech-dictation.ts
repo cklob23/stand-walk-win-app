@@ -104,27 +104,34 @@ export function isSpeechRecognitionSupported(globalObj: object = globalThis): bo
   return !isUnsafeSpeechRecognitionPlatform(readNavigatorHints(globalObj))
 }
 
-export function isMediaRecorderSupported(globalObj: object = globalThis): boolean {
+export function isGetUserMediaSupported(globalObj: object = globalThis): boolean {
   const g = globalObj as {
-    MediaRecorder?: unknown
     navigator?: { mediaDevices?: { getUserMedia?: unknown } }
   }
-  if (typeof g.MediaRecorder !== 'function') return false
   return typeof g.navigator?.mediaDevices?.getUserMedia === 'function'
 }
 
+export function isMediaRecorderSupported(globalObj: object = globalThis): boolean {
+  const g = globalObj as { MediaRecorder?: unknown }
+  if (typeof g.MediaRecorder !== 'function') return false
+  return isGetUserMediaSupported(globalObj)
+}
+
 /**
- * iOS/iPadOS (and any browser without a safe Web Speech ctor) record with
- * MediaRecorder and transcribe server-side. Never start webkitSpeechRecognition
+ * iOS/iPadOS (and any browser without a safe Web Speech ctor) capture PCM via
+ * getUserMedia and transcribe server-side. Never start webkitSpeechRecognition
  * on unsafe platforms — that path can freeze Safari/PWA.
+ *
+ * MediaRecorder fMP4/m4a on iOS is often incomplete when started without a
+ * timeslice, which is why this path no longer uploads those containers.
  */
 export function shouldUseMediaRecorderDictation(globalObj: object = globalThis): boolean {
   if (isSpeechRecognitionSupported(globalObj)) return false
-  return isMediaRecorderSupported(globalObj)
+  return isGetUserMediaSupported(globalObj)
 }
 
 export function isDictationSupported(globalObj: object = globalThis): boolean {
-  return isSpeechRecognitionSupported(globalObj) || isMediaRecorderSupported(globalObj)
+  return isSpeechRecognitionSupported(globalObj) || isGetUserMediaSupported(globalObj)
 }
 
 export function preferRecorderMimeType(
@@ -163,6 +170,17 @@ export function collectFinalTranscript(event: DictationResultEvent): string {
   for (let i = event.resultIndex; i < event.results.length; i++) {
     const result = event.results[i]
     if (result?.isFinal && result[0]?.transcript) {
+      parts.push(result[0].transcript)
+    }
+  }
+  return parts.join(' ')
+}
+
+export function collectInterimTranscript(event: DictationResultEvent): string {
+  const parts: string[] = []
+  for (let i = event.resultIndex; i < event.results.length; i++) {
+    const result = event.results[i]
+    if (result && !result.isFinal && result[0]?.transcript) {
       parts.push(result[0].transcript)
     }
   }

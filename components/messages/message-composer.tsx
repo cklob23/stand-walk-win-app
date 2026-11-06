@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -16,9 +16,10 @@ import {
   DICTATION_STT_ERROR_MESSAGE,
   DICTATION_TRANSCRIBING_LABEL,
   DICTATION_UNSUPPORTED_MESSAGE,
-  appendDictatedText,
   shouldSendOnEnterKey,
 } from '@/lib/speech-dictation'
+import { applySessionDictation } from '@/lib/scribe-realtime'
+import { dictationMeterLevels } from '@/lib/pcm-audio'
 import { useSpeechDictation } from '@/hooks/use-speech-dictation'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { CornerUpLeft, Loader2, Mic, Paperclip, Pencil, Send, Smile, X } from 'lucide-react'
@@ -78,17 +79,25 @@ export function MessageComposer({
 }: MessageComposerProps) {
   const isMobile = useIsMobile()
   const [emojiOpen, setEmojiOpen] = useState(forceEmojiOpen)
+  const dictationBaseRef = useRef('')
   const dictation = useSpeechDictation({
+    onSessionStart: () => {
+      dictationBaseRef.current = textareaRef.current?.value ?? value
+    },
+    onLiveTranscript: (transcript) => {
+      onChange(applySessionDictation(dictationBaseRef.current, transcript))
+      if (transcript.trim()) onTyping?.()
+    },
     onFinalTranscript: (transcript) => {
-      const current = textareaRef.current?.value ?? value
-      onChange(appendDictatedText(current, transcript))
-      onTyping?.()
+      onChange(applySessionDictation(dictationBaseRef.current, transcript))
+      if (transcript.trim()) onTyping?.()
     },
   })
   const recording = forceRecording || dictation.status === 'recording'
   const transcribing = forceTranscribing || dictation.status === 'transcribing'
   const listening = forceListening || recording || dictation.listening
   const dictationActive = listening || transcribing
+  const volume = forceRecording ? 0.62 : dictation.volume
   const busy = isLoading || isUploading
   const canSend = !busy && Boolean(value.trim() || attachmentFiles.length > 0)
   const emojiVisible = forceEmojiOpen || emojiOpen
@@ -208,9 +217,22 @@ export function MessageComposer({
       {listening && !transcribing && (
         <p
           data-testid="dictation-status"
-          className="px-4 pt-2 text-xs font-medium text-primary sm:px-6"
+          className="flex items-center gap-2 px-4 pt-2 text-xs font-medium text-primary sm:px-6"
         >
-          {recording ? DICTATION_RECORDING_LABEL : DICTATION_LISTENING_LABEL}
+          <span>{recording ? DICTATION_RECORDING_LABEL : DICTATION_LISTENING_LABEL}</span>
+          <span
+            data-testid="dictation-volume"
+            className="inline-flex h-4 items-end gap-px"
+            aria-hidden
+          >
+            {dictationMeterLevels(volume).map((level, index) => (
+              <span
+                key={index}
+                className="w-[3px] rounded-full bg-emerald-500"
+                style={{ height: `${Math.max(20, Math.round(level * 100))}%` }}
+              />
+            ))}
+          </span>
         </p>
       )}
       {dictation.status === 'permission' && !dictationActive && (
@@ -250,7 +272,7 @@ export function MessageComposer({
       )}
 
       <form
-        className="flex items-end gap-2 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] max-md:items-center max-md:gap-2.5 md:gap-3 md:px-6 md:py-5 md:pb-5"
+        className="flex items-end gap-2 px-4 py-3 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] max-md:items-center max-md:gap-2.5 max-md:pb-[max(1.75rem,calc(env(safe-area-inset-bottom)+1.25rem))] md:gap-3 md:px-6 md:py-5 md:pb-5"
         onSubmit={(e) => {
           e.preventDefault()
           if (dictationActive) dictation.stop()
