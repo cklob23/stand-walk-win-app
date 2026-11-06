@@ -11,6 +11,7 @@ describe('daily prayer preview access', () => {
         assert.equal(isDailyPrayerPreviewPath('/dev/daily-prayer-preview'), true)
         assert.equal(isDailyPrayerPreviewPath('/dev/daily-prayer-preview/'), true)
         assert.equal(isDailyPrayerPreviewPath('/dev/week12-preview'), false)
+        assert.equal(isDailyPrayerPreviewPath('/dev/messages-preview'), false)
         assert.equal(isDailyPrayerPreviewPath('/dev/admin-shell-preview'), false)
         assert.equal(isDailyPrayerPreviewPath('/dashboard'), false)
         assert.equal(isDailyPrayerPreviewPath('/dashboard/journal'), false)
@@ -23,6 +24,7 @@ describe('daily prayer preview access', () => {
         assert.equal(shouldBypassAuthForDevPreview('/dashboard', 'production'), false)
         assert.equal(shouldBypassAuthForDevPreview('/admin/dashboard', 'production'), false)
         assert.equal(shouldBypassAuthForDevPreview('/dev/week12-preview', 'production'), false)
+        assert.equal(shouldBypassAuthForDevPreview('/dev/messages-preview', 'production'), false)
         assert.equal(shouldBypassAuthForDevPreview('/auth/login', 'production'), false)
     })
 
@@ -33,6 +35,7 @@ describe('daily prayer preview access', () => {
         assert.equal(shouldNotFoundDevPreview('/dashboard', 'production'), false)
         assert.equal(shouldNotFoundDevPreview('/admin/dashboard', 'production'), false)
         assert.equal(shouldNotFoundDevPreview('/dev/week12-preview', 'production'), true)
+        assert.equal(shouldNotFoundDevPreview('/dev/messages-preview', 'production'), true)
         assert.equal(shouldNotFoundDevPreview('/auth/login', 'production'), false)
     })
 
@@ -41,9 +44,11 @@ describe('daily prayer preview access', () => {
         assert.equal(shouldBypassAuthForDevPreview('/dev/daily-prayer-preview', 'test'), true)
         assert.equal(shouldBypassAuthForDevPreview('/dev/admin-shell-preview', 'development'), true)
         assert.equal(shouldBypassAuthForDevPreview('/dev/week12-preview', 'development'), true)
+        assert.equal(shouldBypassAuthForDevPreview('/dev/messages-preview', 'development'), true)
         assert.equal(shouldNotFoundDevPreview('/dev/daily-prayer-preview', 'development'), false)
         assert.equal(shouldNotFoundDevPreview('/dev/admin-shell-preview', 'development'), false)
         assert.equal(shouldNotFoundDevPreview('/dev/week12-preview', 'development'), false)
+        assert.equal(shouldNotFoundDevPreview('/dev/messages-preview', 'development'), false)
     })
 
     it('does not bypass auth for real routes outside production', () => {

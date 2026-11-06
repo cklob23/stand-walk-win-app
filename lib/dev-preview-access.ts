@@ -7,11 +7,13 @@
 export const DAILY_PRAYER_PREVIEW_PATH = '/dev/daily-prayer-preview'
 export const ADMIN_SHELL_PREVIEW_PATH = '/dev/admin-shell-preview'
 export const WEEK12_PREVIEW_PATH = '/dev/week12-preview'
+export const MESSAGES_PREVIEW_PATH = '/dev/messages-preview'
 
 const DEV_PREVIEW_PATHS = [
     DAILY_PRAYER_PREVIEW_PATH,
     ADMIN_SHELL_PREVIEW_PATH,
     WEEK12_PREVIEW_PATH,
+    MESSAGES_PREVIEW_PATH,
 ]
 
 function matchesPreviewPath(pathname: string, path: string): boolean {
