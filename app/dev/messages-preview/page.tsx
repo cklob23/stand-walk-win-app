@@ -12,7 +12,7 @@ import { ChatAvatar } from '@/components/messages/message-bubble'
 import { MessagesConversation } from '@/components/messages/messages-conversation'
 import type { AttachmentDraft } from '@/components/messages/message-composer'
 import { validateMessageAttachments } from '@/lib/message-limits'
-import { DICTATION_UNSUPPORTED_MESSAGE } from '@/lib/speech-dictation'
+import { DICTATION_UNSAFE_MESSAGE } from '@/lib/speech-dictation'
 import { profileInitials } from '@/lib/message-thread'
 import { DEFAULT_ORG_BRANDING } from '@/lib/org-branding'
 import type { Message, MessageReaction, Profile } from '@/lib/types'
@@ -216,9 +216,10 @@ function PreviewInner() {
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
     document.documentElement.style.colorScheme = theme
+    document.documentElement.dataset.previewReady = '1'
     setTheme(theme)
     setLocalDayReady(true)
-    if (mic === 'unsupported') toast.error(DICTATION_UNSUPPORTED_MESSAGE)
+    if (mic === 'unsupported') toast.error(DICTATION_UNSAFE_MESSAGE, { position: 'top-center' })
   }, [mic, setTheme, theme])
 
   useLayoutEffect(() => {

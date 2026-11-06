@@ -12,6 +12,7 @@ import { MESSAGE_COMPOSER_EMOJIS, insertTextAtCursor } from '@/lib/message-compo
 import {
   DICTATION_LISTENING_LABEL,
   DICTATION_PERMISSION_MESSAGE,
+  DICTATION_UNSAFE_MESSAGE,
   DICTATION_UNSUPPORTED_MESSAGE,
   appendDictatedText,
   shouldSendOnEnterKey,
@@ -81,6 +82,7 @@ export function MessageComposer({
   const listening = forceListening || dictation.listening
   const busy = isLoading || isUploading
   const canSend = !busy && Boolean(value.trim() || attachmentFiles.length > 0)
+  const emojiVisible = forceEmojiOpen || emojiOpen
   const placeholder = editingMessage
     ? 'Edit your message...'
     : `Message ${partnerName || 'your partner'}...`
@@ -96,6 +98,30 @@ export function MessageComposer({
       el?.setSelectionRange(cursor, cursor)
     })
   }
+
+  const emojiButton = (placement: 'desktop' | 'mobile') => (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={cn(
+        'shrink-0 rounded-full text-muted-foreground hover:text-foreground',
+        placement === 'desktop' &&
+          'hidden h-11 w-11 md:inline-flex',
+        placement === 'mobile' &&
+          'absolute top-1/2 h-9 w-9 -translate-y-1/2 md:hidden',
+        placement === 'mobile' && (canSend ? 'right-10' : 'right-1'),
+        emojiVisible && 'bg-primary/10 text-primary',
+      )}
+      title="Insert emoji"
+      data-testid={placement === 'mobile' ? 'message-emoji' : 'message-emoji-desktop'}
+      aria-expanded={emojiVisible}
+      onClick={() => setEmojiOpen((open) => !open)}
+    >
+      <Smile className="h-5 w-5" />
+      <span className="sr-only">Insert emoji</span>
+    </Button>
+  )
 
   return (
     <div data-tour="messages-input" data-testid="message-composer" className="shrink-0 border-t">
@@ -178,16 +204,21 @@ export function MessageComposer({
           {DICTATION_PERMISSION_MESSAGE}
         </p>
       )}
-      {(forceUnsupported || dictation.status === 'error') && !listening && (
+      {(forceUnsupported || dictation.notice) && !listening && (
+        <p data-testid="dictation-unavailable" className="px-4 pt-2 text-xs text-muted-foreground sm:px-6">
+          {forceUnsupported ? DICTATION_UNSAFE_MESSAGE : dictation.notice}
+        </p>
+      )}
+      {dictation.status === 'error' && !forceUnsupported && !dictation.notice && !listening && (
         <p data-testid="dictation-unsupported" className="px-4 pt-2 text-xs text-destructive sm:px-6">
           {DICTATION_UNSUPPORTED_MESSAGE}
         </p>
       )}
 
-      {(forceEmojiOpen || emojiOpen) && (
+      {emojiVisible && (
         <div
           data-testid="message-emoji-picker"
-          className="border-t px-3 py-2 sm:px-6"
+          className="border-t px-4 py-2 sm:px-6"
         >
           <div className="grid grid-cols-8 gap-1">
             {MESSAGE_COMPOSER_EMOJIS.map((emoji) => (
@@ -205,7 +236,7 @@ export function MessageComposer({
       )}
 
       <form
-        className="flex items-end gap-1.5 px-3 py-3 sm:gap-3 sm:px-6 sm:py-5"
+        className="flex items-end gap-2 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] max-md:items-center max-md:gap-2.5 md:gap-3 md:px-6 md:py-5 md:pb-5"
         onSubmit={(e) => {
           e.preventDefault()
           if (listening) dictation.stop()
@@ -237,46 +268,54 @@ export function MessageComposer({
           </>
         )}
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(
-            'h-11 w-11 shrink-0 rounded-full text-muted-foreground hover:text-foreground',
-            (forceEmojiOpen || emojiOpen) && 'bg-primary/10 text-primary',
-          )}
-          title="Insert emoji"
-          data-testid="message-emoji"
-          aria-expanded={forceEmojiOpen || emojiOpen}
-          onClick={() => setEmojiOpen((open) => !open)}
-        >
-          <Smile className="h-5 w-5" />
-          <span className="sr-only">Insert emoji</span>
-        </Button>
+        {emojiButton('desktop')}
 
-        <Textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value)
-            if (e.target.value.trim()) onTyping?.()
-          }}
-          placeholder={placeholder}
-          className={cn(
-            'min-h-12 max-h-32 flex-1 resize-none rounded-2xl border bg-background px-4 py-3 text-base shadow-none',
-            'placeholder:text-muted-foreground/80 focus-visible:ring-1',
+        <div className="relative min-w-0 flex-1">
+          <Textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value)
+              if (e.target.value.trim()) onTyping?.()
+            }}
+            placeholder={placeholder}
+            className={cn(
+              'min-h-12 max-h-32 w-full resize-none border bg-background py-3 text-base shadow-none',
+              'placeholder:text-muted-foreground/80 focus-visible:ring-1',
+              'rounded-full px-4 max-md:min-h-11 max-md:py-2.5 max-md:pr-12 md:rounded-2xl md:px-4',
+              canSend && 'max-md:pr-[5.5rem]',
+            )}
+            rows={1}
+            onKeyDown={(e) => {
+              if (shouldSendOnEnterKey(e.key, e.shiftKey, !isMobile)) {
+                e.preventDefault()
+                if (listening) dictation.stop()
+                onSend()
+              }
+              if (e.key === 'Escape') {
+                onCancelAction()
+              }
+            }}
+          />
+          {emojiButton('mobile')}
+          {canSend && (
+            <Button
+              type="submit"
+              size="icon"
+              data-testid="message-send-mobile"
+              className="absolute top-1/2 right-1 h-9 w-9 -translate-y-1/2 rounded-full bg-primary/80 text-primary-foreground shadow-none hover:bg-primary md:hidden"
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : editingMessage ? (
+                <Pencil className="h-4 w-4" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              <span className="sr-only">{editingMessage ? 'Save edit' : 'Send message'}</span>
+            </Button>
           )}
-          onKeyDown={(e) => {
-            if (shouldSendOnEnterKey(e.key, e.shiftKey, !isMobile)) {
-              e.preventDefault()
-              if (listening) dictation.stop()
-              onSend()
-            }
-            if (e.key === 'Escape') {
-              onCancelAction()
-            }
-          }}
-        />
+        </div>
 
         <Button
           type="button"
@@ -300,7 +339,7 @@ export function MessageComposer({
           disabled={!canSend}
           size="icon"
           data-testid="message-send"
-          className="h-11 w-11 shrink-0 rounded-xl bg-primary/80 text-primary-foreground shadow-none hover:bg-primary"
+          className="hidden h-11 w-11 shrink-0 rounded-xl bg-primary/80 text-primary-foreground shadow-none hover:bg-primary md:inline-flex"
         >
           {busy ? (
             <Loader2 className="h-5 w-5 animate-spin" />
