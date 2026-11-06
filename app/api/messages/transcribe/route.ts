@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import {
   ELEVENLABS_API_KEY_ENV,
+  mapElevenLabsSttFailure,
   transcribeAudioWithElevenLabs,
   transcribeErrorMessage,
   validateTranscribeFile,
@@ -62,17 +63,16 @@ export async function POST(request: NextRequest) {
     })
 
     if (!result.ok) {
+      const mapped = mapElevenLabsSttFailure(result.status, result.detail)
       console.error('[messages/transcribe] ElevenLabs rejected audio', {
         status: result.status,
         filename,
         type: file.type,
         size: file.size,
+        code: mapped.code,
         detail: result.detail,
       })
-      return NextResponse.json(
-        { error: result.error, code: 'scribe_failed' },
-        { status: result.status >= 400 && result.status < 500 ? 422 : 502 },
-      )
+      return NextResponse.json({ error: mapped.error, code: mapped.code }, { status: mapped.httpStatus })
     }
 
     if (!result.text) {
