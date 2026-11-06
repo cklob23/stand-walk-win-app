@@ -12,6 +12,8 @@ import { ChatAvatar } from '@/components/messages/message-bubble'
 import { MessagesConversation } from '@/components/messages/messages-conversation'
 import type { AttachmentDraft } from '@/components/messages/message-composer'
 import { validateMessageAttachments } from '@/lib/message-limits'
+import { DICTATION_UNSUPPORTED_MESSAGE } from '@/lib/speech-dictation'
+import { profileInitials } from '@/lib/message-thread'
 import { DEFAULT_ORG_BRANDING } from '@/lib/org-branding'
 import type { Message, MessageReaction, Profile } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -178,6 +180,10 @@ function PreviewInner() {
   const typing = params.get('typing') === '1'
   const draft = params.get('draft') || ''
   const autosend = params.get('autosend') === '1'
+  const inbox = params.get('inbox') === '1'
+  const forceEmojiOpen = params.get('emoji') === '1'
+  const mic = params.get('mic')
+  const forceListening = mic === 'listening'
 
   const [messages, setMessages] = useState<Message[]>(() => {
     if (empty) return []
@@ -201,6 +207,7 @@ function PreviewInner() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
   const [attachmentFiles, setAttachmentFiles] = useState<AttachmentDraft[]>([])
   const [localDayReady, setLocalDayReady] = useState(true)
+  const [mobileThreadOpen, setMobileThreadOpen] = useState(!inbox)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -211,7 +218,8 @@ function PreviewInner() {
     document.documentElement.style.colorScheme = theme
     setTheme(theme)
     setLocalDayReady(true)
-  }, [setTheme, theme])
+    if (mic === 'unsupported') toast.error(DICTATION_UNSUPPORTED_MESSAGE)
+  }, [mic, setTheme, theme])
 
   useLayoutEffect(() => {
     const el = scrollContainerRef.current
@@ -313,9 +321,40 @@ function PreviewInner() {
     )
   }
 
+  const showMobileInbox = mobile && !mobileThreadOpen
+  const showChrome = !mobile || showMobileInbox
+
+  if (showMobileInbox) {
+    const last = messages[messages.length - 1]
+    return (
+      <div className={cn('min-h-screen bg-background', mobile && 'mx-auto w-[390px] overflow-x-hidden')}>
+        <PreviewChrome mobile={mobile} />
+        <div className="px-4 py-4" data-testid="messages-inbox">
+          <button
+            type="button"
+            onClick={() => setMobileThreadOpen(true)}
+            className="flex w-full items-center gap-3 rounded-xl border bg-card p-4 text-left shadow-sm"
+          >
+            <ChatAvatar
+              initials={profileInitials(david.full_name)}
+              alt={david.full_name || ''}
+              className="h-12 w-12 text-sm font-semibold"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-semibold text-foreground">{david.full_name}</p>
+              <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                {last?.content || 'No messages yet'}
+              </p>
+            </div>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={cn('min-h-screen bg-background', mobile && 'mx-auto w-[390px] overflow-x-hidden')}>
-      <PreviewChrome mobile={mobile} />
+      {showChrome && <PreviewChrome mobile={mobile} />}
       <MessagesConversation
         profile={sarah}
         partner={david}
@@ -356,6 +395,10 @@ function PreviewInner() {
         scrollContainerRef={scrollContainerRef}
         localDayReady={localDayReady}
         showTour={false}
+        onBack={() => setMobileThreadOpen(false)}
+        forceEmojiOpen={forceEmojiOpen}
+        forceListening={forceListening}
+        forceUnsupported={mic === 'unsupported'}
       />
     </div>
   )

@@ -16,6 +16,10 @@ import type { Profile, Pairing } from '@/lib/types'
 import { tallyUnreadByPairing } from '@/lib/notification-unread'
 import { fetchUnreadToLeader } from '@/lib/unread-to-leader'
 import { UnreadToLeaderProvider } from '@/components/dashboard/unread-to-leader-provider'
+import {
+  MobileAwareDashboardHeader,
+  MobileConversationChromeProvider,
+} from '@/components/messages/mobile-conversation-chrome'
 
 interface LearnerWithPairing {
   pairing: Pairing
@@ -172,19 +176,23 @@ export default async function DashboardLayout({
               pairingIds={pairingIds}
               initial={unreadToLeader}
             >
-              <DashboardHeader
-                profile={profile}
-                notificationCount={count || 0}
-                recentNotifications={recentNotifications || []}
-                allLearners={allLearners}
-                currentPairingId={currentPairingId}
-                learnerNotificationCounts={learnerNotificationCounts}
-                maxLearners={(profile.subscription_tier as { max_learners?: number })?.max_learners || 1}
-                slogan={orgBranding?.slogan || null}
-              />
-              <main className="w-full overflow-x-hidden">
-                <DashboardContent>{children}</DashboardContent>
-              </main>
+              <MobileConversationChromeProvider>
+                <MobileAwareDashboardHeader>
+                  <DashboardHeader
+                    profile={profile}
+                    notificationCount={count || 0}
+                    recentNotifications={recentNotifications || []}
+                    allLearners={allLearners}
+                    currentPairingId={currentPairingId}
+                    learnerNotificationCounts={learnerNotificationCounts}
+                    maxLearners={(profile.subscription_tier as { max_learners?: number })?.max_learners || 1}
+                    slogan={orgBranding?.slogan || null}
+                  />
+                </MobileAwareDashboardHeader>
+                <main className="w-full overflow-x-hidden">
+                  <DashboardContent>{children}</DashboardContent>
+                </main>
+              </MobileConversationChromeProvider>
             </UnreadToLeaderProvider>
           </div>
         </CovenantRedirectGuard>

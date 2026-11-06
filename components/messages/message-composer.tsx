@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -7,7 +8,17 @@ import {
   MAX_MESSAGE_ATTACHMENTS,
   MESSAGE_ATTACHMENT_ACCEPT,
 } from '@/lib/message-limits'
-import { CornerUpLeft, Loader2, Paperclip, Pencil, Send, X } from 'lucide-react'
+import { MESSAGE_COMPOSER_EMOJIS, insertTextAtCursor } from '@/lib/message-composer-emojis'
+import {
+  DICTATION_LISTENING_LABEL,
+  DICTATION_PERMISSION_MESSAGE,
+  DICTATION_UNSUPPORTED_MESSAGE,
+  appendDictatedText,
+  shouldSendOnEnterKey,
+} from '@/lib/speech-dictation'
+import { useSpeechDictation } from '@/hooks/use-speech-dictation'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { CornerUpLeft, Loader2, Mic, Paperclip, Pencil, Send, Smile, X } from 'lucide-react'
 import type { Message } from '@/lib/types'
 import { getFileIcon } from './message-bubble'
 
@@ -31,6 +42,9 @@ interface MessageComposerProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   maxAttachments?: number
+  forceEmojiOpen?: boolean
+  forceListening?: boolean
+  forceUnsupported?: boolean
 }
 
 export function MessageComposer({
@@ -51,12 +65,37 @@ export function MessageComposer({
   fileInputRef,
   textareaRef,
   maxAttachments = MAX_MESSAGE_ATTACHMENTS,
+  forceEmojiOpen = false,
+  forceListening = false,
+  forceUnsupported = false,
 }: MessageComposerProps) {
+  const isMobile = useIsMobile()
+  const [emojiOpen, setEmojiOpen] = useState(forceEmojiOpen)
+  const dictation = useSpeechDictation({
+    onFinalTranscript: (transcript) => {
+      const current = textareaRef.current?.value ?? value
+      onChange(appendDictatedText(current, transcript))
+      onTyping?.()
+    },
+  })
+  const listening = forceListening || dictation.listening
   const busy = isLoading || isUploading
   const canSend = !busy && Boolean(value.trim() || attachmentFiles.length > 0)
   const placeholder = editingMessage
     ? 'Edit your message...'
     : `Message ${partnerName || 'your partner'}...`
+
+  const insertEmoji = (emoji: string) => {
+    const el = textareaRef.current
+    const { next, cursor } = insertTextAtCursor(value, emoji, el?.selectionStart, el?.selectionEnd)
+    onChange(next)
+    onTyping?.()
+    setEmojiOpen(false)
+    requestAnimationFrame(() => {
+      el?.focus()
+      el?.setSelectionRange(cursor, cursor)
+    })
+  }
 
   return (
     <div data-tour="messages-input" data-testid="message-composer" className="shrink-0 border-t">
@@ -126,10 +165,50 @@ export function MessageComposer({
         </div>
       )}
 
+      {listening && (
+        <p
+          data-testid="dictation-status"
+          className="px-4 pt-2 text-xs font-medium text-primary sm:px-6"
+        >
+          {DICTATION_LISTENING_LABEL}
+        </p>
+      )}
+      {dictation.status === 'permission' && !listening && (
+        <p data-testid="dictation-permission" className="px-4 pt-2 text-xs text-destructive sm:px-6">
+          {DICTATION_PERMISSION_MESSAGE}
+        </p>
+      )}
+      {(forceUnsupported || dictation.status === 'error') && !listening && (
+        <p data-testid="dictation-unsupported" className="px-4 pt-2 text-xs text-destructive sm:px-6">
+          {DICTATION_UNSUPPORTED_MESSAGE}
+        </p>
+      )}
+
+      {(forceEmojiOpen || emojiOpen) && (
+        <div
+          data-testid="message-emoji-picker"
+          className="border-t px-3 py-2 sm:px-6"
+        >
+          <div className="grid grid-cols-8 gap-1">
+            {MESSAGE_COMPOSER_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-lg hover:bg-muted"
+                onClick={() => insertEmoji(emoji)}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <form
-        className="flex items-end gap-3 px-4 py-4 sm:px-6 sm:py-5"
+        className="flex items-end gap-1.5 px-3 py-3 sm:gap-3 sm:px-6 sm:py-5"
         onSubmit={(e) => {
           e.preventDefault()
+          if (listening) dictation.stop()
           onSend()
         }}
       >
@@ -158,6 +237,23 @@ export function MessageComposer({
           </>
         )}
 
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn(
+            'h-11 w-11 shrink-0 rounded-full text-muted-foreground hover:text-foreground',
+            (forceEmojiOpen || emojiOpen) && 'bg-primary/10 text-primary',
+          )}
+          title="Insert emoji"
+          data-testid="message-emoji"
+          aria-expanded={forceEmojiOpen || emojiOpen}
+          onClick={() => setEmojiOpen((open) => !open)}
+        >
+          <Smile className="h-5 w-5" />
+          <span className="sr-only">Insert emoji</span>
+        </Button>
+
         <Textarea
           ref={textareaRef}
           value={value}
@@ -171,8 +267,9 @@ export function MessageComposer({
             'placeholder:text-muted-foreground/80 focus-visible:ring-1',
           )}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (shouldSendOnEnterKey(e.key, e.shiftKey, !isMobile)) {
               e.preventDefault()
+              if (listening) dictation.stop()
               onSend()
             }
             if (e.key === 'Escape') {
@@ -180,6 +277,23 @@ export function MessageComposer({
             }
           }}
         />
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          data-testid="message-mic"
+          aria-pressed={listening}
+          title={listening ? 'Stop dictation' : 'Dictate message'}
+          className={cn(
+            'h-11 w-11 shrink-0 rounded-full text-muted-foreground hover:text-foreground',
+            listening && 'bg-primary/15 text-primary hover:text-primary',
+          )}
+          onClick={() => dictation.toggle()}
+        >
+          <Mic className={cn('h-5 w-5', listening && 'animate-pulse')} />
+          <span className="sr-only">{listening ? 'Stop dictation' : 'Dictate message'}</span>
+        </Button>
 
         <Button
           type="submit"
