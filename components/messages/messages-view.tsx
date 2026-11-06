@@ -8,9 +8,13 @@ import { validateMessageAttachments } from '@/lib/message-limits'
 import { notifyNewMessage, notifyMessageReaction } from '@/lib/notifications'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
 import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { markNotificationsReadForContext } from '@/lib/notification-actions'
 import { MessagesConversation } from './messages-conversation'
+import { ChatAvatar } from './message-bubble'
+import { useMobileConversationChrome } from './mobile-conversation-chrome'
 import type { AttachmentDraft } from './message-composer'
+import { profileInitials } from '@/lib/message-thread'
 
 interface MessagesViewProps {
   profile: Profile
@@ -39,10 +43,19 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
   const { sendNotification } = useBrowserNotifications()
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [localDayReady, setLocalDayReady] = useState(false)
+  const isMobile = useIsMobile()
+  const { setConversationOpen } = useMobileConversationChrome()
+  const [mobileThreadOpen, setMobileThreadOpen] = useState(true)
 
   useLayoutEffect(() => {
     setLocalDayReady(true)
   }, [])
+
+  useEffect(() => {
+    const open = isMobile && mobileThreadOpen
+    setConversationOpen(open)
+    return () => setConversationOpen(false)
+  }, [isMobile, mobileThreadOpen, setConversationOpen])
 
   const supabase = createClient()
   const realtimeReady = useRealtimeAuth()
@@ -673,7 +686,7 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
     }
   }
 
-  return (
+  const conversation = (
     <MessagesConversation
       profile={profile}
       partner={partner}
@@ -702,6 +715,36 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
       messagesEndRef={messagesEndRef}
       scrollContainerRef={scrollContainerRef}
       localDayReady={localDayReady}
+      onBack={() => setMobileThreadOpen(false)}
     />
   )
+
+  if (isMobile && !mobileThreadOpen) {
+    const last = messages[messages.length - 1]
+    return (
+      <div className="px-4 py-4" data-testid="messages-inbox">
+        <button
+          type="button"
+          onClick={() => setMobileThreadOpen(true)}
+          className="flex w-full items-center gap-3 rounded-xl border bg-card p-4 text-left shadow-sm"
+          data-testid="messages-inbox-thread"
+        >
+          <ChatAvatar
+            initials={profileInitials(partner.full_name)}
+            src={partner.avatar_url}
+            alt={partner.full_name || ''}
+            className="h-12 w-12 text-sm font-semibold"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold text-foreground">{partner.full_name}</p>
+            <p className="mt-0.5 truncate text-sm text-muted-foreground">
+              {last?.content || 'No messages yet'}
+            </p>
+          </div>
+        </button>
+      </div>
+    )
+  }
+
+  return conversation
 }

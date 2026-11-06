@@ -6,7 +6,7 @@ import { ChatAvatar, MessageBubble } from './message-bubble'
 import { Button } from '@/components/ui/button'
 import { FeatureTour } from '@/components/onboarding/feature-tour'
 import { messagesSteps } from '@/lib/tour-steps'
-import { Circle, MessageSquare, Phone, Video } from 'lucide-react'
+import { ChevronLeft, Circle, MessageSquare, Phone, Video } from 'lucide-react'
 import type { Message, MessageReaction, Profile } from '@/lib/types'
 import {
   formatGroupDateLabel,
@@ -56,6 +56,10 @@ export interface MessagesConversationProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>
   localDayReady: boolean
   showTour?: boolean
+  onBack?: () => void
+  forceEmojiOpen?: boolean
+  forceListening?: boolean
+  forceUnsupported?: boolean
 }
 
 export function MessagesConversation({
@@ -87,19 +91,45 @@ export function MessagesConversation({
   scrollContainerRef,
   localDayReady,
   showTour = true,
+  onBack,
+  forceEmojiOpen = false,
+  forceListening = false,
+  forceUnsupported = false,
 }: MessagesConversationProps) {
   const partnerInitials = profileInitials(partner.full_name)
   const ownInitials = profileInitials(profile.full_name)
   const groupedMessages = groupMessagesByDay(messages, localDayReady)
 
   return (
-    <div className="mx-auto max-w-3xl px-3 py-3 sm:px-6 sm:py-6">
+    <div
+      className={cn(
+        'bg-background max-md:fixed max-md:inset-0 max-md:z-40 max-md:flex max-md:flex-col',
+        'md:mx-auto md:max-w-3xl md:px-3 md:py-3 lg:px-6 lg:py-6',
+      )}
+    >
       <div
         data-tour="messages-chat"
         data-testid="messages-conversation"
-        className="flex h-[calc(100vh-6rem)] min-w-0 flex-col overflow-hidden rounded-2xl border bg-card shadow-sm sm:h-[calc(100vh-8.5rem)]"
+        className={cn(
+          'flex min-w-0 flex-col overflow-hidden bg-card',
+          'max-md:h-full max-md:rounded-none max-md:border-0 max-md:shadow-none',
+          'md:h-[calc(100vh-8.5rem)] md:rounded-2xl md:border md:shadow-sm',
+        )}
       >
-        <header className="flex shrink-0 items-center gap-4 border-b px-5 py-4 sm:px-6 sm:py-5">
+        <header className="flex shrink-0 items-center gap-3 border-b px-2 py-3 md:gap-4 md:px-5 md:py-4 lg:px-6 lg:py-5">
+          {onBack && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 shrink-0 text-foreground md:hidden"
+              onClick={onBack}
+              data-testid="messages-back"
+            >
+              <ChevronLeft className="h-6 w-6" />
+              <span className="sr-only">Back</span>
+            </Button>
+          )}
           <div className="relative">
             <ChatAvatar
               initials={partnerInitials}
@@ -262,6 +292,9 @@ export function MessagesConversation({
           fileInputRef={fileInputRef}
           textareaRef={textareaRef}
           maxAttachments={MAX_MESSAGE_ATTACHMENTS}
+          forceEmojiOpen={forceEmojiOpen}
+          forceListening={forceListening}
+          forceUnsupported={forceUnsupported}
         />
       </div>
 
