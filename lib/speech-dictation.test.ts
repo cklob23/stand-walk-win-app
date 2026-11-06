@@ -10,10 +10,12 @@ import {
   DICTATION_UNSUPPORTED_MESSAGE,
   appendDictatedText,
   collectFinalTranscript,
+  collectInterimTranscript,
   dictationErrorMessage,
   dictationUnavailableMessage,
   getSpeechRecognitionCtor,
   isDictationSupported,
+  isGetUserMediaSupported,
   isMediaRecorderSupported,
   isSpeechRecognitionSupported,
   isUnsafeSpeechRecognitionPlatform,
@@ -53,9 +55,19 @@ describe('speech dictation helpers', () => {
     assert.equal(isUnsafeSpeechRecognitionPlatform({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', maxTouchPoints: 5 }), true)
     assert.equal(isUnsafeSpeechRecognitionPlatform({ userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/120' }), false)
     assert.equal(isSpeechRecognitionSupported(iPhone), false)
+    assert.equal(isGetUserMediaSupported(iPhone), true)
     assert.equal(isMediaRecorderSupported(iPhone), true)
     assert.equal(shouldUseMediaRecorderDictation(iPhone), true)
     assert.equal(isDictationSupported(iPhone), true)
+    assert.equal(
+      shouldUseMediaRecorderDictation({
+        navigator: {
+          userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)',
+          mediaDevices: { getUserMedia: async () => ({}) },
+        },
+      }),
+      true,
+    )
     assert.equal(dictationUnavailableMessage(), DICTATION_UNSUPPORTED_MESSAGE)
   })
 
@@ -82,6 +94,17 @@ describe('speech dictation helpers', () => {
       ],
     })
     assert.equal(text, 'See you Thursday')
+  })
+
+  it('collects interim transcripts for live composer text', () => {
+    const text = collectInterimTranscript({
+      resultIndex: 0,
+      results: [
+        { isFinal: true, 0: { transcript: 'See you' } },
+        { isFinal: false, 0: { transcript: 'Thursday' } },
+      ],
+    })
+    assert.equal(text, 'Thursday')
   })
 
   it('maps permission vs generic dictation errors and skips no-speech', () => {
@@ -123,24 +146,38 @@ describe('composer and mobile chrome wiring', () => {
     assert.match(composer, /message-mic/)
     const hook = readFileSync(join(here, '../hooks/use-speech-dictation.ts'), 'utf8')
     const route = readFileSync(join(here, '../app/api/messages/transcribe/route.ts'), 'utf8')
+    const tokenRoute = readFileSync(join(here, '../app/api/messages/scribe-token/route.ts'), 'utf8')
+    const layout = readFileSync(join(here, '../app/layout.tsx'), 'utf8')
     assert.match(hook, /dictationUnavailableMessage/)
     assert.match(hook, /isSpeechRecognitionSupported\(\)/)
     assert.match(hook, /shouldUseMediaRecorderDictation\(\)/)
     assert.match(hook, /recognition\.continuous = false/)
+    assert.match(hook, /interimResults = true/)
     assert.match(hook, /Never restart/)
     assert.match(hook, /Never pass a timeslice/)
     assert.match(hook, /DICTATION_WATCHDOG_MS/)
     assert.match(hook, /DICTATION_RECORDING_MAX_MS/)
     assert.match(hook, /\/api\/messages\/transcribe/)
+    assert.match(hook, /SCRIBE_TOKEN_PATH/)
+    assert.match(hook, /buildScribeRealtimeUrl/)
+    assert.match(hook, /encodeWavFromPcm16/)
+    assert.doesNotMatch(hook, /new MediaRecorder/)
     assert.doesNotMatch(hook, /continuous = true/)
     assert.match(hook, /position: 'top-center'/)
     assert.match(composer, /DICTATION_RECORDING_LABEL/)
     assert.match(composer, /dictation-transcribing/)
+    assert.match(composer, /dictation-volume/)
+    assert.match(composer, /applySessionDictation/)
+    assert.match(composer, /bg-emerald-500/)
     assert.match(composer, /max-md:pr-12/)
     assert.match(composer, /rounded-full/)
     assert.match(composer, /message-send-mobile/)
     assert.match(composer, /hidden h-11 w-11 shrink-0 rounded-xl/)
+    assert.match(composer, /max-md:pb-\[max\(1\.75rem,calc\(env\(safe-area-inset-bottom\)\+1\.25rem\)\)\]/)
     assert.match(route, /ELEVENLABS_API_KEY/)
+    assert.match(tokenRoute, /realtime_scribe/)
+    assert.match(tokenRoute, /tokens\.singleUse\.create/)
+    assert.match(layout, /viewportFit: 'cover'/)
     assert.match(DICTATION_RECORDING_LABEL, /Recording/)
     assert.match(limits, /MAX_MESSAGE_ATTACHMENTS = 5/)
     assert.match(limits, /10 \* 1024 \* 1024/)

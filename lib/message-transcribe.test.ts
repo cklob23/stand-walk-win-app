@@ -13,6 +13,7 @@ import {
   ELEVENLABS_STT_MODEL,
   ELEVENLABS_STT_URL,
   parseScribeTranscript,
+  summarizeScribeErrorBody,
   transcribeAudioWithElevenLabs,
   transcribeErrorMessage,
   validateTranscribeFile,
@@ -63,12 +64,35 @@ describe('message transcribe helpers', () => {
     assert.equal(calls[0]?.hasFile, true)
   })
 
+  it('keeps ElevenLabs error bodies for server logs without showing them in the toast', () => {
+    assert.equal(summarizeScribeErrorBody('  invalid_file_format  '), 'invalid_file_format')
+    assert.equal(summarizeScribeErrorBody('x'.repeat(500)).length, 400)
+  })
+
+  it('returns scribe failure details instead of swallowing the ElevenLabs body', async () => {
+    const result = await transcribeAudioWithElevenLabs({
+      apiKey: 'test-key',
+      file: new Blob(['abcdabcd'], { type: 'audio/mp4' }),
+      filename: 'dictation.m4a',
+      fetchImpl: async () => new Response('{"detail":"invalid_content"}', { status: 400 }),
+    })
+    assert.equal(result.ok, false)
+    if (!result.ok) {
+      assert.equal(result.status, 400)
+      assert.equal(result.error, DICTATION_STT_ERROR_MESSAGE)
+      assert.match(result.detail || '', /invalid_content/)
+    }
+  })
+
   it('documents ELEVENLABS_API_KEY on the messages transcribe route', () => {
     const route = readFileSync(join(here, '../app/api/messages/transcribe/route.ts'), 'utf8')
+    const tokenRoute = readFileSync(join(here, '../app/api/messages/scribe-token/route.ts'), 'utf8')
     const hook = readFileSync(join(here, '../hooks/use-speech-dictation.ts'), 'utf8')
     assert.equal(ELEVENLABS_API_KEY_ENV, 'ELEVENLABS_API_KEY')
     assert.match(route, /ELEVENLABS_API_KEY/)
     assert.match(route, /createClient/)
+    assert.match(route, /scribe_failed/)
+    assert.match(tokenRoute, /realtime_scribe/)
     assert.doesNotMatch(hook, /webkitSpeechRecognition\(\)/)
     assert.match(hook, /Hard rule: never construct\/start Web Speech on iOS/)
   })

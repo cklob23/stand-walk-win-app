@@ -6,13 +6,15 @@ import {
   transcribeErrorMessage,
   validateTranscribeFile,
 } from '@/lib/message-transcribe'
+import { languageCodeForScribe } from '@/lib/scribe-realtime'
 import { DICTATION_EMPTY_AUDIO_MESSAGE, DICTATION_STT_UNCONFIGURED_MESSAGE } from '@/lib/speech-dictation'
 
 export const maxDuration = 30
 
 /**
- * iOS Safari/PWA cannot safely use Web Speech, so Messages records with
- * MediaRecorder and transcribes here.
+ * Fallback STT for the iOS PCM path (and any client that posts audio/wav).
+ * Live dictation prefers Scribe Realtime; this route transcribes a WAV when
+ * the websocket did not return text.
  *
  * Env: ELEVENLABS_API_KEY (already used by /api/tts-elevenlabs).
  */
@@ -45,20 +47,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: invalid }, { status: 400 })
     }
 
-    const filename = typeof file === 'object' && 'name' in file && typeof file.name === 'string' && file.name
-      ? file.name
-      : 'dictation.m4a'
-    const language = typeof form.get('language') === 'string' ? String(form.get('language')) : undefined
+    const filename =
+      typeof file === 'object' && 'name' in file && typeof file.name === 'string' && file.name
+        ? file.name
+        : 'dictation.wav'
+    const languageRaw = typeof form.get('language') === 'string' ? String(form.get('language')) : undefined
+    const languageCode = languageCodeForScribe(languageRaw)
 
     const result = await transcribeAudioWithElevenLabs({
       apiKey,
       file,
       filename,
-      language,
+      language: languageCode,
     })
 
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.status >= 400 ? result.status : 502 })
+      console.error('[messages/transcribe] ElevenLabs rejected audio', {
+        status: result.status,
+        filename,
+        type: file.type,
+        size: file.size,
+        detail: result.detail,
+      })
+      return NextResponse.json(
+        { error: result.error, code: 'scribe_failed' },
+        { status: result.status >= 400 && result.status < 500 ? 422 : 502 },
+      )
     }
 
     if (!result.text) {

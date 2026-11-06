@@ -30,15 +30,26 @@ export function transcribeErrorMessage(status: number, code?: string): string {
   return DICTATION_STT_ERROR_MESSAGE
 }
 
+export function summarizeScribeErrorBody(body: string): string {
+  const trimmed = body.replace(/\s+/g, ' ').trim().slice(0, 400)
+  return trimmed
+}
+
 export async function transcribeAudioWithElevenLabs(options: {
   apiKey: string
   file: Blob
   filename: string
   language?: string
   fetchImpl?: typeof fetch
-}): Promise<{ ok: true; text: string } | { ok: false; status: number; error: string }> {
+}): Promise<{ ok: true; text: string } | { ok: false; status: number; error: string; detail?: string }> {
+  const type = options.file.type || (options.filename.endsWith('.wav') ? 'audio/wav' : 'application/octet-stream')
+  const file =
+    typeof File !== 'undefined'
+      ? new File([options.file], options.filename, { type })
+      : options.file
+
   const form = new FormData()
-  form.append('file', options.file, options.filename)
+  form.append('file', file, options.filename)
   form.append('model_id', ELEVENLABS_STT_MODEL)
   form.append('tag_audio_events', 'false')
   if (options.language) form.append('language_code', options.language)
@@ -51,7 +62,8 @@ export async function transcribeAudioWithElevenLabs(options: {
   })
 
   if (!response.ok) {
-    return { ok: false, status: response.status, error: DICTATION_STT_ERROR_MESSAGE }
+    const detail = summarizeScribeErrorBody(await response.text().catch(() => ''))
+    return { ok: false, status: response.status, error: DICTATION_STT_ERROR_MESSAGE, detail }
   }
 
   const payload = await response.json()
