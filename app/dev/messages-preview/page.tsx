@@ -12,7 +12,7 @@ import { ChatAvatar } from '@/components/messages/message-bubble'
 import { MessagesConversation } from '@/components/messages/messages-conversation'
 import type { AttachmentDraft } from '@/components/messages/message-composer'
 import { validateMessageAttachments } from '@/lib/message-limits'
-import { DICTATION_UNSAFE_MESSAGE } from '@/lib/speech-dictation'
+import { DICTATION_STT_ERROR_MESSAGE } from '@/lib/speech-dictation'
 import { profileInitials } from '@/lib/message-thread'
 import { DEFAULT_ORG_BRANDING } from '@/lib/org-branding'
 import type { Message, MessageReaction, Profile } from '@/lib/types'
@@ -184,6 +184,9 @@ function PreviewInner() {
   const forceEmojiOpen = params.get('emoji') === '1'
   const mic = params.get('mic')
   const forceListening = mic === 'listening'
+  const forceRecording = mic === 'recording'
+  const forceTranscribing = mic === 'transcribing'
+  const forceError = mic === 'error'
 
   const [messages, setMessages] = useState<Message[]>(() => {
     if (empty) return []
@@ -219,7 +222,7 @@ function PreviewInner() {
     document.documentElement.dataset.previewReady = '1'
     setTheme(theme)
     setLocalDayReady(true)
-    if (mic === 'unsupported') toast.error(DICTATION_UNSAFE_MESSAGE, { position: 'top-center' })
+    if (mic === 'error') toast.error(DICTATION_STT_ERROR_MESSAGE, { position: 'top-center' })
   }, [mic, setTheme, theme])
 
   useLayoutEffect(() => {
@@ -399,7 +402,9 @@ function PreviewInner() {
         onBack={() => setMobileThreadOpen(false)}
         forceEmojiOpen={forceEmojiOpen}
         forceListening={forceListening}
-        forceUnsupported={mic === 'unsupported'}
+        forceRecording={forceRecording}
+        forceTranscribing={forceTranscribing}
+        forceError={forceError}
       />
     </div>
   )
