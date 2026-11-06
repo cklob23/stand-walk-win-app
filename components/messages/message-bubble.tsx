@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Check, CheckCheck, CornerUpLeft, Pencil, Smile, X, FileText, ExternalLink, ImageIcon, FileVideo, FileAudio, FileSpreadsheet, FileCode, File, FileArchive, Presentation } from 'lucide-react'
 import { format, isToday, isYesterday } from 'date-fns'
@@ -23,6 +22,34 @@ interface MessageBubbleProps {
     onEdit: (msg: Message) => void
     onToggleReaction: (messageId: string, emoji: MessageReaction['emoji']) => void
     onScrollToMessage?: (messageId: string) => void
+}
+
+export function ChatAvatar({
+    initials,
+    src,
+    alt,
+    className,
+}: {
+    initials: string
+    src?: string | null
+    alt?: string
+    className?: string
+}) {
+    return (
+        <span
+            className={cn(
+                'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15 font-medium text-primary',
+                className,
+            )}
+            title={alt}
+        >
+            {src && src.length > 0 ? (
+                <img src={src} alt={alt || ''} className="h-full w-full object-cover" />
+            ) : (
+                <span>{initials}</span>
+            )}
+        </span>
+    )
 }
 
 export function getFileIcon(filename: string) {
@@ -55,12 +82,12 @@ function formatMessageDate(date: string) {
 }
 
 function LocalMessageTime({ date }: { date: string }) {
-    const [text, setText] = useState('')
+    const [text, setText] = useState(() => formatMessageDate(date))
     useEffect(() => {
         setText(formatMessageDate(date))
     }, [date])
     if (!text) return null
-    return <span>{text}</span>
+    return <span suppressHydrationWarning>{text}</span>
 }
 
 export function MessageBubble({
@@ -102,21 +129,19 @@ export function MessageBubble({
 
     return (
         <div
-            className={cn('flex items-end gap-2 sm:gap-3 group', isOwn && 'flex-row-reverse')}
+            className={cn('flex items-end gap-3 group', isOwn && 'flex-row-reverse')}
             id={`msg-${msg.id}`}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
         >
-            <Avatar className={cn("h-7 w-7 sm:h-8 sm:w-8 shrink-0", !showAvatar && "invisible")}>
-                {senderAvatar && senderAvatar.length > 0 ? (
-                    <AvatarImage src={senderAvatar} alt={senderName || ''} />
-                ) : null}
-                <AvatarFallback className="text-xs bg-primary/10 text-primary" delayMs={0}>
-                    {senderInitials}
-                </AvatarFallback>
-            </Avatar>
+            <ChatAvatar
+                initials={senderInitials}
+                src={senderAvatar}
+                alt={senderName || ''}
+                className={cn('h-9 w-9 text-xs sm:h-10 sm:w-10', !showAvatar && 'invisible')}
+            />
 
-            <div className={cn('flex-1 min-w-0 max-w-[85%] sm:max-w-[75%] text-left', isOwn && 'flex flex-col items-end')}>
+            <div className={cn('flex-1 min-w-0 max-w-[82%] sm:max-w-[70%] text-left', isOwn && 'flex flex-col items-end')}>
                 {/* Reply preview */}
                 {msg.reply_to && (
                     <button
@@ -240,10 +265,10 @@ export function MessageBubble({
                     {(msg.content || (msg.attachment_url && msg.attachment_type === 'link')) && (
                         <div
                             className={cn(
-                                'inline-block max-w-full rounded-2xl px-4 py-2',
+                                'inline-block max-w-full rounded-2xl px-4 py-2.5',
                                 isOwn
-                                    ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                                    : 'bg-muted text-foreground rounded-tl-sm'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-secondary text-foreground'
                             )}
                         >
                             {msg.attachment_url && msg.attachment_type === 'link' && (

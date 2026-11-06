@@ -1,24 +1,16 @@
 'use client'
 
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
-import { cn } from '@/lib/utils'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { FeatureTour } from '@/components/onboarding/feature-tour'
-import { messagesSteps } from '@/lib/tour-steps'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Send, Loader2, MessageSquare, Circle, Phone, Video, Paperclip, X, CornerUpLeft, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Profile, Pairing, Message, MessageReaction } from '@/lib/types'
-import { format, isToday, isYesterday } from 'date-fns'
-import { toLocalDateKey } from '@/lib/local-datetime'
-import { MessageBubble, getFileIcon } from './message-bubble'
+import { validateMessageAttachments } from '@/lib/message-limits'
 import { notifyNewMessage, notifyMessageReaction } from '@/lib/notifications'
 import { useBrowserNotifications } from '@/hooks/use-browser-notifications'
 import { useRealtimeAuth } from '@/hooks/use-realtime-auth'
 import { markNotificationsReadForContext } from '@/lib/notification-actions'
+import { MessagesConversation } from './messages-conversation'
+import type { AttachmentDraft } from './message-composer'
 
 interface MessagesViewProps {
   profile: Profile
@@ -26,41 +18,6 @@ interface MessagesViewProps {
   partner: Profile
   initialMessages: Message[]
   draftMessage?: string | null
-}
-
-function GroupDateLabel({ dateStr }: { dateStr: string }) {
-  const [text, setText] = useState(dateStr)
-
-  useEffect(() => {
-    const [year, month, day] = dateStr.split('-').map(Number)
-    if (!year || !month || !day) {
-      setText(dateStr)
-      return
-    }
-    const d = new Date(year, month - 1, day)
-    if (isToday(d)) {
-      setText('Today')
-      return
-    }
-    if (isYesterday(d)) {
-      setText('Yesterday')
-      return
-    }
-    const now = new Date()
-    const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
-    setText(diffDays < 7 ? format(d, 'EEEE') : format(d, 'EEEE, MMMM d'))
-  }, [dateStr])
-
-  return <>{text}</>
-}
-
-/** UTC YYYY-MM-DD on SSR (hydration-safe); local calendar day after mount. */
-function messageDayKey(iso: string, useLocal: boolean): string {
-  if (!iso) return ''
-  if (!useLocal) return iso.slice(0, 10)
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
-  return toLocalDateKey(d)
 }
 
 export function MessagesView({ profile, pairing, partner, initialMessages, draftMessage }: MessagesViewProps) {
@@ -71,9 +28,8 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
   const [isPartnerTyping, setIsPartnerTyping] = useState(false)
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
-  const [attachmentFiles, setAttachmentFiles] = useState<{ file: File; preview: string | null }[]>([])
+  const [attachmentFiles, setAttachmentFiles] = useState<AttachmentDraft[]>([])
   const [isUploading, setIsUploading] = useState(false)
-  const MAX_ATTACHMENTS = 5
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const prevMessageCountRef = useRef(initialMessages.length)
@@ -684,24 +640,10 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
     const files = e.target.files
     if (!files || files.length === 0) return
 
-    const remaining = MAX_ATTACHMENTS - attachmentFiles.length
-    if (remaining <= 0) {
-      toast.error(`You can only attach up to ${MAX_ATTACHMENTS} files per message`)
-      e.target.value = ''
-      return
-    }
+    const { accepted, errors } = validateMessageAttachments(attachmentFiles.length, Array.from(files))
+    for (const error of errors) toast.error(error)
 
-    const filesToAdd = Array.from(files).slice(0, remaining)
-    if (files.length > remaining) {
-      toast.error(`You can only attach up to ${MAX_ATTACHMENTS} files per message. ${files.length - remaining} file(s) were not added.`)
-    }
-
-    for (const file of filesToAdd) {
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error(`"${file.name}" exceeds the 10 MB file size limit`)
-        continue
-      }
-
+    for (const file of accepted) {
       if (file.type.startsWith('image/')) {
         const reader = new FileReader()
         reader.onload = () => {
@@ -731,321 +673,35 @@ export function MessagesView({ profile, pairing, partner, initialMessages, draft
     }
   }
 
-  const partnerInitials = partner.full_name
-    ?.split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase() || '?'
-
-  const profileInitials = profile.full_name
-    ?.split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase() || '?'
-
-  // SSR groups by the UTC ISO day so the tree hydrates. After mount,
-  // regroup by the device calendar day so dividers match bubble labels
-  // (Today / Yesterday). useLayoutEffect applies this before paint.
-  const groupedMessages = useMemo(() => {
-    const groups: { date: string; messages: Message[] }[] = []
-    let currentDate = ''
-    for (const msg of messages) {
-      const msgDate = messageDayKey(msg.created_at, localDayReady)
-      if (!msgDate) continue
-      if (msgDate !== currentDate) {
-        currentDate = msgDate
-        groups.push({ date: msgDate, messages: [msg] })
-      } else {
-        groups[groups.length - 1].messages.push(msg)
-      }
-    }
-    return groups
-  }, [messages, localDayReady])
-
   return (
-    <div className="mx-auto max-w-3xl px-4 py-4 sm:py-6">
-      <Card data-tour="messages-chat" className="h-[calc(100vh-10rem)] sm:h-[calc(100vh-12rem)] flex flex-col min-w-0 overflow-hidden">
-        {/* Header */}
-        <CardHeader className="border-b shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Avatar className="h-10 w-10">
-                {partner.avatar_url && partner.avatar_url.length > 0 ? <AvatarImage src={partner.avatar_url} alt={partner.full_name!} /> : null}
-                <AvatarFallback className="bg-primary/10 text-primary" delayMs={0}>
-                  {partnerInitials}
-                </AvatarFallback>
-              </Avatar>
-              {isPartnerOnline && (
-                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-base">{partner.full_name}</CardTitle>
-              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                {isPartnerTyping ? (
-                  <span className="text-primary animate-pulse">typing...</span>
-                ) : isPartnerOnline ? (
-                  <>
-                    <Circle className="h-2 w-2 fill-green-500 text-green-500" />
-                    <span>Online</span>
-                  </>
-                ) : (
-                  <span className="capitalize">{partner.role}</span>
-                )}
-              </p>
-            </div>
-            {/* Call & FaceTime buttons */}
-            <div className="flex items-center gap-1">
-              {partner.phone && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-11 w-11 text-muted-foreground hover:text-primary"
-                  asChild
-                >
-                  <a href={`tel:${partner.phone}`} title={`Call ${partner.full_name}`}>
-                    <Phone className="h-6 w-6" />
-                    <span className="sr-only">Call {partner.full_name}</span>
-                  </a>
-                </Button>
-              )}
-              {partner.phone && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-11 w-11 text-muted-foreground hover:text-primary"
-                  asChild
-                >
-                  <a href={`facetime:${partner.phone}`} title={`FaceTime ${partner.full_name}`}>
-                    <Video className="h-6 w-6" />
-                    <span className="sr-only">FaceTime {partner.full_name}</span>
-                  </a>
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-
-        {/* Messages */}
-        <CardContent ref={scrollContainerRef} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4">
-          {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted mb-4">
-                <MessageSquare className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="font-medium text-foreground">No messages yet</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Send a message to start the conversation
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-6 min-w-0">
-              {groupedMessages.map((group) => (
-                <div key={group.date}>
-                  {/* Date Separator */}
-                  <div className="flex items-center gap-4 my-4">
-                    <div className="flex-1 h-px bg-border" />
-                    <span className="text-xs text-muted-foreground font-medium">
-                      <GroupDateLabel dateStr={group.date} />
-                    </span>
-                    <div className="flex-1 h-px bg-border" />
-                  </div>
-
-                  {/* Messages */}
-                  <div className="space-y-0.5">
-                    {group.messages.map((msg, idx) => {
-                      const isOwn = msg.sender_id === profile.id
-                      const prevMsg = group.messages[idx - 1]
-                      const nextMsg = group.messages[idx + 1]
-
-                      // Show timestamp if: last message, next message is from different sender,
-                      // or more than 5 minutes gap to next message
-                      const isLastInGroup = !nextMsg
-                      const senderChanges = nextMsg && nextMsg.sender_id !== msg.sender_id
-                      const timeDiff = nextMsg
-                        ? new Date(nextMsg.created_at).getTime() - new Date(msg.created_at).getTime()
-                        : Infinity
-                      const bigTimeGap = timeDiff > 5 * 60 * 1000 // 5 minutes
-                      const showTimestamp = isLastInGroup || senderChanges || bigTimeGap
-
-                      // Show avatar only on last consecutive message from same sender
-                      const nextIsSameSender = nextMsg && nextMsg.sender_id === msg.sender_id && !bigTimeGap
-                      const showAvatar = !nextIsSameSender
-
-                      // Add extra spacing when sender changes or time gap
-                      const needsSpacing = prevMsg && (prevMsg.sender_id !== msg.sender_id ||
-                        (new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime() > 5 * 60 * 1000))
-
-                      return (
-                        <div key={msg.id} className={cn(needsSpacing && 'pt-3')}>
-                          <MessageBubble
-                            msg={msg}
-                            isOwn={isOwn}
-                            senderInitials={isOwn ? profileInitials : partnerInitials}
-                            senderAvatar={isOwn ? profile.avatar_url : partner.avatar_url}
-                            senderName={isOwn ? profile.full_name : partner.full_name}
-                            currentUserId={profile.id}
-                            showTimestamp={showTimestamp}
-                            showAvatar={showAvatar}
-                            onReply={handleReply}
-                            onEdit={handleEdit}
-                            onToggleReaction={handleToggleReaction}
-                            onScrollToMessage={scrollToMessage}
-                          />
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-              {/* Typing Indicator */}
-              {isPartnerTyping && (
-                <div className="flex items-end gap-3">
-                  <Avatar className="h-8 w-8 shrink-0">
-                    {partner.avatar_url && partner.avatar_url.length > 0 ? <AvatarImage src={partner.avatar_url} alt={partner.full_name!} /> : null}
-                    <AvatarFallback className="text-xs bg-primary/10 text-primary" delayMs={0}>
-                      {partnerInitials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="inline-flex items-center rounded-2xl rounded-tl-sm bg-muted px-4 h-10">
-                    <div className="flex items-center gap-1">
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </CardContent>
-
-        {/* Input */}
-        <div data-tour="messages-input" className="border-t shrink-0">
-          {/* Reply / Edit bar */}
-          {(replyTo || editingMessage) && (
-            <div className="flex items-center gap-2 px-3 sm:px-4 pt-2 pb-1">
-              <div className="flex-1 min-w-0 flex items-center gap-2 text-xs text-muted-foreground">
-                {replyTo && (
-                  <>
-                    <CornerUpLeft className="h-3.5 w-3.5 shrink-0 text-primary" />
-                    <span className="truncate">
-                      Replying to <span className="font-medium text-foreground">{replyTo.sender?.full_name || 'message'}</span>
-                      {': '}{replyTo.content?.slice(0, 50)}{(replyTo.content?.length || 0) > 50 ? '...' : ''}
-                    </span>
-                  </>
-                )}
-                {editingMessage && (
-                  <>
-                    <Pencil className="h-3.5 w-3.5 shrink-0 text-primary" />
-                    <span className="truncate">Editing message</span>
-                  </>
-                )}
-              </div>
-              <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={handleCancelAction}>
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
-
-          {/* Attachment previews */}
-          {attachmentFiles.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 px-3 sm:px-4 pt-2 pb-1">
-              {attachmentFiles.map((att, idx) => {
-                const FileIcon = getFileIcon(att.file.name)
-                return (
-                  <div key={idx} className="relative group">
-                    {att.preview ? (
-                      <img src={att.preview} alt={att.file.name} className="h-16 w-16 object-cover rounded-lg border" />
-                    ) : (
-                      <div className="h-12 flex items-center gap-2 px-3 rounded-lg border bg-muted text-sm">
-                        <FileIcon className="h-4 w-4 text-muted-foreground" />
-                        <span className="truncate max-w-[140px]">{att.file.name}</span>
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(idx)}
-                      className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                )
-              })}
-              <span className="text-xs text-muted-foreground">
-                {attachmentFiles.length}/{MAX_ATTACHMENTS}
-              </span>
-            </div>
-          )}
-
-          <div className="flex gap-2 items-end p-3 sm:p-4 pt-2">
-            {/* Attachment button */}
-            {!editingMessage && (
-              <>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  accept="image/*,.pdf,.doc,.docx,.txt,.xls,.xlsx,.csv,.ppt,.pptx,.zip,.mp3,.mp4,.mov"
-                  onChange={handleFileSelect}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-10 w-10 shrink-0 text-muted-foreground hover:text-primary"
-                  onClick={() => fileInputRef.current?.click()}
-                  title="Attach file"
-                >
-                  <Paperclip className="h-5 w-5" />
-                </Button>
-              </>
-            )}
-
-            <Textarea
-              ref={textareaRef}
-              value={newMessage}
-              onChange={(e) => {
-                setNewMessage(e.target.value)
-                if (e.target.value.trim()) {
-                  handleTyping()
-                }
-              }}
-              placeholder={editingMessage ? 'Edit your message...' : `Message ${partner.full_name}...`}
-              className="min-h-[50px] sm:min-h-[60px] max-h-[100px] sm:max-h-[120px] resize-none text-base"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSend()
-                }
-                if (e.key === 'Escape') {
-                  handleCancelAction()
-                }
-              }}
-            />
-            <Button
-              onClick={handleSend}
-              disabled={isLoading || isUploading || (!newMessage.trim() && attachmentFiles.length === 0)}
-              size="icon"
-              className="h-10 w-10 shrink-0"
-            >
-              {isLoading || isUploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : editingMessage ? (
-                <Pencil className="h-4 w-4" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              <span className="sr-only">{editingMessage ? 'Save edit' : 'Send message'}</span>
-            </Button>
-          </div>
-        </div>
-      </Card>
-
-      {/* Onboarding Tour */}
-      <FeatureTour tourId="messages" steps={messagesSteps} />
-    </div>
+    <MessagesConversation
+      profile={profile}
+      partner={partner}
+      messages={messages}
+      newMessage={newMessage}
+      onNewMessageChange={setNewMessage}
+      onSend={handleSend}
+      onTyping={handleTyping}
+      isLoading={isLoading}
+      isUploading={isUploading}
+      isPartnerOnline={isPartnerOnline}
+      isPartnerTyping={isPartnerTyping}
+      replyTo={replyTo}
+      editingMessage={editingMessage}
+      onReply={handleReply}
+      onEdit={handleEdit}
+      onCancelAction={handleCancelAction}
+      onToggleReaction={handleToggleReaction}
+      onScrollToMessage={scrollToMessage}
+      attachmentFiles={attachmentFiles}
+      onFileSelect={handleFileSelect}
+      onRemoveAttachment={removeAttachment}
+      onAttachClick={() => fileInputRef.current?.click()}
+      fileInputRef={fileInputRef}
+      textareaRef={textareaRef}
+      messagesEndRef={messagesEndRef}
+      scrollContainerRef={scrollContainerRef}
+      localDayReady={localDayReady}
+    />
   )
 }
