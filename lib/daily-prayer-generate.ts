@@ -18,6 +18,7 @@ import {
     type DailyPrayerContent,
     type DailyPrayerInput,
 } from './daily-prayer-content.ts'
+import { describeChosenTopic } from './daily-prayer-topic.ts'
 
 export const DAILY_PRAYER_AI_MODEL = 'openai/gpt-4o-mini'
 export const DAILY_PRAYER_AI_TIMEOUT_MS = 8000
@@ -47,7 +48,8 @@ Rules:
 - Warm, specific, and different from the recent prayers you are given
 - Do not mention any partner, learner, leader, or given name
 - Do not use em dashes, ellipses, or the words petition / NIV
-- Pick scriptureRef from the allowed ESV list only. Do not rewrite the verse.`
+- Pick scriptureRef from the allowed ESV list only. Do not rewrite the verse.
+- Pray about the given today's topic only. Do not return to older journal reflections.`
 
 export function capPromptField(
     text: string | null | undefined,
@@ -69,6 +71,10 @@ export function sanitizeDailyPrayerInput(input: DailyPrayerInput): DailyPrayerIn
         weekScripture: input.weekScripture == null ? input.weekScripture : capPromptField(input.weekScripture, 160),
         guidedPrayer: input.guidedPrayer == null ? input.guidedPrayer : capPromptField(input.guidedPrayer),
         assignmentTitle: input.assignmentTitle == null ? input.assignmentTitle : capPromptField(input.assignmentTitle, 80),
+        encouragementTheme: input.encouragementTheme == null
+            ? input.encouragementTheme
+            : capPromptField(input.encouragementTheme, 80),
+        topicKey: input.topicKey == null ? input.topicKey : capPromptField(input.topicKey, 120),
     }
 }
 
@@ -120,15 +126,19 @@ export function buildDailyPrayerPrompt(input: DailyPrayerGenerateRequest): strin
     const recent = input.recentBodies.length
         ? input.recentBodies.map((body, index) => `${index + 1}. ${capPromptField(body)}`).join('\n')
         : '(none)'
-    const topic = prayerInput.prayerItems?.trim() || prayerInput.reflection?.trim() || ''
+    const topic = describeChosenTopic(prayerInput)
+    const source = prayerInput.topicKind || (prayerInput.prayerItems || prayerInput.reflection ? 'journal' : 'none')
     const week = prayerInput.weekNumber && prayerInput.weekTitle
         ? `Week ${prayerInput.weekNumber}: ${prayerInput.weekTitle}`
         : 'none'
     return [
         `Local date: ${prayerInput.dateKey}`,
-        `Journal topic: ${topic || 'none'}`,
-        `Current week: ${week}`,
+        `Today's topic source: ${source}`,
+        `Today's topic: ${topic}`,
+        `Current week (personal journey context only): ${week}`,
         `Week scripture: ${prayerInput.weekScripture || 'none'}`,
+        '',
+        'Pray about today\'s topic. Do not return to older journal reflections.',
         '',
         'Allowed ESV verses (use one scriptureRef exactly):',
         verses,

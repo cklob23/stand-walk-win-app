@@ -8,6 +8,8 @@ import { getLocalDateCookie } from '@/lib/local-date'
 import { resolveLocalDateKey } from '@/lib/local-date-key'
 import { pickActivePairing, preferredPairingIds } from '@/lib/pairing-resolution'
 import { resolveDailyPrayerInput, type DailyPrayerPartner } from '@/lib/daily-prayer-content'
+import { DAILY_PRAYER_RECENT_LIMIT } from '@/lib/daily-prayer-generate'
+import { loadRecentDailyPrayerTopicUses } from '@/lib/daily-prayer-store'
 
 export const metadata = {
     title: 'Prayer Journal - Stand Walk Run',
@@ -384,11 +386,19 @@ export default async function JournalPage({
     // Fetch today's entry for editor (using local date to avoid timezone issues)
     const todayEntry = await getTodayEntry(user.id, localDate)
 
+    const recentTopicUses = await loadRecentDailyPrayerTopicUses(supabase, {
+        userId: user.id,
+        limit: DAILY_PRAYER_RECENT_LIMIT,
+    })
     const dailyPrayerInput = resolveDailyPrayerInput({
+        dateKey: localDate,
         journalEntries: (myEntriesData || []).map((entry) => ({
+            id: entry.id,
+            journal_date: entry.journal_date,
             prayer_items: entry.prayer_items,
             god_speaking: entry.god_speaking,
         })),
+        recentTopicUses,
         weekNumber: currentWeek,
         weekTitle,
         weekScripture,

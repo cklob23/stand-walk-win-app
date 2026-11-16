@@ -16,6 +16,7 @@ import {
     sanitizeDailyPrayerInput,
     type DailyPrayerOrigin,
 } from '@/lib/daily-prayer-generate'
+import { stripIneligibleJournal } from '@/lib/daily-prayer-topic'
 import {
     claimDailyPrayerAiAttempt,
     claimDailyPrayerAiUserSlot,
@@ -31,6 +32,7 @@ import {
     loadAnyDailyPrayerForDate,
     loadDailyPrayerRow,
     loadRecentDailyPrayerBodies,
+    loadRecentDailyPrayerTopicUses,
     rowToDailyPrayerContent,
     saveDailyPrayerRow,
 } from '@/lib/daily-prayer-store'
@@ -308,13 +310,18 @@ async function loadOrCreateTodaysPrayer(input: {
             limit: DAILY_PRAYER_RECENT_LIMIT,
         })
         : []
+    const recentUses = await loadRecentDailyPrayerTopicUses(input.supabase, {
+        userId: input.userId,
+        limit: DAILY_PRAYER_RECENT_LIMIT,
+    })
+    const prayerInput = stripIneligibleJournal({
+        ...input.prayerInput,
+        dateKey: input.localDate,
+        partnerName: input.partnerName,
+    }, recentUses)
 
     const resolved = await resolveTodaysPrayer({
-        prayerInput: {
-            ...input.prayerInput,
-            dateKey: input.localDate,
-            partnerName: input.partnerName,
-        },
+        prayerInput,
         recentBodies,
         generate: claimed ? generateDailyPrayerDraft : undefined,
     })
@@ -330,6 +337,9 @@ async function loadOrCreateTodaysPrayer(input: {
                 localDate: input.localDate,
                 content: resolved.content,
                 generatedBy: 'ai',
+                journalEntryId: prayerInput.journalEntryId,
+                journalDate: prayerInput.journalDate,
+                topicKey: prayerInput.topicKey || resolved.content.source,
             }),
         )
         if (saved === 'duplicate') {
