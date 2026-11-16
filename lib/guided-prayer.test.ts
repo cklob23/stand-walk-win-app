@@ -15,10 +15,19 @@ describe('guided prayer visibility', () => {
         assert.equal(showGuidedPrayerComingSoon('prayer', 'Amen'), false)
     })
 
+    it('hides coming soon when the collapsible prayer column has text', () => {
+        assert.equal(showGuidedPrayerComingSoon('prayer', null, 'Heavenly Father'), false)
+        assert.equal(showGuidedPrayerComingSoon('prayer', '', 'Heavenly Father'), false)
+        assert.equal(showGuidedPrayerComingSoon('prayer', null, '   '), true)
+        assert.equal(showGuidedPrayerComingSoon('prayer', null, null), true)
+    })
+
     it('shows coming soon on other types only when the empty-string slot is reserved', () => {
         assert.equal(showGuidedPrayerComingSoon('reflection', ''), true)
         assert.equal(showGuidedPrayerComingSoon('reflection', null), false)
         assert.equal(showGuidedPrayerComingSoon('reading', null), false)
         assert.equal(showGuidedPrayerComingSoon('reading', 'Lead me'), false)
+        assert.equal(showGuidedPrayerComingSoon('reflection', '', 'Heavenly Father'), false)
+        assert.equal(showGuidedPrayerComingSoon('action', '', null), true)
     })
 })

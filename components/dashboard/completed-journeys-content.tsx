@@ -362,6 +362,7 @@ export function CompletedJourneysContent({
                                                                             <div className="mt-2">
                                                                                 <GuidedPrayer
                                                                                     prayer={item.assignment.guided_prayer}
+                                                                                    itemPrayer={item.assignment.prayer}
                                                                                     assignmentType={item.assignment.assignment_type}
                                                                                     confirmed
                                                                                     onConfirmedChange={() => undefined}

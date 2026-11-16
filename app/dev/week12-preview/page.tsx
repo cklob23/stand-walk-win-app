@@ -21,6 +21,9 @@ import {
   LIVE_Q4_PROMPT,
   OLD_DIRECTION_COMMENTARY,
   OLD_DIRECTION_PRAYER,
+  PRAY_FOR_YOUR_FRIENDS_ASSIGNMENT,
+  PRAY_FOR_YOUR_FRIENDS_COMMENTARY,
+  PRAY_FOR_YOUR_FRIENDS_PRAYER,
   Q1_COMMENTARY,
   Q1_PRAYER,
   Q2_COMMENTARY,
@@ -221,6 +224,28 @@ const prayerForStrength: Assignment = {
   guided_prayer: STRENGTH_PRAYER,
 }
 
+const prayForYourFriends: Assignment = {
+  id: 'preview-pray-friends',
+  week_number: 6,
+  title: 'Pray for Your Friends',
+  description: PRAY_FOR_YOUR_FRIENDS_ASSIGNMENT,
+  assignment_type: 'prayer',
+  order_index: 3,
+  created_at: createdAt,
+  commentary: PRAY_FOR_YOUR_FRIENDS_COMMENTARY,
+  prayer: PRAY_FOR_YOUR_FRIENDS_PRAYER,
+}
+
+const prayerWithoutCopy: Assignment = {
+  id: 'preview-prayer-empty',
+  week_number: 4,
+  title: 'Daily Prayer Practice',
+  description: 'Spend 10 minutes each day in prayer, simply talking to God about your new journey.',
+  assignment_type: 'prayer',
+  order_index: 4,
+  created_at: createdAt,
+}
+
 const cardProps = {
   pairingId: 'preview-pairing',
   userId: 'preview-learner',
@@ -233,12 +258,18 @@ const cardProps = {
 function PreviewInner() {
   const searchParams = useSearchParams()
   const view = searchParams.get('view') || 'week1'
+  const role = searchParams.get('role') === 'leader' ? 'leader' : 'learner'
   const [bornAgain] = groupAssignments(week1Rows)
   const completedPrayer = {
     assignment_id: week1Prayer.id,
     status: 'completed',
     notes: null,
     completed_at: '2026-10-21T12:00:00.000Z',
+  }
+  const viewCardProps = {
+    ...cardProps,
+    userRole: role,
+    userId: role === 'leader' ? 'preview-leader' : 'preview-learner',
   }
 
   return (
@@ -259,9 +290,9 @@ function PreviewInner() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Week 1 expanded cards
             </h2>
-            <AssignmentCard assignment={bornAgain} {...cardProps} defaultOpen guidanceDefaultOpen />
-            <AssignmentCard assignment={salvationStory} {...cardProps} defaultOpen guidanceDefaultOpen />
-            <AssignmentCard assignment={baptism} {...cardProps} defaultOpen guidanceDefaultOpen />
+            <AssignmentCard assignment={bornAgain} {...viewCardProps} defaultOpen guidanceDefaultOpen />
+            <AssignmentCard assignment={salvationStory} {...viewCardProps} defaultOpen guidanceDefaultOpen />
+            <AssignmentCard assignment={baptism} {...viewCardProps} defaultOpen guidanceDefaultOpen />
           </section>
         )}
 
@@ -270,7 +301,7 @@ function PreviewInner() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Week 1 guided prayer unchecked
             </h2>
-            <AssignmentCard assignment={week1Prayer} {...cardProps} defaultOpen />
+            <AssignmentCard assignment={week1Prayer} {...viewCardProps} defaultOpen />
           </section>
         )}
 
@@ -279,7 +310,7 @@ function PreviewInner() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Week 1 guided prayer checked
             </h2>
-            <AssignmentCard assignment={week1Prayer} {...cardProps} defaultOpen defaultPrayerConfirmed />
+            <AssignmentCard assignment={week1Prayer} {...viewCardProps} defaultOpen defaultPrayerConfirmed />
           </section>
         )}
 
@@ -290,7 +321,7 @@ function PreviewInner() {
             </h2>
             <AssignmentCard
               assignment={week1Prayer}
-              {...cardProps}
+              {...viewCardProps}
               defaultOpen
               progress={completedPrayer}
             />
@@ -302,9 +333,9 @@ function PreviewInner() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Week 2
             </h2>
-            <AssignmentCard assignment={week2LearningToPray} {...cardProps} currentWeek={2} defaultOpen guidanceDefaultOpen />
-            <AssignmentCard assignment={understandingPrayer} {...cardProps} currentWeek={2} defaultOpen guidanceDefaultOpen />
-            <AssignmentCard assignment={beginningBibleStudy} {...cardProps} currentWeek={2} defaultOpen guidanceDefaultOpen />
+            <AssignmentCard assignment={week2LearningToPray} {...viewCardProps} currentWeek={2} defaultOpen guidanceDefaultOpen />
+            <AssignmentCard assignment={understandingPrayer} {...viewCardProps} currentWeek={2} defaultOpen guidanceDefaultOpen />
+            <AssignmentCard assignment={beginningBibleStudy} {...viewCardProps} currentWeek={2} defaultOpen guidanceDefaultOpen />
           </section>
         )}
 
@@ -313,10 +344,10 @@ function PreviewInner() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Week 3
             </h2>
-            <AssignmentCard assignment={armorOfGod} {...cardProps} currentWeek={3} defaultOpen guidanceDefaultOpen />
-            <AssignmentCard assignment={oldDirection} {...cardProps} currentWeek={3} defaultOpen guidanceDefaultOpen />
-            <AssignmentCard assignment={standPlan} {...cardProps} currentWeek={3} defaultOpen guidanceDefaultOpen />
-            <AssignmentCard assignment={prayerForStrength} {...cardProps} currentWeek={3} defaultOpen />
+            <AssignmentCard assignment={armorOfGod} {...viewCardProps} currentWeek={3} defaultOpen guidanceDefaultOpen />
+            <AssignmentCard assignment={oldDirection} {...viewCardProps} currentWeek={3} defaultOpen guidanceDefaultOpen />
+            <AssignmentCard assignment={standPlan} {...viewCardProps} currentWeek={3} defaultOpen guidanceDefaultOpen />
+            <AssignmentCard assignment={prayerForStrength} {...viewCardProps} currentWeek={3} defaultOpen />
           </section>
         )}
 
@@ -325,10 +356,10 @@ function PreviewInner() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Week list incomplete
             </h2>
-            <AssignmentCard assignment={bornAgain} {...cardProps} />
-            <AssignmentCard assignment={salvationStory} {...cardProps} />
-            <AssignmentCard assignment={baptism} {...cardProps} />
-            <AssignmentCard assignment={week1Prayer} {...cardProps} />
+            <AssignmentCard assignment={bornAgain} {...viewCardProps} />
+            <AssignmentCard assignment={salvationStory} {...viewCardProps} />
+            <AssignmentCard assignment={baptism} {...viewCardProps} />
+            <AssignmentCard assignment={week1Prayer} {...viewCardProps} />
           </section>
         )}
 
@@ -337,13 +368,42 @@ function PreviewInner() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Week list Done
             </h2>
-            <AssignmentCard assignment={bornAgain} {...cardProps} />
-            <AssignmentCard assignment={salvationStory} {...cardProps} />
-            <AssignmentCard assignment={baptism} {...cardProps} />
+            <AssignmentCard assignment={bornAgain} {...viewCardProps} />
+            <AssignmentCard assignment={salvationStory} {...viewCardProps} />
+            <AssignmentCard assignment={baptism} {...viewCardProps} />
             <AssignmentCard
               assignment={week1Prayer}
-              {...cardProps}
+              {...viewCardProps}
               progress={completedPrayer}
+            />
+          </section>
+        )}
+
+        {(view === 'pray-friends' || view === 'week6' || view === 'all') && (
+          <section id="pray-friends" className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Pray for Your Friends (collapsible prayer, no guided prayer)
+            </h2>
+            <AssignmentCard
+              assignment={prayForYourFriends}
+              {...viewCardProps}
+              currentWeek={6}
+              defaultOpen
+              guidanceDefaultOpen
+            />
+          </section>
+        )}
+
+        {(view === 'prayer-empty' || view === 'week6' || view === 'all') && (
+          <section id="prayer-empty" className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Prayer-type item with no prayer and no guided prayer
+            </h2>
+            <AssignmentCard
+              assignment={prayerWithoutCopy}
+              {...viewCardProps}
+              currentWeek={4}
+              defaultOpen
             />
           </section>
         )}

@@ -4,9 +4,10 @@ export function hasGuidedPrayerText(guidedPrayer?: string | null): boolean {
 
 export function showGuidedPrayerComingSoon(
     assignmentType: string,
-    guidedPrayer?: string | null
+    guidedPrayer?: string | null,
+    prayer?: string | null
 ): boolean {
-    if (hasGuidedPrayerText(guidedPrayer)) return false
+    if (hasGuidedPrayerText(guidedPrayer) || hasGuidedPrayerText(prayer)) return false
     if (assignmentType === 'prayer') return true
     return guidedPrayer === ''
 }

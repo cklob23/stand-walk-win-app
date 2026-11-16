@@ -818,6 +818,7 @@ export function AssignmentCard({
 
             <GuidedPrayer
               prayer={assignment.guided_prayer}
+              itemPrayer={assignment.prayer}
               assignmentType={assignment.assignment_type}
               confirmed={prayerConfirmed}
               onConfirmedChange={setPrayerConfirmed}
