@@ -1,8 +1,9 @@
 /**
  * Choose today's prayer topic so a stale journal reflection cannot linger.
  * A given reflection may inspire Today's prayer at most twice, and only when
- * it is from today, yesterday, or (with usage tracking) one more recent day.
- * Otherwise rotate across this week's journey assignments and uplifting themes.
+ * it is from today or yesterday. Uses are counted once per learner per local
+ * day, and today's own saved row does not consume a use. Otherwise rotate
+ * across this week's journey assignments and uplifting themes.
  */
 
 import { isLocalDateKey } from './local-date-key.ts'
@@ -14,7 +15,7 @@ import {
 } from './daily-prayer-content.ts'
 
 export const MAX_REFLECTION_USES = 2
-export const REFLECTION_MAX_AGE_WITH_TRACKING = 2
+export const REFLECTION_MAX_AGE_WITH_TRACKING = 1
 export const REFLECTION_MAX_AGE_WITHOUT_TRACKING = 1
 export const RECENT_TOPIC_LOOKBACK_DAYS = 7
 
@@ -110,14 +111,23 @@ export function reflectionMaxAgeDays(uses: DailyPrayerTopicUse[]): number {
 export function countReflectionUses(
     entry: { id?: string | null; journal_date?: string | null },
     uses: DailyPrayerTopicUse[],
+    options?: { excludeLocalDate?: string | null },
 ): number {
     const key = reflectionTopicKey(entry)
-    return uses.filter((use) => {
-        if (use.kind !== 'journal') return false
-        if (entry.id && use.journalEntryId === entry.id) return true
-        if (entry.journal_date && use.journalDate === entry.journal_date) return true
-        return use.topicKey === key
-    }).length
+    const countedDates = new Set<string>()
+    for (const use of uses) {
+        if (options?.excludeLocalDate && use.localDate === options.excludeLocalDate) continue
+        if (use.kind !== 'journal') continue
+        const matchesId = !!(entry.id && use.journalEntryId === entry.id)
+        const matchesDate = !!(entry.journal_date && use.journalDate === entry.journal_date)
+        const matchesLegacy = !!(entry.journal_date && (
+            use.topicKey === `reflection:${entry.journal_date}`
+            || (!use.journalEntryId && !use.journalDate && use.localDate === entry.journal_date)
+        ))
+        if (!matchesId && !matchesDate && use.topicKey !== key && !matchesLegacy) continue
+        countedDates.add(use.localDate)
+    }
+    return countedDates.size
 }
 
 function journalTopicOf(entry: DailyPrayerJournalEntry): string | null {
@@ -135,7 +145,9 @@ export function isEligibleReflection(input: {
     const age = dateKeyDayDiff(journalDate, input.dateKey)
     if (age == null || age < 0) return false
     if (age > reflectionMaxAgeDays(input.recentUses)) return false
-    return countReflectionUses(input.entry, input.recentUses) < MAX_REFLECTION_USES
+    return countReflectionUses(input.entry, input.recentUses, {
+        excludeLocalDate: input.dateKey,
+    }) < MAX_REFLECTION_USES
 }
 
 function rankReflectionAge(age: number): number {

@@ -437,9 +437,10 @@ export default async function DashboardPage({
   }
 
   // Check if user has journal entry for today (device local date, same as popups).
-  // Cookie is set on first client paint by SyncLocalDate; UTC is first-visit fallback.
-  // DailyPopups also compares this queried date to the device date so a stale
-  // cookie (first load of a new day) cannot skip the journal popup.
+  // Cookie is set on first client paint by SyncLocalDate; America/New_York is
+  // the first-visit fallback so 9 PM ET is still today. DailyPopups also
+  // compares this queried date to the device date so a stale cookie (first
+  // load of a new day) cannot skip the journal popup.
   const journalTodayKey = resolveLocalDateKey({ cookieDate: await getLocalDateCookie() })
   let hasJournalEntryToday = false
   if (pairing) {
