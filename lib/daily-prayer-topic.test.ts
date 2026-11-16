@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { resolveDailyPrayerInput } from './daily-prayer-content.ts'
+import { topicUseFromDailyPrayerRow } from './daily-prayer-store.ts'
 import {
     MAX_REFLECTION_USES,
+    REFLECTION_MAX_AGE_WITH_TRACKING,
     countReflectionUses,
     dateKeyDayDiff,
     isEligibleReflection,
@@ -87,9 +89,13 @@ describe('daily prayer topic selection', () => {
     })
 
     it('lets a given reflection inspire the prayer at most twice', () => {
+        const todayEntry = {
+            ...YESTERDAY_ENTRY,
+            journal_date: '2026-10-25',
+        }
         const first = pickDailyPrayerTopic({
             dateKey: '2026-10-25',
-            journalEntries: [YESTERDAY_ENTRY],
+            journalEntries: [todayEntry],
             ...WEEK,
             assignments: ASSIGNMENTS,
         })
@@ -97,20 +103,20 @@ describe('daily prayer topic selection', () => {
 
         const second = pickDailyPrayerTopic({
             dateKey: '2026-10-26',
-            journalEntries: [YESTERDAY_ENTRY],
+            journalEntries: [todayEntry],
             recentUses: [useFor('2026-10-25', first)],
             ...WEEK,
             assignments: ASSIGNMENTS,
         })
         assert.equal(second.kind, 'journal')
-        assert.equal(countReflectionUses(YESTERDAY_ENTRY, [
+        assert.equal(countReflectionUses(todayEntry, [
             useFor('2026-10-25', first),
             useFor('2026-10-26', second),
         ]), MAX_REFLECTION_USES)
 
         const third = pickDailyPrayerTopic({
             dateKey: '2026-10-27',
-            journalEntries: [YESTERDAY_ENTRY],
+            journalEntries: [todayEntry],
             recentUses: [useFor('2026-10-25', first), useFor('2026-10-26', second)],
             ...WEEK,
             assignments: ASSIGNMENTS,
@@ -135,7 +141,8 @@ describe('daily prayer topic selection', () => {
         assert.notEqual(pick.kind, 'journal')
     })
 
-    it('allows one more recent day when tracking shows a single prior use', () => {
+    it('does not use a two-day-old reflection even when tracking shows a prior use', () => {
+        assert.equal(REFLECTION_MAX_AGE_WITH_TRACKING, 1)
         const entry = {
             id: 'older',
             journal_date: '2026-10-23',
@@ -154,33 +161,134 @@ describe('daily prayer topic selection', () => {
             ...WEEK,
             assignments: ASSIGNMENTS,
         })
-        assert.equal(pick.kind, 'journal')
-        assert.equal(pick.journalEntryId, 'older')
+        assert.notEqual(pick.kind, 'journal')
+        assert.equal(pick.journalEntryId, null)
     })
 
-    it('prefers yesterday over an older still-eligible reflection', () => {
+    it('prefers yesterday over today\'s own reflection', () => {
         const pick = pickDailyPrayerTopic({
             dateKey: '2026-10-25',
             journalEntries: [
                 {
-                    id: 'two-days',
-                    journal_date: '2026-10-23',
-                    prayer_items: '1. an older worry',
+                    id: 'today-entry',
+                    journal_date: '2026-10-25',
+                    prayer_items: '1. something from this morning',
                 },
                 YESTERDAY_ENTRY,
             ],
-            recentUses: [{
-                localDate: '2026-10-24',
-                kind: 'journal',
-                topicKey: 'reflection:two-days',
-                journalDate: '2026-10-23',
-                journalEntryId: 'two-days',
-            }],
             ...WEEK,
             assignments: ASSIGNMENTS,
         })
         assert.equal(pick.kind, 'journal')
         assert.equal(pick.journalEntryId, 'journal-yesterday')
+    })
+
+    it('keeps the same reflection after today\'s row is saved', () => {
+        const first = pickDailyPrayerTopic({
+            dateKey: '2026-10-25',
+            journalEntries: [YESTERDAY_ENTRY],
+            recentUses: [useFor('2026-10-24', {
+                kind: 'journal',
+                topicKey: 'reflection:journal-yesterday',
+                journalDate: '2026-10-24',
+                journalEntryId: 'journal-yesterday',
+            })],
+            ...WEEK,
+            assignments: ASSIGNMENTS,
+        })
+        assert.equal(first.kind, 'journal')
+        const recount = pickDailyPrayerTopic({
+            dateKey: '2026-10-25',
+            journalEntries: [YESTERDAY_ENTRY],
+            recentUses: [
+                useFor('2026-10-24', {
+                    kind: 'journal',
+                    topicKey: 'reflection:journal-yesterday',
+                    journalDate: '2026-10-24',
+                    journalEntryId: 'journal-yesterday',
+                }),
+                useFor('2026-10-25', first),
+            ],
+            ...WEEK,
+            assignments: ASSIGNMENTS,
+        })
+        assert.equal(recount.kind, 'journal')
+        assert.equal(recount.topicKey, first.topicKey)
+        assert.equal(recount.journalEntryId, first.journalEntryId)
+        assert.equal(countReflectionUses(YESTERDAY_ENTRY, [
+            useFor('2026-10-24', first),
+            useFor('2026-10-25', first),
+        ], { excludeLocalDate: '2026-10-25' }), 1)
+    })
+
+    it('counts multiple same-day pairing rows as one use', () => {
+        const entry = {
+            id: 'journal-today',
+            journal_date: '2026-10-25',
+            prayer_items: '1. peace at work',
+        }
+        const pairingRows = [
+            useFor('2026-10-25', {
+                kind: 'journal',
+                topicKey: 'reflection:journal-today',
+                journalDate: '2026-10-25',
+                journalEntryId: 'journal-today',
+            }),
+            useFor('2026-10-25', {
+                kind: 'journal',
+                topicKey: 'reflection:journal-today',
+                journalDate: '2026-10-25',
+                journalEntryId: 'journal-today',
+            }),
+        ]
+        assert.equal(countReflectionUses(entry, pairingRows), 1)
+        const secondDay = pickDailyPrayerTopic({
+            dateKey: '2026-10-26',
+            journalEntries: [entry],
+            recentUses: pairingRows,
+            ...WEEK,
+            assignments: ASSIGNMENTS,
+        })
+        assert.equal(secondDay.kind, 'journal')
+        assert.equal(secondDay.journalEntryId, 'journal-today')
+        assert.equal(countReflectionUses(entry, [
+            ...pairingRows,
+            useFor('2026-10-26', secondDay),
+            useFor('2026-10-26', secondDay),
+        ]), 2)
+    })
+
+    it('still counts an older row whose topic_key was never stored', () => {
+        const withJournalFields = topicUseFromDailyPrayerRow({
+            local_date: '2026-10-24',
+            source: 'journal',
+            context_topic: 'peace at work',
+            journal_date: '2026-10-24',
+            journal_entry_id: 'journal-yesterday',
+            topic_key: null,
+        })
+        const legacyOnly = topicUseFromDailyPrayerRow({
+            local_date: '2026-10-24',
+            source: 'journal',
+            context_topic: 'peace at work',
+            journal_date: null,
+            journal_entry_id: null,
+            topic_key: null,
+        })
+        assert.ok(withJournalFields)
+        assert.ok(legacyOnly)
+        assert.equal(withJournalFields.topicKey, 'reflection:2026-10-24')
+        assert.equal(legacyOnly.topicKey, 'reflection:peace at work')
+        assert.equal(countReflectionUses(YESTERDAY_ENTRY, [withJournalFields]), 1)
+        assert.equal(countReflectionUses(YESTERDAY_ENTRY, [legacyOnly]), 1)
+        assert.equal(
+            isEligibleReflection({
+                entry: YESTERDAY_ENTRY,
+                dateKey: '2026-10-25',
+                recentUses: [withJournalFields],
+            }),
+            true,
+        )
     })
 
     it('ignores undated journal rows so a latest-with-no-date cannot linger', () => {

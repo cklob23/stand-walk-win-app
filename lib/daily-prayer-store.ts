@@ -107,7 +107,7 @@ export function dailyPrayerContentToRow(input: {
     }
 }
 
-function topicUseFromRow(row: {
+export function topicUseFromDailyPrayerRow(row: {
     local_date?: string | null
     source?: string | null
     context_topic?: string | null
@@ -201,7 +201,7 @@ export async function loadRecentDailyPrayerTopicUses(
         .limit(input.limit)
 
     if (!error && data) {
-        return data.map(topicUseFromRow).filter((row: DailyPrayerTopicUse | null): row is DailyPrayerTopicUse => !!row)
+        return data.map(topicUseFromDailyPrayerRow).filter((row: DailyPrayerTopicUse | null): row is DailyPrayerTopicUse => !!row)
     }
 
     if (error && classifyDailyPrayerStoreError(error) === 'unknown-column') {
@@ -212,7 +212,7 @@ export async function loadRecentDailyPrayerTopicUses(
             .order('local_date', { ascending: false })
             .limit(input.limit)
         if (fallback.error || !fallback.data) return []
-        return fallback.data.map(topicUseFromRow).filter((row: DailyPrayerTopicUse | null): row is DailyPrayerTopicUse => !!row)
+        return fallback.data.map(topicUseFromDailyPrayerRow).filter((row: DailyPrayerTopicUse | null): row is DailyPrayerTopicUse => !!row)
     }
 
     return []

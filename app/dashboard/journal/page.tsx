@@ -22,9 +22,10 @@ export default async function JournalPage({
     searchParams: Promise<{ section?: string; localDate?: string; pairing?: string }>
 }) {
     const params = await searchParams
-    // localDate: URL → device cookie (set on first client paint) → UTC fallback.
+    // localDate: URL → device cookie (set on first client paint) → America/New_York.
     // Cookie avoids a first-render "New Reflection" flash when today's row
-    // exists locally but the request used the UTC date.
+    // exists locally but the request used a different date. Without a cookie,
+    // Eastern time keeps 9 PM ET on today's prayer topic.
     const cookieLocalDate = await getLocalDateCookie()
     const localDate = resolveLocalDateKey({
         urlDate: params.localDate,
