@@ -86,6 +86,7 @@ export function GuidedPrayerComingSoon() {
 
 interface GuidedPrayerProps {
   prayer?: string | null
+  itemPrayer?: string | null
   assignmentType: string
   confirmed: boolean
   onConfirmedChange: (confirmed: boolean) => void
@@ -96,6 +97,7 @@ interface GuidedPrayerProps {
 
 export function GuidedPrayer({
   prayer,
+  itemPrayer,
   assignmentType,
   confirmed,
   onConfirmedChange,
@@ -119,7 +121,7 @@ export function GuidedPrayer({
     )
   }
 
-  if (showGuidedPrayerComingSoon(assignmentType, prayer)) {
+  if (showGuidedPrayerComingSoon(assignmentType, prayer, itemPrayer)) {
     return <GuidedPrayerComingSoon />
   }
 
