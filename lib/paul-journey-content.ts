@@ -1,8 +1,8 @@
 /**
  * Paul's Week 1-6 commentary and prayer copy. Weeks 1-5 keep the live
- * grammar pass. Connect with Believers and Week 6 keep his wording and
- * fix only obvious typos. Meaning and scripture references stay his.
- * No em or en dashes.
+ * grammar pass. Connect with Believers, Week 6, Pray for Your Friends,
+ * and Building Bible Habits keep his wording and fix only obvious
+ * typos. Meaning and scripture references stay his. No em or en dashes.
  */
 
 export const SALVATION_PRAYER =
@@ -166,6 +166,24 @@ export const HOPE_WITHIN_YOU_COMMENTARY =
 export const HOPE_WITHIN_YOU_PRAYER =
     'Heavenly Father, I ask that You continue to work in me and mature me in faith. I know that it is You who is working in me to do what You intend to accomplish your purposes. Give me the courage to believe and be a doer of what You command and the humility to submit and repent when necessary to stay on a path of faithfulness that produces Godly fruit. Holy Spirit, my helper and friend, come alongside me and speak to me. Reveal to me what I need to be an able minister, ambassador for Christ, soldier in God\'s army, and servant of the King. Help me, most of all, to be your son/daughter. Lead me not into temptation, but deliver me from evil. Help me to be blessed by Your presence so I can be a blessing. It\'s in the mighty name of Jesus I pray, Amen'
 
+export const PRAY_FOR_YOUR_FRIENDS_COMMENTARY =
+    'Prayer is a daily discipline or habit we must develop in our lives and it comes from a reverence for God and that He commands and teaches us to pray, not only for our friends, but our enemies as well (Luke 6:28). James 5:16 tells us to pray for one another and that the effective, fervent prayer of a righteous man avails much. We must take Him at His word and believe since we are the righteousness of God in Christ (not our own righteousness) our fervent prayers for our friends and even our enemies are useful and effective. Pray with intent and faithfulness for friends on a consistent basis. Prayer should include spiritual, soulish (mind, will, emotions), and bodily concerns. Praying for others\' spiritual growth and health as well as their mental and emotional health is a great starting place. Isaiah 53:5 prophesies Jesus\' work on the cross gave us freedom from our transgressions, iniquities, and that He purchased peace and healing through His great suffering. Pray for healing, wholeness, and peace for the whole human and believe that your prayers matter because you matter to your Creator and King. "Thy kingdom come, thy will be done on earth as it is in heaven in the lives of each friend today."'
+
+export const PRAY_FOR_YOUR_FRIENDS_ASSIGNMENT =
+    'Commit to praying daily for each person on your list. Ask God to open their hearts, provide opportunities for you to share, and give you the right words. Start this habit now and continue beyond this program.'
+
+export const PRAY_FOR_YOUR_FRIENDS_PRAYER =
+    'Heavenly Father, I come to you humbly and ask you to impact the lives of _____________ (name friend(s) here). I pray that you would fill them with the knowledge of your will for them and that you would show them your love, mercy, and grace in every area of their life. I pray for physical healing of every disease in their physical body and that you would send laborers across their paths to encourage and minister your word to them. Encourage _____________ in their spiritual walk and help them to take captive their thoughts and be submitted to the obedience of your kingdom purposes for their lives. Come Holy Spirit and move in _____________\'s life in ways that help them to accomplish their purpose and live in unity with the body of Christ and in close relationship with Father, Son, and Holy Spirit. Have your way in _____________\'s life and use me where you want to. I love You, Lord and I thank you for your lovingkindness that\'s great toward me and all my friends. In Jesus mighty name I pray, Amen.'
+
+export const BUILDING_BIBLE_HABITS_COMMENTARY =
+    'There are apps you can download for free that allow you to track habits. (ie. - HabitShare allows you to share your habits with a friend and track progress) You can also use a simple method of journaling to track progress and write down key "take aways" from what you read. Paul encourages Timothy in 2 Timothy 2:15 to be diligent to study to show himself approved as a worker "rightly dividing the word of truth." Joshua 1:8, Psalms 119, and Proverbs 4:20 all give us reminders of the priority of God\'s word and commands and how His word gives us the truth that makes our way prosperous and it becomes health and life even to our flesh. Building bible habits demonstrates that you prioritize God\'s word and growing in the knowledge of God so that you can be a worker who is not ashamed of his walk. Most of us eat at least two or three times a day to nourish our bodies. Why wouldn\'t we set aside time(s) daily to receive nourishment for our spirit. After all, we are a spirit, we have a soul, and we live in a body. Take seriously the application of daily word study. After all, His word is spirit and it is life (John 6:63).'
+
+export const BUILDING_BIBLE_HABITS_ASSIGNMENT =
+    'Choose a consistent time and place for daily Bible reading. Track your consistency this week. Share any obstacles with your leader.'
+
+export const BUILDING_BIBLE_HABITS_PRAYER =
+    'Heavenly Father, I prioritize Your holy word in my life and I ask that You reveal to me through the reading of the Bible the spirit and life that I need to make choices in my everyday life. Thank you for giving all scripture for reproof and correction so that my life is impacted by the fruitfulness of obedience to your word. Help me to study to show myself approved as a worker in Your heavenly kingdom so that my life is lived well now in ways that impact my eternity and the eternity of those I have the privilege to influence. Lead me to the truth in Your word and reveal Your character, Your power, Your love, and Your faithfulness and Your sovereignty in my daily study. Help me to desire your word as much as I desire physical food and teach me and train me in all Your ways through Your word and Spirit. May God\'s word be the standard by which I live my life, in Jesus name I pray, Amen.'
+
 export const MEANING_LINES_LEFT_AS_IS = [
     'This passage in James is called "the law of sin and death" in Romans 8:1.',
     'there is no temptation that surprised or slipped up on Jesus',
@@ -178,6 +196,19 @@ export const WEEK6_MEANING_LINES_LEFT_AS_IS = [
     'our minds are renewing',
     '"proof providers"',
     'number 1 and 2 commands',
+]
+
+export const PLACEHOLDER_MEANING_LINES_LEFT_AS_IS = [
+    'soulish (mind, will, emotions)',
+    '(ie. - HabitShare',
+    '"take aways"',
+    'Come Holy Spirit and',
+    'In Jesus mighty name I pray, Amen.',
+    'Building bible habits',
+    'Psalms 119',
+    'time(s) daily',
+    '(name friend(s) here)',
+    'in Jesus name I pray, Amen.',
 ]
 
 export const WEEK45_TITLES = [
@@ -208,6 +239,11 @@ export const WEEK6_TITLES = [
 ]
 
 export const WEEK6_UNMAPPED_TITLES = ['Pray for Your Friends']
+
+export const PLACEHOLDER_CONTENT_TITLES = [
+    'Pray for Your Friends',
+    'Building Bible Habits',
+]
 
 export const LIVE_Q1_PROMPT =
     'Read John 3:1-21 - the story of Nicodemus. Write in your own words what it means to be "born again."'
@@ -261,7 +297,6 @@ export const BANNED_TYPOS = [
     'requires you take',
     'power of life and death are',
     'sacrificial lamb of God',
-    'Come Holy Spirit and',
     'You could use salvation prayer',
     'ressurrection',
     'reverance',
@@ -274,7 +309,6 @@ export const BANNED_TYPOS = [
     'with keep us bound',
     'If we spiritually minded',
     'is walk alongside',
-    'Jesus mighty name',
     'in power of Your',
     'Hebrews 11: 5-6',
     'Proverbs 4: 20-24',
@@ -290,6 +324,10 @@ export const BANNED_TYPOS = [
     'intentional write',
     'lifesource',
     'In Jesus name,',
+    'efective',
+    'trangressions',
+    'thorugh',
+    'accross',
     '—',
     '\u2013',
 ]
@@ -325,6 +363,8 @@ export const BANNED_QA_PHRASES = [
     'draw near to God',
     'grow in a community of faith',
     'Truth (belt)',
+    'Come Holy Spirit and',
+    'Jesus mighty name',
 ]
 
 export function allPaulWeek13Copy(): string[] {
@@ -397,11 +437,21 @@ export function allPaulWeek6Copy(): string[] {
     ]
 }
 
+export function allPaulPlaceholderCopy(): string[] {
+    return [
+        PRAY_FOR_YOUR_FRIENDS_COMMENTARY,
+        PRAY_FOR_YOUR_FRIENDS_PRAYER,
+        BUILDING_BIBLE_HABITS_COMMENTARY,
+        BUILDING_BIBLE_HABITS_PRAYER,
+    ]
+}
+
 export function allPaulCopy(): string[] {
     return [
         ...allPaulWeek13Copy(),
         ...allPaulWeek45Copy(),
         ...allPaulConnectCopy(),
         ...allPaulWeek6Copy(),
+        ...allPaulPlaceholderCopy(),
     ]
 }
