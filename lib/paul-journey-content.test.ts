@@ -6,10 +6,16 @@ import { fileURLToPath } from 'node:url'
 import {
     BANNED_QA_PHRASES,
     BANNED_TYPOS,
+    BUILDING_BIBLE_HABITS_ASSIGNMENT,
     CONNECT_TITLE,
     CREATE_YOUR_FRIEND_LIST_PRAYER,
     HOPE_WITHIN_YOU_PRAYER,
     MEANING_LINES_LEFT_AS_IS,
+    PLACEHOLDER_CONTENT_TITLES,
+    PLACEHOLDER_MEANING_LINES_LEFT_AS_IS,
+    PRAY_FOR_YOUR_FRIENDS_ASSIGNMENT,
+    PRAY_FOR_YOUR_FRIENDS_COMMENTARY,
+    PRAY_FOR_YOUR_FRIENDS_PRAYER,
     QUESTION_5_PROMPT,
     QUESTION_5_PROMPT_017,
     Q2_PRAYER_NOTE,
@@ -22,6 +28,7 @@ import {
     WEEK6_UNMAPPED_TITLES,
     allPaulConnectCopy,
     allPaulCopy,
+    allPaulPlaceholderCopy,
     allPaulWeek13Copy,
     allPaulWeek45Copy,
     allPaulWeek6Copy,
@@ -35,6 +42,8 @@ const sql019 = readFileSync(join(here, '..', 'scripts', '019-paul-week45-content
 const sql019Precheck = readFileSync(join(here, '..', 'scripts', '019-precheck.sql'), 'utf8')
 const sql020 = readFileSync(join(here, '..', 'scripts', '020-paul-week6-content.sql'), 'utf8')
 const sql020Precheck = readFileSync(join(here, '..', 'scripts', '020-precheck.sql'), 'utf8')
+const sql022 = readFileSync(join(here, '..', 'scripts', '022-paul-placeholder-content.sql'), 'utf8')
+const sql022Precheck = readFileSync(join(here, '..', 'scripts', '022-precheck.sql'), 'utf8')
 
 const WEEK45_AMEN_TAILS = [
     'In Jesus\' mighty name I pray, Amen.',
@@ -95,7 +104,8 @@ describe('Paul journey content', () => {
         assert.equal(allPaulWeek45Copy().length, 14)
         assert.equal(allPaulConnectCopy().length, 2)
         assert.equal(allPaulWeek6Copy().length, 8)
-        assert.equal(allPaulCopy().length, 53)
+        assert.equal(allPaulPlaceholderCopy().length, 4)
+        assert.equal(allPaulCopy().length, 57)
         for (const text of allPaulCopy()) {
             assert.ok(text.trim().length > 10)
         }
@@ -121,8 +131,8 @@ describe('Paul journey content', () => {
         for (const text of allPaulWeek45Copy()) {
             assert.equal(sql017.includes(text), false, `017 should not include week 4-5 copy: ${text.slice(0, 48)}`)
         }
-        for (const text of [...allPaulConnectCopy(), ...allPaulWeek6Copy()]) {
-            assert.equal(sql017.includes(text), false, `017 should not include week 6 copy: ${text.slice(0, 48)}`)
+        for (const text of [...allPaulConnectCopy(), ...allPaulWeek6Copy(), ...allPaulPlaceholderCopy()]) {
+            assert.equal(sql017.includes(text), false, `017 should not include later Paul copy: ${text.slice(0, 48)}`)
         }
     })
 
@@ -146,8 +156,8 @@ describe('Paul journey content', () => {
         for (const text of allPaulWeek45Copy()) {
             assert.equal(sql018.includes(text), false, `018 should not include week 4-5 copy: ${text.slice(0, 48)}`)
         }
-        for (const text of [...allPaulConnectCopy(), ...allPaulWeek6Copy()]) {
-            assert.equal(sql018.includes(text), false, `018 should not include week 6 copy: ${text.slice(0, 48)}`)
+        for (const text of [...allPaulConnectCopy(), ...allPaulWeek6Copy(), ...allPaulPlaceholderCopy()]) {
+            assert.equal(sql018.includes(text), false, `018 should not include later Paul copy: ${text.slice(0, 48)}`)
         }
     })
 
@@ -191,8 +201,8 @@ describe('Paul journey content', () => {
         for (const text of allPaulWeek13Copy()) {
             assert.equal(sql019.includes(text), false, `019 should not rewrite week 1-3: ${text.slice(0, 48)}`)
         }
-        for (const text of [...allPaulConnectCopy(), ...allPaulWeek6Copy()]) {
-            assert.equal(sql019.includes(text), false, `019 should not include week 6 copy: ${text.slice(0, 48)}`)
+        for (const text of [...allPaulConnectCopy(), ...allPaulWeek6Copy(), ...allPaulPlaceholderCopy()]) {
+            assert.equal(sql019.includes(text), false, `019 should not include later Paul copy: ${text.slice(0, 48)}`)
         }
     })
 
@@ -227,6 +237,9 @@ describe('Paul journey content', () => {
         }
         for (const text of allPaulWeek45Copy()) {
             assert.equal(sql020.includes(text), false, `020 should not rewrite week 4-5: ${text.slice(0, 48)}`)
+        }
+        for (const text of allPaulPlaceholderCopy()) {
+            assert.equal(sql020.includes(text), false, `020 should not include placeholder copy: ${text.slice(0, 48)}`)
         }
     })
 
@@ -287,5 +300,82 @@ describe('Paul journey content', () => {
         assert.equal(/\bUPDATE\b/i.test(sql020Precheck), false)
         assert.equal(/\bINSERT\b/i.test(sql020Precheck), false)
         assert.equal(/\bDELETE\b/i.test(sql020Precheck), false)
+    })
+
+    it('adds Pray for Your Friends and Building Bible Habits copy in 022 and mirrors it in TypeScript', () => {
+        for (const typo of BANNED_TYPOS) {
+            assert.equal(sql022.includes(typo), false, `022 SQL still contains ${typo}`)
+        }
+        assert.match(sql022, /RAISE EXCEPTION/)
+        assert.match(sql022, /Q1 was found but journey_id is NULL/)
+        assert.match(sql022, /GET DIAGNOSTICS/)
+        assert.match(sql022, /journey_id IS NOT DISTINCT FROM/)
+        assert.match(sql022, /assignments.journey_id is missing/)
+        assert.equal(/\bINSERT\s+INTO\s+assignments\b/i.test(sql022), false)
+        assert.equal(/\bassignment_progress\b/.test(sql022), false)
+        assert.equal(sql022.includes('guided_prayer'), false)
+        for (const title of PLACEHOLDER_CONTENT_TITLES) {
+            assert.match(sql022, new RegExp(`title ILIKE '${title}'`))
+        }
+        for (const title of WEEK45_TITLES) {
+            assert.equal(
+                sql022.includes(`title ILIKE '${title}'`),
+                false,
+                `022 should not update ${title}`,
+            )
+        }
+        for (const title of WEEK6_CONTENT_TITLES) {
+            assert.equal(
+                sql022.includes(`title ILIKE '${title}'`),
+                false,
+                `022 should not update ${title}`,
+            )
+        }
+        assert.equal(sql022.includes(`title ILIKE '${CONNECT_TITLE}'`), false)
+        for (const text of allPaulPlaceholderCopy()) {
+            assert.equal(sql022.includes(text), true, `022 is missing copy: ${text.slice(0, 48)}`)
+        }
+        assert.equal(sql022.includes(PRAY_FOR_YOUR_FRIENDS_ASSIGNMENT), true)
+        assert.equal(sql022.includes(BUILDING_BIBLE_HABITS_ASSIGNMENT), true)
+        for (const text of allPaulWeek13Copy()) {
+            assert.equal(sql022.includes(text), false, `022 should not rewrite week 1-3: ${text.slice(0, 48)}`)
+        }
+        for (const text of allPaulWeek45Copy()) {
+            assert.equal(sql022.includes(text), false, `022 should not rewrite week 4-5: ${text.slice(0, 48)}`)
+        }
+        for (const text of [...allPaulConnectCopy(), ...allPaulWeek6Copy()]) {
+            assert.equal(sql022.includes(text), false, `022 should not rewrite week 6: ${text.slice(0, 48)}`)
+        }
+    })
+
+    it('keeps Paul meaning-level lines on the two remaining placeholder items', () => {
+        const placeholder = allPaulPlaceholderCopy().join('\n')
+        for (const line of PLACEHOLDER_MEANING_LINES_LEFT_AS_IS) {
+            assert.equal(placeholder.includes(line), true, `missing meaning line: ${line}`)
+            assert.equal(sql022.includes(line), true, `022 missing meaning line: ${line}`)
+        }
+        assert.match(PRAY_FOR_YOUR_FRIENDS_COMMENTARY, /Isaiah 53:5 prophesies/)
+        assert.equal(PRAY_FOR_YOUR_FRIENDS_COMMENTARY.includes('prophecies'), false)
+        assert.match(allPaulPlaceholderCopy().join('\n'), /faithfulness/)
+        assert.equal(allPaulPlaceholderCopy().join('\n').includes('faithfulnes and'), false)
+        assert.match(PRAY_FOR_YOUR_FRIENDS_PRAYER, /_____________ \(name friend\(s\) here\)/)
+        assert.equal((PRAY_FOR_YOUR_FRIENDS_PRAYER.match(/_{13}/g) || []).length, 4)
+        assert.equal(PRAY_FOR_YOUR_FRIENDS_PRAYER.includes('_________'), true)
+        assert.match(PRAY_FOR_YOUR_FRIENDS_PRAYER, /In Jesus mighty name I pray, Amen\.$/)
+        assert.equal(sql022.includes(PRAY_FOR_YOUR_FRIENDS_ASSIGNMENT), true)
+        assert.equal(sql022.includes(BUILDING_BIBLE_HABITS_ASSIGNMENT), true)
+    })
+
+    it('ships a read-only 022 precheck for placeholder title overlap', () => {
+        assert.match(sql022Precheck, /journey_count|COUNT\(\*\)/)
+        assert.match(sql022Precheck, /Pray for Your Friends/)
+        assert.match(sql022Precheck, /Building Bible Habits/)
+        assert.match(sql022Precheck, /Always Be Prepared/)
+        assert.match(sql022Precheck, /The Hope Within You/)
+        assert.match(sql022Precheck, /commentary_populated|IS NOT NULL/)
+        assert.match(sql022Precheck, /guided_prayer_populated/)
+        assert.equal(/\bUPDATE\b/i.test(sql022Precheck), false)
+        assert.equal(/\bINSERT\b/i.test(sql022Precheck), false)
+        assert.equal(/\bDELETE\b/i.test(sql022Precheck), false)
     })
 })
