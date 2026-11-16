@@ -17,6 +17,8 @@ import { ensureCompletedMeetingProgress } from '@/lib/meeting-progress'
 import { notifyLeaderOfJourneyComplete } from '@/lib/notifications'
 import { advancePairingWeek, markPairingJourneyCompleted } from '@/lib/pairing-writes'
 import { resolveDailyPrayerInput } from '@/lib/daily-prayer-content'
+import { DAILY_PRAYER_RECENT_LIMIT } from '@/lib/daily-prayer-generate'
+import { loadRecentDailyPrayerTopicUses } from '@/lib/daily-prayer-store'
 import { getLocalDateCookie } from '@/lib/local-date'
 import { resolveLocalDateKey } from '@/lib/local-date-key'
 
@@ -451,20 +453,33 @@ export default async function DashboardPage({
     hasJournalEntryToday = (journalEntry?.length ?? 0) > 0
   }
 
-  let recentJournalEntries: { prayer_items: string | null; god_speaking: string | null }[] = []
+  let recentJournalEntries: {
+    id?: string | null
+    journal_date?: string | null
+    prayer_items: string | null
+    god_speaking: string | null
+  }[] = []
   if (pairing) {
     const { data: recentJournal } = await supabase
       .from('prayer_journal')
-      .select('prayer_items, god_speaking')
+      .select('id, journal_date, prayer_items, god_speaking')
       .eq('user_id', user.id)
       .order('journal_date', { ascending: false })
       .limit(8)
     recentJournalEntries = recentJournal || []
   }
+  const recentTopicUses = pairing
+    ? await loadRecentDailyPrayerTopicUses(supabase, {
+      userId: user.id,
+      limit: DAILY_PRAYER_RECENT_LIMIT,
+    })
+    : []
 
   const currentWeekRow = (weeklyContent || []).find((week) => week.week_number === effectiveCurrentWeek)
   const dailyPrayerInput = resolveDailyPrayerInput({
+    dateKey: journalTodayKey,
     journalEntries: recentJournalEntries,
+    recentTopicUses,
     weekNumber: effectiveCurrentWeek,
     weekTitle: currentWeekRow?.title,
     weekScripture: currentWeekRow?.scripture_reference,

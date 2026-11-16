@@ -4,6 +4,8 @@
  * Partner is mentioned only occasionally (about 1 in 5 or fewer).
  */
 
+import { pickDailyPrayerTopic } from './daily-prayer-topic.ts'
+
 export type DailyPrayerSource = 'journal' | 'week' | 'encouragement'
 
 export interface DailyPrayerPartner {
@@ -22,6 +24,11 @@ export interface DailyPrayerInput {
     assignmentTitle?: string | null
     guidedPrayer?: string | null
     partnerName?: string | null
+    topicKind?: DailyPrayerSource
+    topicKey?: string | null
+    journalDate?: string | null
+    journalEntryId?: string | null
+    encouragementTheme?: string | null
 }
 
 export interface DailyPrayerContent {
@@ -424,28 +431,39 @@ export function pairScripture(input: {
     })
 }
 
+export function resolvePrayerSource(input: DailyPrayerInput): DailyPrayerSource {
+    const topic = extractJournalTopic(input.prayerItems, input.reflection)
+    const weekTitle = input.weekTitle?.trim() || null
+    const weekNumber = input.weekNumber && input.weekNumber > 0 ? input.weekNumber : null
+    if (input.topicKind === 'encouragement') return 'encouragement'
+    if (input.topicKind === 'week' && weekNumber && weekTitle) return 'week'
+    if (input.topicKind === 'journal' && topic) return 'journal'
+    if (topic && input.topicKind !== 'week') return 'journal'
+    if (weekNumber && weekTitle) return 'week'
+    return 'encouragement'
+}
+
 export function buildDailyPrayer(input: DailyPrayerInput): DailyPrayerContent {
     const topic = extractJournalTopic(input.prayerItems, input.reflection)
     const weekTitle = input.weekTitle?.trim() || null
     const weekNumber = input.weekNumber && input.weekNumber > 0 ? input.weekNumber : null
+    const source = resolvePrayerSource(input)
 
-    let source: DailyPrayerSource = 'encouragement'
     let body: string
     let scriptureText: string
     let scriptureRef: string
     let contextLabel: string
     let contextTopic: string | null = null
 
-    if (topic) {
-        source = 'journal'
+    if (source === 'journal' && topic) {
         body = journalPrayer(topic)
         scriptureText = ENCOURAGEMENT_PRAYERS[0].scriptureText
         scriptureRef = ENCOURAGEMENT_PRAYERS[0].scriptureRef
         contextLabel = 'From your journal'
         contextTopic = topic
-    } else if (weekNumber && weekTitle) {
-        source = 'week'
-        body = bodyFromGuidedPrayer(input.guidedPrayer, weekTitle)
+    } else if (source === 'week' && weekNumber && weekTitle) {
+        const focus = input.assignmentTitle?.trim() || weekTitle
+        body = bodyFromGuidedPrayer(input.guidedPrayer, focus)
         const weekScripture = pairScripture({
             raw: input.weekScripture,
             fallback: {
@@ -456,15 +474,15 @@ export function buildDailyPrayer(input: DailyPrayerInput): DailyPrayerContent {
         scriptureText = weekScripture.text
         scriptureRef = weekScripture.ref
         contextLabel = `Week ${weekNumber}`
-        contextTopic = weekTitle
+        contextTopic = focus
     } else {
-        const pick = ENCOURAGEMENT_PRAYERS[hashString(input.dateKey) % ENCOURAGEMENT_PRAYERS.length]
-        source = 'encouragement'
+        const seed = input.topicKey || input.encouragementTheme || input.dateKey
+        const pick = ENCOURAGEMENT_PRAYERS[hashString(seed) % ENCOURAGEMENT_PRAYERS.length]
         body = pick.body
         scriptureText = pick.scriptureText
         scriptureRef = pick.scriptureRef
         contextLabel = 'Encouragement for today'
-        contextTopic = null
+        contextTopic = input.encouragementTheme ? shortenTopic(input.encouragementTheme, 40) : null
     }
 
     let mentionsPartner = shouldMentionPartner({
@@ -553,51 +571,60 @@ export function dailyReflectionText(godSpeaking?: string | null): string | null 
 }
 
 export function resolveDailyPrayerInput(input: {
+    dateKey?: string | null
     prayerItems?: string | null
     reflection?: string | null
-    journalEntries?: { prayer_items?: string | null; god_speaking?: string | null }[]
+    journalEntries?: {
+        id?: string | null
+        journal_date?: string | null
+        prayer_items?: string | null
+        god_speaking?: string | null
+    }[]
+    recentTopicUses?: {
+        localDate: string
+        kind: DailyPrayerSource
+        topicKey: string
+        journalDate?: string | null
+        journalEntryId?: string | null
+    }[]
     weekNumber?: number | null
     weekTitle?: string | null
     weekScripture?: string | null
     assignmentTitle?: string | null
     guidedPrayer?: string | null
-    assignments?: { week_number?: number; title?: string; guided_prayer?: string | null }[]
+    assignments?: {
+        id?: string | null
+        week_number?: number
+        title?: string
+        guided_prayer?: string | null
+        assignment_type?: string | null
+    }[]
 }): Omit<DailyPrayerInput, 'dateKey' | 'partnerName'> {
-    let prayerItems = input.prayerItems ?? null
-    let reflection = input.reflection ?? null
-
-    if (!extractJournalTopic(prayerItems, reflection) && input.journalEntries) {
-        for (const entry of input.journalEntries) {
-            const daily = dailyReflectionText(entry.god_speaking)
-            if (extractJournalTopic(entry.prayer_items, daily)) {
-                prayerItems = entry.prayer_items ?? null
-                reflection = daily
-                break
-            }
-        }
-    }
-
     const weekNumber = input.weekNumber && input.weekNumber > 0 ? input.weekNumber : null
-    let assignmentTitle = input.assignmentTitle ?? null
-    let guidedPrayer = input.guidedPrayer ?? null
-    if (weekNumber && input.assignments?.length) {
-        const weekRows = input.assignments.filter((row) => row.week_number === weekNumber)
-        if (!guidedPrayer) {
-            const withPrayer = weekRows.find((row) => isShortGuidedPrayer(row.guided_prayer) || !!row.guided_prayer?.trim())
-            guidedPrayer = withPrayer?.guided_prayer ?? null
-        }
-        if (!assignmentTitle) {
-            assignmentTitle = weekRows.find((row) => row.title?.trim())?.title ?? null
-        }
-    }
+    const picked = pickDailyPrayerTopic({
+        dateKey: input.dateKey || '',
+        prayerItems: input.prayerItems,
+        reflection: input.reflection,
+        journalEntries: input.journalEntries,
+        recentUses: input.recentTopicUses,
+        weekNumber,
+        weekTitle: input.weekTitle,
+        weekScripture: input.weekScripture,
+        assignments: input.assignments,
+    })
 
     return {
-        prayerItems,
-        reflection,
-        weekNumber,
-        weekTitle: input.weekTitle ?? null,
-        weekScripture: input.weekScripture ?? null,
-        assignmentTitle,
-        guidedPrayer,
+        prayerItems: picked.prayerItems,
+        reflection: picked.reflection,
+        weekNumber: picked.weekNumber,
+        weekTitle: picked.weekTitle,
+        weekScripture: picked.weekScripture,
+        assignmentTitle: picked.assignmentTitle ?? input.assignmentTitle ?? null,
+        guidedPrayer: picked.guidedPrayer ?? input.guidedPrayer ?? null,
+        topicKind: picked.kind,
+        topicKey: picked.topicKey,
+        journalDate: picked.journalDate,
+        journalEntryId: picked.journalEntryId,
+        encouragementTheme: picked.encouragementTheme,
     }
 }

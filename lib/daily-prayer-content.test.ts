@@ -107,6 +107,34 @@ describe('daily prayer topic sources', () => {
         assert.match(prayer.body, /^Heavenly Father/)
         assert.match(prayer.body, /Amen\.$/)
     })
+
+    it('does not let a journal leftover override an uplifting topicKind', () => {
+        const prayer = buildDailyPrayer({
+            dateKey: '2026-10-25',
+            topicKind: 'encouragement',
+            prayerItems: '1. the same old fear',
+            weekNumber: 2,
+            weekTitle: 'The New Life',
+            encouragementTheme: "God's peace in the middle of the day",
+        })
+        assert.equal(prayer.source, 'encouragement')
+        assert.equal(prayer.body.includes('the same old fear'), false)
+        assert.equal(formatPrayerChip(prayer), 'Encouragement for today')
+    })
+
+    it('uses the chosen assignment title for a week topicKind', () => {
+        const prayer = buildDailyPrayer({
+            dateKey: '2026-10-25',
+            topicKind: 'week',
+            weekNumber: 2,
+            weekTitle: 'The New Life',
+            assignmentTitle: 'Pray without ceasing',
+            weekScripture: WEEK_2_SCRIPTURE,
+        })
+        assert.equal(prayer.source, 'week')
+        assert.equal(formatPrayerChip(prayer), 'Week 2 · Pray without ceasing')
+        assert.ok(prayer.body.includes('Pray without ceasing'))
+    })
 })
 
 describe('partner mention frequency', () => {

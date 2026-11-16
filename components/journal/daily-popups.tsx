@@ -66,6 +66,10 @@ export function DailyPopups({
         prayerInput.weekScripture,
         prayerInput.guidedPrayer,
         prayerInput.assignmentTitle,
+        prayerInput.topicKind,
+        prayerInput.topicKey,
+        prayerInput.journalDate,
+        prayerInput.encouragementTheme,
     ].join('\0')
     const catalogContent = useMemo(
         () => buildDailyPrayer({

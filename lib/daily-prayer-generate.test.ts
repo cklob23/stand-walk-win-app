@@ -74,6 +74,8 @@ describe('daily prayer AI generation', () => {
         })
         assert.match(prompt, /2026-10-25/)
         assert.match(prompt, /peace at work/)
+        assert.match(prompt, /Today's topic/)
+        assert.match(prompt, /Do not return to older journal reflections/)
         assert.match(prompt, /thank You for yesterday/)
         assert.match(prompt, /Philippians 4:6-7/)
         assert.match(prompt, /supplication with thanksgiving/)
@@ -197,6 +199,13 @@ describe('daily prayer AI generation', () => {
 
     it('classifies a missing daily_prayers table as unavailable', () => {
         assert.equal(classifyDailyPrayerStoreError({ code: '23505' }), 'duplicate')
+        assert.equal(
+            classifyDailyPrayerStoreError({
+                code: '42703',
+                message: 'column topic_key does not exist',
+            }),
+            'unknown-column',
+        )
         assert.equal(
             classifyDailyPrayerStoreError({
                 code: 'PGRST205',
