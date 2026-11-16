@@ -1,7 +1,8 @@
 /**
- * Paul's Week 1-5 commentary and prayer copy, with grammar, spelling,
- * punctuation, and capitalization fixes. Meaning and scripture references
- * stay his. No em or en dashes. Week 6 is not included.
+ * Paul's Week 1-6 commentary and prayer copy. Weeks 1-5 keep the live
+ * grammar pass. Connect with Believers and Week 6 keep his wording and
+ * fix only obvious typos. Meaning and scripture references stay his.
+ * No em or en dashes.
  */
 
 export const SALVATION_PRAYER =
@@ -135,10 +136,48 @@ export const ACCOUNTABILITY_COMMENTARY =
 export const ACCOUNTABILITY_PRAYER =
     'Heavenly Father, I come to You in prayer asking that You order my steps to cross paths with believers who can encourage me and pray for me. Help me to confess my faults to friends who love me and will pray for me because they desire Your will and purposes be manifested in my life. Help me to do the same for them. Order my steps and use me to be a friend and to build healthy relationships of accountability and growth. Build the unity of Your Body and help me to be obedient to play my part in the lives of all those You send my way. I thank You that I have these petitions I ask as I ask in faith believing that You are able to do exceedingly and abundantly beyond what I\'ve asked or thought. In Jesus\' name I pray, Amen.'
 
+export const CONNECT_WITH_BELIEVERS_COMMENTARY =
+    'The local church is a great place to get connected with other believers. Within that local body, it is a game changer to connect with like-minded believers and find opportunities to grow and serve. Visiting churches can be overwhelming for some personalities, but a good way to get a feel for the type of environment the church cultivates is to check their online/social media presence. You may be able to watch online services. Sometimes you have friends in the faith that you can ask about their church and you may even get an invite. Remember that the local church is a place to get connected, but it\'s not the life source of your walk with Christ. You must cultivate the daily priorities or RPM (read, pray, meditate) into your own life. You don\'t eat once or twice a week. You must not rely only upon fellowship in the local church exclusively. Work to connect with men\'s/women\'s/youth/children\'s ministries. Do what you can to find a place that teaches the Bible and invites you to join in their mission.'
+
+export const CONNECT_WITH_BELIEVERS_PRAYER =
+    'Heavenly Father, I desire to forsake not the assembling of myself with other believers. Order my steps to the right local body to engage with and help me to be a committed part of the body of Christ as a whole. Help me to promote unity and avoid negative talk such as gossip that doesn\'t build up the body of Christ. Come, Holy Spirit, and walk me through divine connection points with other believers in any way you see fit. In Jesus\' name I pray, Amen.'
+
+export const ALWAYS_BE_PREPARED_COMMENTARY =
+    'This passage talks about being prepared to give a defense for your faith and for the hope (earnest expectation) you have about your salvation. Jay Haizlip once said, "A man with an experience can\'t be persuaded by a man with an opinion." Perhaps the greatest starting point of your "defense" is your story of how God found you, revealed Himself to you, and how you are currently walking out this relationship with the Creator of the universe. Of course, the Holy Bible (word of God) is the source of inspiration for doctrine, reproof, and correction in living right (2 Timothy 3:16). Keeping a clear conscience is a process of consistently evaluating your heart and motives to ensure the choices you\'re making align with God and they contribute to positive relationships with others. Being blameless doesn\'t mean you never mess up. We all do every day. Proverbs 4:23 reminds us to keep our heart with diligence. We should be prepared by knowing what God\'s Word says about what we believe. We need to make sure that our heart is carefully guarded to obey the number 1 and 2 commands Jesus gives so that our life\'s choices flow right. Love God with all of yourself and love your neighbor as yourself. (Matthew 22:37-39)'
+
+export const ALWAYS_BE_PREPARED_PRAYER =
+    'Heavenly Father, I pray that Your kingdom would come and Your will be done in my life. Help me to learn to understand Your holy scriptures in ways that translate into right living. Give me the words to say when I\'m called upon to give a defense for the gospel and its influence in my life. Lead me and guide me into all truth and help me be an ambassador for You, aligning my life\'s plans with your purposes. In Jesus\' name, I pray. Amen'
+
+export const CREATE_YOUR_FRIEND_LIST_COMMENTARY =
+    'This list may be hard and it may seem to be of little meaning at first. The intentionality around writing names down helps you create a spiritual discipline of prayer and preparation for you as a laborer to help plant, water, or reap. (I Corinthians 3:5) Winning souls for the kingdom is an intentional act. (Proverbs 11:30) Oftentimes it\'s easier to be excited and share our testimony when we\'re newly saved. Our boldness seems a little more natural. Protect against complacency and intentionally write this list and learn to pray for these people on your list.'
+
+export const CREATE_YOUR_FRIEND_LIST_PRAYER =
+    'Heavenly Father, I pray that You would send laborers to harvest in the lives of these people on my list. I ask You to use me where I\'m able to minister and sow seeds. I know You desire that none should perish and that all should come to the saving knowledge of Jesus Christ. Help me to be intentional in my prayer, testimony, and evangelistic outreach. Holy Spirit draw _____________ (insert name) to you and show them your love so that they believe and call upon you to be born again into the life only You can provide. In Jesus\' name I pray, Amen.'
+
+export const SHARE_YOUR_TESTIMONY_COMMENTARY =
+    'Writing your personal testimony gives you a chance to practice sharing your faith. It also gives you an opportunity to be intentional to insert God\'s word into your testimony. His word never returns void, but accomplishes what it\'s sent to accomplish (Isaiah 55:11). Your testimony should include what led you to recognize your need for a savior including what led up to the moment you believed in your heart and confessed with your mouth Jesus as Lord. You should be able to tell what that conversion experience looked like and felt like in your own words and how life has improved as a result. This improvement may not be filled with miraculous (it may) outcomes of temporal value, but it should include moments of memorable connection with the relationship you now have with Christ through this new life.'
+
+export const SHARE_YOUR_TESTIMONY_PRAYER =
+    'Heavenly Father, give me clarity of thought and a healthy memory of the conversion experience where You called me, drawing me to you, and help me to articulate my testimony in meaningful ways that provide hope for others, encouragement for me, and weaponized substance against the enemy. Come, Holy Spirit, and give me opportunities to share my testimony. Give me the words to say, the body language that invites, and the boldness to believe in your ability to make me useful for Your kingdom. Send me as a laborer into the harvest and show me how to till heart soil, plant, water, and harvest. In Jesus\' name I pray, Amen.'
+
+export const HOPE_WITHIN_YOU_COMMENTARY =
+    'Jesus is the Son of the One true God. God so loved us that He sent His only son into the world, not to condemn, but to save us. Our job in this life is to build a healthy relationship with God through fellowship in His word privately and publicly (church, bible studies, small groups, 1:1 discipleship), prayer (include praise, worship, thanksgiving and petitions), and meditating on the truth of His word so that our minds are renewing and we are transformed into "proof providers" that He is real. Study to show yourself able and ready to give testimony to the hope within you. Hope is birthed out of enduring trials with Godly character and intentional obedience. Most testimonies are full of success and failure, celebration and correction. Don\'t be discouraged as you face challenges in life and don\'t give up because we reap a heavenly reward if we don\'t quit. (Galatians 6:9)'
+
+export const HOPE_WITHIN_YOU_PRAYER =
+    'Heavenly Father, I ask that You continue to work in me and mature me in faith. I know that it is You who is working in me to do what You intend to accomplish your purposes. Give me the courage to believe and be a doer of what You command and the humility to submit and repent when necessary to stay on a path of faithfulness that produces Godly fruit. Holy Spirit, my helper and friend, come alongside me and speak to me. Reveal to me what I need to be an able minister, ambassador for Christ, soldier in God\'s army, and servant of the King. Help me, most of all, to be your son/daughter. Lead me not into temptation, but deliver me from evil. Help me to be blessed by Your presence so I can be a blessing. It\'s in the mighty name of Jesus I pray, Amen'
+
 export const MEANING_LINES_LEFT_AS_IS = [
     'This passage in James is called "the law of sin and death" in Romans 8:1.',
     'there is no temptation that surprised or slipped up on Jesus',
     '"where there is not vision, the people perish"',
+]
+
+export const WEEK6_MEANING_LINES_LEFT_AS_IS = [
+    '(I Corinthians 3:5)',
+    'weaponized substance against the enemy',
+    'our minds are renewing',
+    '"proof providers"',
+    'number 1 and 2 commands',
 ]
 
 export const WEEK45_TITLES = [
@@ -151,6 +190,15 @@ export const WEEK45_TITLES = [
     'Winning Through Accountability',
 ]
 
+export const CONNECT_TITLE = 'Connect with Believers'
+
+export const WEEK6_CONTENT_TITLES = [
+    'Always Be Prepared',
+    'Create Your Friend List',
+    'Share Your Testimony',
+    'The Hope Within You',
+]
+
 export const WEEK6_TITLES = [
     'Always Be Prepared',
     'Create Your Friend List',
@@ -158,6 +206,8 @@ export const WEEK6_TITLES = [
     'Share Your Testimony',
     'The Hope Within You',
 ]
+
+export const WEEK6_UNMAPPED_TITLES = ['Pray for Your Friends']
 
 export const LIVE_Q1_PROMPT =
     'Read John 3:1-21 - the story of Nicodemus. Write in your own words what it means to be "born again."'
@@ -232,6 +282,14 @@ export const BANNED_TYPOS = [
     '1 Corinthians 10 :13',
     'In Jesus name I pray',
     'and encourages me in my faith',
+    'Ijay Hazlip',
+    'conistently',
+    'meaningul',
+    'inlcude',
+    'publically',
+    'intentional write',
+    'lifesource',
+    'In Jesus name,',
     '—',
     '\u2013',
 ]
@@ -322,6 +380,28 @@ export function allPaulWeek45Copy(): string[] {
     ]
 }
 
+export function allPaulConnectCopy(): string[] {
+    return [CONNECT_WITH_BELIEVERS_COMMENTARY, CONNECT_WITH_BELIEVERS_PRAYER]
+}
+
+export function allPaulWeek6Copy(): string[] {
+    return [
+        ALWAYS_BE_PREPARED_COMMENTARY,
+        ALWAYS_BE_PREPARED_PRAYER,
+        CREATE_YOUR_FRIEND_LIST_COMMENTARY,
+        CREATE_YOUR_FRIEND_LIST_PRAYER,
+        SHARE_YOUR_TESTIMONY_COMMENTARY,
+        SHARE_YOUR_TESTIMONY_PRAYER,
+        HOPE_WITHIN_YOU_COMMENTARY,
+        HOPE_WITHIN_YOU_PRAYER,
+    ]
+}
+
 export function allPaulCopy(): string[] {
-    return [...allPaulWeek13Copy(), ...allPaulWeek45Copy()]
+    return [
+        ...allPaulWeek13Copy(),
+        ...allPaulWeek45Copy(),
+        ...allPaulConnectCopy(),
+        ...allPaulWeek6Copy(),
+    ]
 }

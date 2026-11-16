@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url'
 import {
     BANNED_QA_PHRASES,
     BANNED_TYPOS,
+    CONNECT_TITLE,
+    CREATE_YOUR_FRIEND_LIST_PRAYER,
+    HOPE_WITHIN_YOU_PRAYER,
     MEANING_LINES_LEFT_AS_IS,
     QUESTION_5_PROMPT,
     QUESTION_5_PROMPT_017,
@@ -13,10 +16,15 @@ import {
     SALVATION_PRAYER,
     VICTORY_JOURNAL_PRAYER,
     WEEK45_TITLES,
+    WEEK6_CONTENT_TITLES,
+    WEEK6_MEANING_LINES_LEFT_AS_IS,
     WEEK6_TITLES,
+    WEEK6_UNMAPPED_TITLES,
+    allPaulConnectCopy,
     allPaulCopy,
     allPaulWeek13Copy,
     allPaulWeek45Copy,
+    allPaulWeek6Copy,
 } from './paul-journey-content.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -25,6 +33,8 @@ const sql018 = readFileSync(join(here, '..', 'scripts', '018-paul-journey-conten
 const sql018Precheck = readFileSync(join(here, '..', 'scripts', '018-precheck.sql'), 'utf8')
 const sql019 = readFileSync(join(here, '..', 'scripts', '019-paul-week45-content.sql'), 'utf8')
 const sql019Precheck = readFileSync(join(here, '..', 'scripts', '019-precheck.sql'), 'utf8')
+const sql020 = readFileSync(join(here, '..', 'scripts', '020-paul-week6-content.sql'), 'utf8')
+const sql020Precheck = readFileSync(join(here, '..', 'scripts', '020-precheck.sql'), 'utf8')
 
 const WEEK45_AMEN_TAILS = [
     'In Jesus\' mighty name I pray, Amen.',
@@ -83,7 +93,9 @@ describe('Paul journey content', () => {
     it('exports every commentary and prayer block', () => {
         assert.equal(allPaulWeek13Copy().length, 29)
         assert.equal(allPaulWeek45Copy().length, 14)
-        assert.equal(allPaulCopy().length, 43)
+        assert.equal(allPaulConnectCopy().length, 2)
+        assert.equal(allPaulWeek6Copy().length, 8)
+        assert.equal(allPaulCopy().length, 53)
         for (const text of allPaulCopy()) {
             assert.ok(text.trim().length > 10)
         }
@@ -109,6 +121,9 @@ describe('Paul journey content', () => {
         for (const text of allPaulWeek45Copy()) {
             assert.equal(sql017.includes(text), false, `017 should not include week 4-5 copy: ${text.slice(0, 48)}`)
         }
+        for (const text of [...allPaulConnectCopy(), ...allPaulWeek6Copy()]) {
+            assert.equal(sql017.includes(text), false, `017 should not include week 6 copy: ${text.slice(0, 48)}`)
+        }
     })
 
     it('makes 018 the prod copy-fix script and keeps it journey-scoped', () => {
@@ -130,6 +145,9 @@ describe('Paul journey content', () => {
         assert.equal(sql018.includes(QUESTION_5_PROMPT_017), true)
         for (const text of allPaulWeek45Copy()) {
             assert.equal(sql018.includes(text), false, `018 should not include week 4-5 copy: ${text.slice(0, 48)}`)
+        }
+        for (const text of [...allPaulConnectCopy(), ...allPaulWeek6Copy()]) {
+            assert.equal(sql018.includes(text), false, `018 should not include week 6 copy: ${text.slice(0, 48)}`)
         }
     })
 
@@ -166,26 +184,50 @@ describe('Paul journey content', () => {
                 `019 should not update ${title}`,
             )
         }
+        assert.equal(sql019.includes(`title ILIKE '${CONNECT_TITLE}'`), false)
         for (const text of allPaulWeek45Copy()) {
             assert.equal(sql019.includes(text), true, `019 is missing copy: ${text.slice(0, 48)}`)
         }
         for (const text of allPaulWeek13Copy()) {
             assert.equal(sql019.includes(text), false, `019 should not rewrite week 1-3: ${text.slice(0, 48)}`)
         }
+        for (const text of [...allPaulConnectCopy(), ...allPaulWeek6Copy()]) {
+            assert.equal(sql019.includes(text), false, `019 should not include week 6 copy: ${text.slice(0, 48)}`)
+        }
     })
 
-    it('does not include Week 6 copy anywhere in Paul content', () => {
-        const joined = allPaulCopy().join('\n')
-        for (const title of WEEK6_TITLES) {
-            assert.equal(joined.includes(title), false, `TS copy includes week 6 title ${title}`)
+    it('adds Connect with Believers and Week 6 copy in 020 and mirrors it in TypeScript', () => {
+        for (const typo of BANNED_TYPOS) {
+            assert.equal(sql020.includes(typo), false, `020 SQL still contains ${typo}`)
+        }
+        assert.match(sql020, /RAISE EXCEPTION/)
+        assert.match(sql020, /Q1 was found but journey_id is NULL/)
+        assert.match(sql020, /GET DIAGNOSTICS/)
+        assert.match(sql020, /journey_id IS NOT DISTINCT FROM/)
+        assert.match(sql020, /assignments.journey_id is missing/)
+        assert.equal(/\bINSERT\s+INTO\s+assignments\b/i.test(sql020), false)
+        assert.equal(/\bassignment_progress\b/.test(sql020), false)
+        assert.match(sql020, new RegExp(`title ILIKE '${CONNECT_TITLE}'`))
+        for (const title of WEEK6_CONTENT_TITLES) {
+            assert.match(sql020, new RegExp(`title ILIKE '${title}'`))
+        }
+        for (const title of WEEK6_UNMAPPED_TITLES) {
             assert.equal(
-                sql019.includes(`title ILIKE '${title}'`),
+                sql020.includes(`title ILIKE '${title}'`),
                 false,
-                `019 updates week 6 title ${title}`,
+                `020 should not update ${title}`,
             )
         }
-        assert.equal(sql019.includes('Always be Prepared'), false)
-        assert.equal(sql019.includes('The Hope within You'), false)
+        assert.equal(sql020.includes("title ILIKE 'Building Bible Habits'"), false)
+        for (const text of [...allPaulConnectCopy(), ...allPaulWeek6Copy()]) {
+            assert.equal(sql020.includes(text), true, `020 is missing copy: ${text.slice(0, 48)}`)
+        }
+        for (const text of allPaulWeek13Copy()) {
+            assert.equal(sql020.includes(text), false, `020 should not rewrite week 1-3: ${text.slice(0, 48)}`)
+        }
+        for (const text of allPaulWeek45Copy()) {
+            assert.equal(sql020.includes(text), false, `020 should not rewrite week 4-5: ${text.slice(0, 48)}`)
+        }
     })
 
     it('keeps Paul meaning-level lines and Amen endings on week 4-5 prayers', () => {
@@ -212,5 +254,38 @@ describe('Paul journey content', () => {
         assert.equal(/\bUPDATE\b/i.test(sql019Precheck), false)
         assert.equal(/\bINSERT\b/i.test(sql019Precheck), false)
         assert.equal(/\bDELETE\b/i.test(sql019Precheck), false)
+    })
+
+    it('keeps Paul meaning-level lines on Connect with Believers and Week 6 copy', () => {
+        const week6 = [...allPaulConnectCopy(), ...allPaulWeek6Copy()].join('\n')
+        for (const line of WEEK6_MEANING_LINES_LEFT_AS_IS) {
+            assert.equal(week6.includes(line), true, `missing meaning line: ${line}`)
+            assert.equal(sql020.includes(line), true, `020 missing meaning line: ${line}`)
+        }
+        assert.match(CREATE_YOUR_FRIEND_LIST_PRAYER, /Holy Spirit draw _____________ \(insert name\)/)
+        assert.match(HOPE_WITHIN_YOU_PRAYER, /Jesus I pray, Amen$/)
+        assert.equal(HOPE_WITHIN_YOU_PRAYER.includes('I pray, Amen.'), false)
+    })
+
+    it('leaves Pray for Your Friends unmapped because the sheet has no row for it', () => {
+        assert.deepEqual(WEEK6_UNMAPPED_TITLES, ['Pray for Your Friends'])
+        assert.equal(WEEK6_CONTENT_TITLES.includes('Pray for Your Friends'), false)
+        assert.equal(WEEK6_TITLES.includes('Pray for Your Friends'), true)
+        assert.equal(sql020.includes('guided_prayer'), false)
+        assert.match(sql020, /Pray for Your Friends/)
+        assert.match(sql020Precheck, /Pray for Your Friends/)
+        assert.match(sql020Precheck, /Building Bible Habits/)
+        assert.match(sql020Precheck, /guided_prayer_populated/)
+    })
+
+    it('ships a read-only 020 precheck for Connect with Believers and Week 6 title overlap', () => {
+        assert.match(sql020Precheck, /journey_count|COUNT\(\*\)/)
+        assert.match(sql020Precheck, /Connect with Believers/)
+        assert.match(sql020Precheck, /Always Be Prepared/)
+        assert.match(sql020Precheck, /The Hope Within You/)
+        assert.match(sql020Precheck, /commentary_populated|IS NOT NULL/)
+        assert.equal(/\bUPDATE\b/i.test(sql020Precheck), false)
+        assert.equal(/\bINSERT\b/i.test(sql020Precheck), false)
+        assert.equal(/\bDELETE\b/i.test(sql020Precheck), false)
     })
 })
