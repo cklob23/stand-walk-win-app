@@ -258,7 +258,7 @@ const cardProps = {
 function PreviewInner() {
   const searchParams = useSearchParams()
   const view = searchParams.get('view') || 'week1'
-  const role = searchParams.get('role') === 'leader' ? 'leader' : 'learner'
+  const role: 'leader' | 'learner' = searchParams.get('role') === 'leader' ? 'leader' : 'learner'
   const [bornAgain] = groupAssignments(week1Rows)
   const completedPrayer = {
     assignment_id: week1Prayer.id,
